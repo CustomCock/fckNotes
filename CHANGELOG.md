@@ -24,8 +24,14 @@ Alle nennenswerten Änderungen an fckNotes (bis 1.17.0: Notex). Format angelehnt
 - **PDF-Formulare**: Feldliste zum Ausfüllen (Text, Kontrollkästchen, Optionsfelder, Auswahllisten) mit einem
   Rückgängig-Schritt pro „Übernehmen“; neue Textfelder und Kontrollkästchen anlegen, Felder löschen; sichtbare
   **Unterschrift** (zeichnen oder Bild, nichts wird gespeichert); **fest einbrennen** vor dem Verschicken.
+- **PDF echt schwärzen**: Bereiche, markierten Text oder alle Suchtreffer vormerken; „Schwärzen anwenden“ erzeugt
+  die betroffenen Seiten als Bild mit eingemalten Balken neu, entfernt deren Text, Schriften, Anmerkungen und
+  Formularwerte, auf Wunsch Metadaten, Anhänge/Skripte und Lesezeichen, und prüft danach, ob die Wörter noch irgendwo
+  stehen. Speichern nur unter neuem Namen.
 
 ### Behoben
+- PDF bearbeiten: Nach Löschen von Seiten/Anmerkungen blieben verwaiste Objekte (z. B. alte Lesezeichen-Ketten) in
+  der Datei – jetzt wird nur geschrieben, was vom Dokument aus erreichbar ist.
 - PDF-Ansicht: Werte in Formularfeldern waren unsichtbar (PDFium zeichnet Felder in QtPdf nicht) – fckNotes zeigt
   jetzt eine Anzeige-Kopie, in der Felder sichtbar sind; fehlende Erscheinungsbilder werden nachgezeichnet.
 

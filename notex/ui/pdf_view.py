@@ -17,9 +17,9 @@ from PySide6.QtGui import QColor, QKeySequence, QPainter, QPen, QPolygonF, QShor
 from PySide6.QtPdf import (QPdfBookmarkModel, QPdfDocument, QPdfDocumentRenderOptions, QPdfPageRenderer,
                            QPdfSearchModel)
 from PySide6.QtWidgets import (QAbstractScrollArea, QApplication, QComboBox, QFrame, QHBoxLayout, QInputDialog,
-                               QLabel, QLineEdit, QMenu, QSplitter, QTreeView, QVBoxLayout)
+                               QLabel, QLineEdit, QMenu, QPushButton, QSplitter, QTreeView, QVBoxLayout)
 
-from notex.core import pdfannot, pdfdoc, pdfforms, pdfpages
+from notex.core import pdfannot, pdfdoc, pdfforms, pdfpages, pdfredact
 from notex.core.pdfdoc import PageLayout
 from notex.theme.theme import style_menu
 from notex.theme.tokens import COLORS, SPACING
@@ -36,6 +36,7 @@ TOOLS = [
     ("field", "text-cursor-input", "Neues Textfeld (Formular): Bereich aufziehen"),
     ("checkbox", "square-check", "Neues Kontrollkästchen (Formular): klicken"),
     ("signature", "signature", "Unterschrift: zeichnen oder Bild wählen, dann Bereich aufziehen/klicken"),
+    ("redact", "redact", "Schwärzen: Bereiche aufziehen (endgültig erst mit „Schwärzen anwenden“)"),
 ]
 CACHE_IMAGES = 24
 MAX_UNDO = 40
@@ -436,6 +437,15 @@ class _PdfCanvas(QAbstractScrollArea):
         menu.exec(self.viewport().mapToGlobal(pos))
 
 
+def _strip_outline(data: bytes) -> bytes:
+    from notex.core.pdfannot import finish, open_writer
+    writer = open_writer(data)
+    for key in ("/Outlines", "/PageMode"):
+        if key in writer._root_object:
+            del writer._root_object[key]
+    return finish(writer)
+
+
 class PdfPage(ViewerPage):
     kind = "pdf"
     icon_name = "file-type"
@@ -454,6 +464,9 @@ class PdfPage(ViewerPage):
         self._dirty = False
         self._backed_up = False
         self.redacted = False               # nach Schwärzen: nur „Speichern unter“ (Original bleibt unangetastet)
+        self.redactions: list[tuple[int, tuple]] = []   # vorgemerkte Balken (Seite, Rechteck in Ansichts-Punkten)
+        self.redact_terms: list[str] = []               # dazu markierte Wörter – für die Restprüfung danach
+        self.last_leftovers: list[str] = []             # Ergebnis der Restprüfung nach dem letzten Schwärzen
         self.canvas = _PdfCanvas(self.doc)
         self.canvas.page_changed.connect(self._on_page)
         self.canvas.zoom_changed.connect(self._on_zoom)
@@ -674,6 +687,7 @@ class PdfPage(ViewerPage):
         if not on:
             self.set_tool("select")
             self.set_form_visible(False)
+            self.clear_redactions()
         self._update_edit_actions()
         self.status_changed.emit()
 
@@ -702,6 +716,8 @@ class PdfPage(ViewerPage):
         self.data = data
         selected = self.strip.selected_pages()
         self.canvas.selection = None
+        self.canvas.current_highlight = None              # Suchtreffer gehören zum alten Stand
+        self.search_index = -1
         self.doc.close()
         self._set_buffer(self._display_bytes(data))
         self._after_load()
@@ -944,6 +960,12 @@ class PdfPage(ViewerPage):
         flatten = IconButton("check-check", "Anmerkungen und Formular fest einbrennen …")
         flatten.clicked.connect(lambda: self.flatten())
         self.tool_row.addWidget(flatten)
+        self.redact_apply = QPushButton("Schwärzen anwenden …")
+        self.redact_apply.setObjectName("Danger")
+        self.redact_apply.setToolTip("Vorgemerkte Bereiche endgültig schwärzen (Seiten werden als Bild neu erzeugt)")
+        self.redact_apply.clicked.connect(lambda: self.apply_redactions())
+        self.redact_apply.setVisible(False)
+        self.tool_row.addWidget(self.redact_apply)
         row.addStretch(1)
         self.undo_button = IconButton("undo-2", "Rückgängig  Ctrl+Z")
         self.undo_button.clicked.connect(self.undo)
@@ -1080,11 +1102,22 @@ class PdfPage(ViewerPage):
     def _extend_menu(self, menu, page: int, x: float, y: float) -> None:
         if self.edit_block_reason():
             return
+        pending = next((i for i, (p, (x0, y0, x1, y1)) in enumerate(self.redactions)
+                        if p == page and x0 <= x <= x1 and y0 <= y <= y1), None)
+        if pending is not None:
+            menu.addSeparator()
+            menu.addAction("Vorgemerkte Schwärzung entfernen", lambda: self.remove_redaction(pending))
+            menu.addAction("Alle Vormerkungen verwerfen", self.clear_redactions)
+            return
         if self.canvas.selected_text():
             menu.addSeparator()
             for kind, label in (("highlight", "Markieren"), ("underline", "Unterstreichen"),
                                 ("strikeout", "Durchstreichen")):
                 menu.addAction(label, lambda k=kind: self.add_markup(k))
+            menu.addAction("Markierung schwärzen (vormerken)", self.mark_redaction_from_selection)
+        hits = self.search.rowCount(QModelIndex()) if self.search_field.text().strip() else 0
+        if hits:
+            menu.addAction(f"Alle {hits} Suchtreffer schwärzen (vormerken)", self.mark_search_results)
         field = next((f for f in self.fields if f.page == page and f.rect[0] - 2 <= x <= f.rect[2] + 2
                       and f.rect[1] - 2 <= y <= f.rect[3] + 2), None)
         if field is not None:
@@ -1221,6 +1254,140 @@ class PdfPage(ViewerPage):
 
     def _region_signature(self, page: int, box: tuple) -> None:
         self.add_signature(page, box)
+
+    # ---- Schwärzen ---------------------------------------------------------------------------------------------
+    def mark_redaction(self, page: int, rect: tuple, term: str = "") -> None:
+        if not self._ensure_editing():
+            return
+        x0, y0, x1, y1 = rect
+        if x1 - x0 < 1 or y1 - y0 < 1:
+            return
+        self.redactions.append((page, (x0, y0, x1, y1)))
+        if term.strip():
+            self.redact_terms.append(term.strip())
+        self._sync_redactions()
+
+    def mark_redaction_from_selection(self) -> bool:
+        rects, page = self.canvas.selection_rects(), self.canvas.selection_page
+        if not rects or page < 0:
+            self.notice.emit("Erst Text markieren")
+            return False
+        term = self.canvas.selected_text()
+        for rect in rects:
+            self.mark_redaction(page, rect)
+        if term.strip():
+            self.redact_terms.append(" ".join(term.split()))
+        self.canvas.selection = None
+        self.canvas.selection_changed.emit()
+        self._sync_redactions()
+        return True
+
+    def mark_search_results(self) -> int:
+        """Alle Treffer der PDF-Suche zum Schwärzen vormerken (z. B. jeden Vorkommen eines Namens)."""
+        term = self.search_field.text().strip()
+        if term and self.search.searchString() != term:
+            self._search_timer.stop()
+            self._run_search()
+        count = self._settled_search_count() if term else 0
+        if not count:
+            self.notice.emit("Erst im PDF suchen – dann werden alle Treffer vorgemerkt")
+            return 0
+        if not self._ensure_editing():
+            return 0
+        for i in range(count):
+            link = self.search.resultAtIndex(i)
+            for r in link.rectangles():
+                self.redactions.append((link.page(), (r.left(), r.top(), r.right(), r.bottom())))
+        self.redact_terms.append(term)
+        self._sync_redactions()
+        self.notice.emit(f"{count} Treffer für „{term}“ zum Schwärzen vorgemerkt")
+        return count
+
+    def _settled_search_count(self, timeout: float = 3.0) -> int:
+        """QPdfSearchModel liefert Treffer häppchenweise – warten, bis die Zahl stabil ist (alle Seiten durch)."""
+        import time
+        start = time.monotonic()
+        last, stable = -1, 0
+        while time.monotonic() - start < timeout:
+            QApplication.processEvents()
+            count = self.search.rowCount(QModelIndex())
+            stable = stable + 1 if count == last else 0
+            last = count
+            if stable >= 8 and (count > 0 or time.monotonic() - start > 0.5):
+                break
+            time.sleep(0.01)
+        return max(last, 0)
+
+    def remove_redaction(self, index: int) -> None:
+        if 0 <= index < len(self.redactions):
+            del self.redactions[index]
+            self._sync_redactions()
+
+    def clear_redactions(self) -> None:
+        self.redactions.clear()
+        self.redact_terms.clear()
+        self._sync_redactions()
+
+    def _sync_redactions(self) -> None:
+        self.canvas.overlays = [o for o in self.canvas.overlays if o[2] != "redact"] + \
+            [(page, QRectF(x0, y0, x1 - x0, y1 - y0), "redact") for page, (x0, y0, x1, y1) in self.redactions]
+        self.redact_apply.setVisible(bool(self.redactions))
+        self.redact_apply.setText(f"Schwärzen anwenden ({len(self.redactions)}) …")
+        self.canvas.viewport().update()
+        self.status_changed.emit()
+
+    def _region_redact(self, page: int, box: tuple) -> None:
+        self.mark_redaction(page, box)
+
+    def apply_redactions(self, dpi: int | None = None, options=None, confirm: bool = True) -> bool:
+        """Vorgemerkte Balken endgültig anwenden: betroffene Seiten als Bild neu, Rest bereinigen, danach prüfen."""
+        if not self.redactions:
+            self.notice.emit("Nichts zum Schwärzen vorgemerkt")
+            return False
+        if self.edit_block_reason():
+            self.notice.emit(self.edit_block_reason())
+            return False
+        boxes = pdfredact.normalize_boxes(self.redactions)
+        if confirm:
+            from PySide6.QtWidgets import QDialog
+            from notex.ui.pdf_edit import RedactDialog
+            dialog = RedactDialog(self, sum(len(v) for v in boxes.values()), sorted(boxes))
+            if dialog.exec() != QDialog.DialogCode.Accepted:
+                return False
+            dpi, options = dialog.dpi.currentData(), dialog.options()
+        dpi = dpi or 200
+        options = options or pdfredact.RedactOptions()
+        from PySide6.QtCore import Qt as _Qt
+        from notex.ui.pdf_edit import render_redacted
+        QApplication.setOverrideCursor(_Qt.CursorShape.WaitCursor)
+        try:
+            images = {page: render_redacted(self.doc, page, rects, dpi) for page, rects in boxes.items()}
+        finally:
+            QApplication.restoreOverrideCursor()
+        if not self._run(pdfredact.redact_pages, images, options):
+            return False
+        terms = list(dict.fromkeys(self.redact_terms))
+        self.redactions.clear()
+        self.redact_terms.clear()
+        self._sync_redactions()
+        self.redacted = True
+        found = pdfredact.leftovers(self.data, terms) if terms else []
+        if found and not options.strip_outline and any("Lesezeichen" in f for f in found) and confirm:
+            from notex.ui import dialogs
+            if dialogs.confirm(self, "Geschwärzte Wörter in Lesezeichen",
+                               "Die Lesezeichen enthalten noch geschwärzte Wörter. Lesezeichen entfernen?",
+                               yes="Lesezeichen entfernen"):
+                self._run(_strip_outline)
+                found = pdfredact.leftovers(self.data, terms)
+        self.last_leftovers = found
+        if found and confirm:
+            from notex.ui import dialogs
+            dialogs.warn(self, "Noch nicht überall geschwärzt",
+                         "Diese Stellen enthalten die markierten Wörter weiterhin:",
+                         informative="\n".join(found[:12]) + ("\n…" if len(found) > 12 else ""))
+        else:
+            self.notice.emit(f"Geschwärzt: {len(images)} Seite(n) neu erzeugt – Speichern legt eine neue Datei an")
+        return True
 
     def _update_edit_actions(self) -> None:
         if not hasattr(self, "undo_button"):

@@ -3628,6 +3628,14 @@ class MainWindow(QMainWindow):
              "", "pdf unterschrift unterschreiben signatur signature zeichnen"),
             ("pdf:flatten", "PDF: Anmerkungen und Formular einbrennen …", lambda: self.pdf_command("flatten"), "",
              "pdf einbrennen flatten fixieren formular abschließen"),
+            ("pdf:tool_redact", "PDF: Werkzeug Schwärzen", lambda: self.pdf_command("set_tool", "redact"), "",
+             "pdf schwärzen redact anonymisieren unkenntlich zensieren dsgvo"),
+            ("pdf:redact_selection", "PDF: Markierung schwärzen (vormerken)",
+             lambda: self.pdf_command("mark_redaction_from_selection"), "", "pdf schwärzen markierung redact"),
+            ("pdf:redact_search", "PDF: Alle Suchtreffer schwärzen (vormerken)",
+             lambda: self.pdf_command("mark_search_results"), "", "pdf schwärzen suchtreffer alle namen redact dsgvo"),
+            ("pdf:redact_apply", "PDF: Schwärzen anwenden …", lambda: self.pdf_command("apply_redactions"), "",
+             "pdf schwärzen anwenden endgültig redact"),
         ]
         for key, title, callback, shortcut, keywords in pdf_cmds:
             self.registry.add(key, title, callback, category="PDF", shortcut=shortcut, keywords=keywords)

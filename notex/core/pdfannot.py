@@ -195,12 +195,50 @@ def open_writer(data: bytes) -> PdfWriter:
     return PdfWriter(clone_from=open_reader(data))
 
 
+def prune_unreachable(writer: PdfWriter) -> int:
+    """Alle Objekte verwerfen, die vom Katalog (bzw. /Info) aus nicht erreichbar sind; liefert ihre Anzahl.
+
+    pypdfs eigenes „remove_unreferenced“ zählt jeden Verweis – auch den von einem verwaisten Objekt auf ein anderes.
+    Ketten wie alte Lesezeichen (Prev/Next/Parent) oder eine gelöschte Seite samt Schriften blieben so in der Datei.
+    Hier zählt nur, was man vom Dokument aus wirklich erreicht."""
+    from pypdf.generic import IndirectObject
+    seen: set[int] = set()
+    stack: list = [writer._root_object]
+    info = getattr(writer, "_info_obj", None)
+    if info is not None:
+        stack.append(info)
+    encrypt = getattr(writer, "_encrypt_entry", None)
+    if encrypt is not None:
+        stack.append(encrypt)
+    while stack:
+        obj = stack.pop()
+        if isinstance(obj, IndirectObject):
+            if obj.pdf is not writer or obj.idnum in seen:
+                continue
+            seen.add(obj.idnum)
+            try:
+                obj = obj.get_object()
+            except Exception:                            # noqa: BLE001 – kaputter Verweis
+                continue
+        else:
+            ref = getattr(obj, "indirect_reference", None)
+            if ref is not None and getattr(ref, "pdf", None) is writer:
+                seen.add(ref.idnum)
+        if isinstance(obj, DictionaryObject):
+            stack.extend(obj.values())
+        elif isinstance(obj, ArrayObject):
+            stack.extend(obj)
+    dropped = 0
+    for index, obj in enumerate(writer._objects):
+        if obj is not None and index + 1 not in seen:
+            writer._objects[index] = None
+            dropped += 1
+    return dropped
+
+
 def finish(writer: PdfWriter) -> bytes:
-    """Unbenutzte Objekte (gelöschte Anmerkungen, alte Erscheinungsbilder) entfernen und schreiben."""
-    try:
-        writer.compress_identical_objects(remove_duplicates=False, remove_unreferenced=True)
-    except Exception:                                    # noqa: BLE001 – Aufräumen ist Kür, Schreiben Pflicht
-        pass
+    """Unerreichbare Objekte (gelöschte Anmerkungen, alte Erscheinungsbilder, Seiten) entfernen und schreiben."""
+    prune_unreachable(writer)
     buffer = io.BytesIO()
     writer.write(buffer)
     return buffer.getvalue()

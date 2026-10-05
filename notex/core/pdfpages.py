@@ -32,6 +32,8 @@ def open_reader(data: bytes) -> PdfReader:
 
 
 def to_bytes(writer: PdfWriter) -> bytes:
+    from notex.core.pdfannot import prune_unreachable
+    prune_unreachable(writer)
     buffer = io.BytesIO()
     writer.write(buffer)
     return buffer.getvalue()

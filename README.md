@@ -522,6 +522,25 @@ Der Stift schaltet eine zweite Leiste und die **Seitenleiste** (Miniaturen) ein.
   danach nicht mehr änderbar – sinnvoll vor dem Verschicken.
 - XFA-Formulare (Adobe LiveCycle) werden beim Ändern auf normale Formularfelder zurückgeführt.
 
+![PDF bearbeiten: Markierung, Notiz, Text](docs/72-pdf-bearbeiten.png)
+
+**Echt schwärzen** – nicht nur ein schwarzes Kästchen über dem Text (das lässt sich herauskopieren), sondern weg:
+
+1. Vormerken: Werkzeug „Schwärzen“ und Bereiche aufziehen, oder Text markieren › Rechtsklick „Markierung schwärzen“,
+   oder im PDF suchen › Rechtsklick „Alle Suchtreffer schwärzen“ (z. B. jedes Vorkommen eines Namens). Vorgemerkte
+   Bereiche sind rot umrandet; Rechtsklick entfernt einen wieder.
+2. **„Schwärzen anwenden“**: Die betroffenen Seiten werden als Bild (150/200/300 dpi) mit eingemalten Balken neu
+   erzeugt – Text, Schriften, Anmerkungen und Formularwerte dieser Seiten verschwinden aus der Datei. Optional (an):
+   Metadaten, Anhänge und Skripte entfernen; optional Lesezeichen entfernen.
+3. Danach prüft fckNotes, ob die geschwärzten Wörter noch irgendwo stehen (andere Seiten, Anmerkungen, Lesezeichen,
+   Metadaten) und nennt die Stellen.
+4. Gespeichert wird **unter neuem Namen** (`…_geschwärzt.pdf`), das Original bleibt unberührt.
+
+Auf den geschwärzten Seiten ist danach auch der übrige Text nicht mehr markier- oder durchsuchbar (Bild), und die
+Datei wird etwas größer.
+
+![Suchtreffer zum Schwärzen vorgemerkt](docs/73-pdf-schwaerzen.png)
+
 
 ## Strings
 
@@ -1236,6 +1255,9 @@ Alternativ per Docker: `docker run -d -p 8081:8010 erikvl87/languagetool` (dann 
 | Palette › PDF: Werkzeug Textfeld / Kontrollkästchen anlegen | Neues Formularfeld aufziehen bzw. anklicken |
 | Palette › PDF: Unterschrift einsetzen | Zeichnen oder Bild wählen, dann auf der Seite platzieren |
 | Palette › PDF: Anmerkungen und Formular einbrennen | Alles fest in die Seiten übernehmen (vor dem Verschicken) |
+| Palette › PDF: Werkzeug Schwärzen | Bereiche zum Schwärzen aufziehen (Esc beendet) |
+| Palette › PDF: Markierung / Alle Suchtreffer schwärzen | Text bzw. jedes Vorkommen des Suchbegriffs vormerken |
+| Palette › PDF: Schwärzen anwenden | Vorgemerktes endgültig schwärzen, prüfen, unter neuem Namen speichern |
 | Ctrl+C / Ctrl+V / Entf (in der Tabelle) | Zellen als Tab-getrennten Block kopieren / einfügen / leeren |
 | Ctrl+\ | Editor teilen / Teilung aufheben |
 | Ctrl+Alt+\ | Gruppen nebeneinander / untereinander |

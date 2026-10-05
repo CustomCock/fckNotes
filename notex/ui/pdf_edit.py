@@ -553,3 +553,74 @@ class SignatureDialog(QDialog):
             return ("image", self.image)
         strokes, aspect = normalize_strokes(self.pad.strokes)
         return ("strokes", strokes, aspect)
+
+
+# ---- Schwärzen ---------------------------------------------------------------------------------------------------
+class RedactDialog(QDialog):
+    """Zusammenfassung und Optionen vor dem endgültigen Schwärzen."""
+
+    def __init__(self, parent: QWidget, boxes: int, pages: list[int]) -> None:
+        super().__init__(parent)
+        from PySide6.QtWidgets import QCheckBox, QComboBox, QHBoxLayout
+        self.setWindowTitle("Schwärzen anwenden")
+        pages_text = pdfpages.describe(pages)
+        head = QLabel(f"{boxes} Bereich(e) auf Seite {pages_text} werden geschwärzt.")
+        detail = QLabel("Diese Seiten werden als Bild neu erzeugt: der Text darunter ist danach wirklich weg – auch "
+                        "der übrige Text dieser Seiten ist dann nicht mehr markier- oder durchsuchbar. Anmerkungen "
+                        "und Formularfelder dieser Seiten werden Teil des Bildes. Das Original bleibt unangetastet: "
+                        "gespeichert wird unter neuem Namen.")
+        detail.setWordWrap(True)
+        detail.setObjectName("SettingsNote")
+        self.metadata = QCheckBox("Metadaten entfernen (Titel, Autor, Programm, XMP)")
+        self.metadata.setChecked(True)
+        self.attachments = QCheckBox("Anhänge und Skripte entfernen")
+        self.attachments.setChecked(True)
+        self.outline = QCheckBox("Lesezeichen entfernen (Titel können geschwärzte Wörter enthalten)")
+        self.dpi = QComboBox()
+        for value in (150, 200, 300):
+            self.dpi.addItem(f"{value} dpi", value)
+        self.dpi.setCurrentIndex(1)
+        row = QHBoxLayout()
+        row.addWidget(QLabel("Auflösung der Seitenbilder"))
+        row.addWidget(self.dpi)
+        row.addStretch(1)
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        ok = buttons.button(QDialogButtonBox.StandardButton.Ok)
+        ok.setText("Endgültig schwärzen")
+        ok.setObjectName("Danger")
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout = QVBoxLayout(self)
+        for widget in (head, detail, self.metadata, self.attachments, self.outline):
+            layout.addWidget(widget)
+        layout.addLayout(row)
+        layout.addWidget(buttons)
+
+    def options(self):
+        from notex.core.pdfredact import RedactOptions
+        return RedactOptions(self.metadata.isChecked(), self.attachments.isChecked(), self.outline.isChecked())
+
+
+def render_redacted(doc: QPdfDocument, index: int, boxes: list, dpi: int):
+    """Seite `index` mit `dpi` rendern (inkl. Anmerkungen), Balken einmalen → PageImage für den Kern."""
+    from notex.core.pdfredact import PageImage
+    size = doc.pagePointSize(index)
+    w_pt, h_pt = max(1.0, size.width()), max(1.0, size.height())
+    scale = dpi / 72.0
+    w_px, h_px = max(1, round(w_pt * scale)), max(1, round(h_pt * scale))
+    options = QPdfDocumentRenderOptions()
+    options.setRenderFlags(QPdfDocumentRenderOptions.RenderFlag.Annotations)
+    rendered = doc.render(index, QSize(w_px, h_px), options)
+    page = QImage(w_px, h_px, QImage.Format.Format_RGB888)
+    page.fill(QColor("#ffffff"))
+    painter = QPainter(page)
+    if not rendered.isNull():
+        painter.drawImage(0, 0, rendered)
+    for x0, y0, x1, y1 in boxes:
+        painter.fillRect(round(x0 * scale), round(y0 * scale), max(1, round((x1 - x0) * scale)),
+                         max(1, round((y1 - y0) * scale)), QColor("#000000"))
+    painter.end()
+    stride = page.bytesPerLine()
+    raw = bytes(page.constBits())[: stride * h_px]
+    rgb = raw if stride == w_px * 3 else b"".join(raw[y * stride: y * stride + w_px * 3] for y in range(h_px))
+    return PageImage(w_pt, h_pt, w_px, h_px, rgb)

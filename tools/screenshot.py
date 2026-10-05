@@ -862,7 +862,36 @@ def main() -> int:
             def mermaid_shot():
                 window.tabs.open_file(data / "Projekte/fckNotes/diagramme.md")
                 window.set_preview_mode("split")
-                later_rel(900, lambda: (save(window, "71-mermaid"), window.set_preview_mode("edit"), finish()))
+                later_rel(900, lambda: (save(window, "71-mermaid"), window.set_preview_mode("edit"), pdf_edit_shot()))
+
+            def pdf_edit_shot():
+                if window.tabs.is_split:
+                    window.toggle_split()
+                viewer = window.tabs.open_viewer(files / "Bericht.pdf", "pdf")
+                viewer.set_editing(True)
+                canvas = viewer.canvas
+                canvas.selection = canvas._select(0, (70, 110), (400, 140))
+                canvas.selection_page = 0
+                viewer.add_markup("highlight")
+                viewer.add_note(0, 470, 40, "Quelle prüfen")
+                viewer.add_text(0, (72, 260, 380, 260), "Anmerkung: Zahlen mit dem Anhang abgleichen.", 13,
+                                "#2f6fdf", True)
+                viewer.set_tool("text")
+                canvas.go_to(0)
+                later_rel(900, lambda: (save(window, "72-pdf-bearbeiten"), redact_shot(viewer)))
+
+            def redact_shot(viewer):
+                viewer.search_field.setText("Quokka")
+                viewer.mark_search_results()
+                viewer.set_tool("redact")
+                viewer.canvas.go_to(1)
+
+                def done():
+                    save(window, "73-pdf-schwaerzen")
+                    viewer.set_editing(False)
+                    viewer._set_dirty(False)                 # Demo: beim Schließen nicht nachfragen
+                    finish()
+                later_rel(900, done)
             ip_shot()
 
         def finish():

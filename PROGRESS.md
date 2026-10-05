@@ -562,6 +562,18 @@ Kommentieren, Formulare + Unterschrift, Textfelder, echtes Schwärzen)
   Signatur, nichts gespeichert (Regel „keine Zugangsdaten/Schlüssel“ unberührt).
   UI: `FormPanel` (rechts im Splitter), Werkzeuge Textfeld/Kästchen/Unterschrift, `SignatureDialog` (Zeichenfeld
   oder Bild), Einbrennen-Knopf, Feld-Kontextmenü, Formular-Hinweis in der Statusleiste.
+- **S4 Echtes Schwärzen – erledigt.** Kern `notex/core/pdfredact.py`: `redact_pages` ersetzt Inhalt/Ressourcen der
+  betroffenen Seiten (Seitenobjekt bleibt, damit Lesezeichen gültig bleiben) durch ein Bild in Anzeige-Ausrichtung
+  (MediaBox = angezeigte Größe, /Rotate 0), entfernt Annots der Seite samt Feldern aus /AcroForm, /StructTreeRoot,
+  /MarkInfo; Optionen Metadaten/Anhänge+JS+OpenAction/Lesezeichen. `leftovers` sucht Wörter in Seitentext,
+  Anmerkungen/Feldwerten, Lesezeichen, Info und XMP. UI: Werkzeug „Schwärzen“, Vormerken aus Auswahl/Suchtreffern
+  (wartet, bis QPdfSearchModel fertig ist), rote Vorschau-Overlays, `RedactDialog` (dpi, Optionen),
+  `render_redacted` (PDFium inkl. Anmerkungen, Balken in Pixeln), danach Restprüfung (+ Angebot, Lesezeichen zu
+  entfernen) und `redacted` → Speichern nur unter neuem Namen.
+  **Befund + Fix (gilt für S1–S3):** pypdfs `remove_unreferenced` lässt Objekte stehen, die nur von anderen Waisen
+  referenziert werden (alte Outline-Ketten, Anhänge). `pdfannot.prune_unreachable` macht echte Erreichbarkeit ab
+  Katalog/Info; `finish`, `pdfpages.to_bytes` und `redact_pages` nutzen es. Tests prüfen Bytes und alle Objekte.
+- Block S abgeschlossen. Screenshots 72 (Bearbeiten) und 73 (Schwärzen) über `tools/screenshot.py`.
 
 ## Offen
 
@@ -640,7 +652,9 @@ rdap, scanner, logs, pcap. Standardmäßig an: variables, hex, ports, ioc.
 
 - **P (Inventar/Docusnap-artig) ist ZURÜCKGESTELLT** (Entscheidung Besitzer 27.09.2026): vorerst NICHT bauen.
 
-**Mermaid-Diagramme erledigt** (auf dem Arbeitsbranch, CHANGELOG unter „Unveröffentlicht“). Beim nächsten Release
+**Mermaid-Diagramme und Block S (PDF bearbeiten) erledigt** (auf dem Arbeitsbranch, CHANGELOG unter
+„Unveröffentlicht“). Offen beim Besitzer: Praxistest mit echten PDFs (Behördenformulare, gescannte PDFs, große
+Dateien) und in Acrobat/Browser gegenprüfen, ob Anmerkungen, Formulare und Schwärzungen dort gleich aussehen. Beim nächsten Release
 `__version__` auf 1.18.0 setzen und den CHANGELOG-Abschnitt benennen – sonst meldet die App wieder die alte Nummer.
 
 Keine offenen Blöcke auf Entwicklerseite – auf neue Wünsche des Besitzers warten.
