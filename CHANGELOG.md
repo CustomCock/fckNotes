@@ -13,6 +13,11 @@ Alle nennenswerten Änderungen an fckNotes (bis 1.17.0: Notex). Format angelehnt
 - Rechtsklick auf ein Diagramm in der Vorschau: **als PNG oder SVG speichern** (bei `.ntx` nur nach Rückfrage).
 - Command Palette: **„Mermaid-Diagramm einfügen …“** setzt ein Startbeispiel des gewählten Typs an den Cursor.
 - Einstellung „Mermaid-Diagramme zeichnen“ (Einstellungen › Editor › Markdown-Vorschau, Standard an).
+- **PDF bearbeiten** (Stift im PDF-Tab): Seitenleiste mit Miniaturen, Seiten per Ziehen umsortieren, drehen,
+  löschen, als neues PDF herauslösen, ein PDF einfügen, aufteilen (einzeln / alle N Seiten / nach Bereichen) und
+  „PDFs zusammenfügen …“ (Palette). Änderungen erst im Speicher mit Rückgängig/Wiederholen, `Ctrl+S` speichert;
+  vor dem ersten Überschreiben landet das Original im Papierkorb (abschaltbar). Gelöschte Seiten bleiben nicht
+  unsichtbar in der Datei. Passwortgeschützte PDFs bleiben nur lesbar.
 
 ## [1.17.1] – 2026-09-30
 

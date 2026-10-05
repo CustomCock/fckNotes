@@ -73,6 +73,7 @@ class EditorTabs(QTabWidget):
     preview_link = Signal(object, str)          # Editor, Ziel aus der Markdown-Vorschau
     view_mode_changed = Signal(str)             # "edit" | "preview" | "split" des aktuellen Tabs
     pdf_quote = Signal(object, str)             # PDF-Viewer, Markdown-Zitat für die Notiz im anderen Teil
+    viewer_notice = Signal(str)                 # kurze Meldung eines Viewers (Toast)
     completion_requested = Signal(object, str, str)   # Editor, Art, Text
     dirty_changed = Signal(int, bool)   # Tab-Index, dirty
     tabs_emptied = Signal()             # letzter Tab dieser Gruppe geschlossen
@@ -192,6 +193,8 @@ class EditorTabs(QTabWidget):
             factory = self.VIEWERS.get(kind)
             if factory is None:
                 return None
+            if kind == "pdf":
+                factory.backup_to_trash = bool(self.config.get("pdf_backup_trash", True))
             try:
                 page = factory(path)
             except OSError as error:
@@ -237,6 +240,10 @@ class EditorTabs(QTabWidget):
                 connect(page.toolbar.visibility_changed, self._on_toolbar_toggled)
         else:
             connect(page.status_changed, self.status_changed.emit)
+            connect(page.dirty_changed, lambda dirty, pg=page: self._viewer_dirty(pg, dirty))
+            connect(page.saved, lambda old, new, pg=page: self._viewer_saved(pg, old, new))
+            connect(page.notice, self.viewer_notice.emit)
+            connect(page.open_requested, lambda path: self.open_viewer(path, self.viewer_kind_for(path) or "pdf"))
             if hasattr(page, "quote_requested"):
                 connect(page.quote_requested, lambda text, pg=page: self.pdf_quote.emit(pg, text))
         page._wiring = links
@@ -396,9 +403,46 @@ class EditorTabs(QTabWidget):
         self.status_changed.emit()
         return True
 
+    def _viewer_dirty(self, page, dirty: bool) -> None:
+        index = self.indexOf(page)
+        if index >= 0:
+            self.dirty_changed.emit(index, dirty)
+        self.status_changed.emit()
+
+    def _viewer_saved(self, page, old: Path, new: Path) -> None:
+        index = self.indexOf(page)
+        if old != new:
+            self.file_closed.emit(old)
+            if index >= 0:
+                self.setTabText(index, new.name)
+                self.setTabToolTip(index, self.relative(new))
+            self.file_opened.emit(new)
+        self.file_saved.emit(new)
+        self._viewer_dirty(page, page.is_dirty)
+
+    def ask_save_viewer(self, page) -> bool:
+        """Wie _ask_save, für einen bearbeiteten Viewer (PDF). False = abgebrochen."""
+        box = QMessageBox(self)
+        box.setWindowTitle("Ungespeicherte Änderungen")
+        box.setText(f"„{page.path.name}“ wurde geändert.")
+        box.setInformativeText("Änderungen speichern?")
+        save = box.addButton("Speichern", QMessageBox.ButtonRole.AcceptRole)
+        discard = box.addButton("Verwerfen", QMessageBox.ButtonRole.DestructiveRole)
+        discard.setObjectName("Danger")
+        cancel = box.addButton("Abbrechen", QMessageBox.ButtonRole.RejectRole)
+        box.setDefaultButton(save)
+        box.exec()
+        if box.clickedButton() == cancel:
+            return False
+        if box.clickedButton() == save:
+            return page.save()
+        return True
+
     def close_tab(self, index: int) -> bool:
         page = self.widget(index)
         if page in self.viewers():
+            if page.is_dirty and not self.ask_save_viewer(page):
+                return False
             self._remove_viewer(page)
             self.status_changed.emit()
             return True
@@ -428,6 +472,11 @@ class EditorTabs(QTabWidget):
                 asked.add(id(editor.document()))
                 self.setCurrentWidget(self.page_for(editor))
                 if not self._ask_save(editor):
+                    return False
+        for page in self.viewers():
+            if page.is_dirty:
+                self.setCurrentWidget(page)
+                if not self.ask_save_viewer(page):
                     return False
         return True
 
@@ -498,6 +547,11 @@ class EditorTabs(QTabWidget):
         return True
 
     def save_current(self) -> None:
+        viewer = self.current_viewer()
+        if viewer is not None:
+            if viewer.is_dirty:
+                viewer.save()
+            return
         editor = self.current_editor()
         if editor is not None:
             self.save_editor(editor)
@@ -545,6 +599,10 @@ class EditorTabs(QTabWidget):
         return True
 
     def save_current_as(self) -> None:
+        viewer = self.current_viewer()
+        if viewer is not None:
+            viewer.save_as()
+            return
         editor = self.current_editor()
         if editor is not None:
             self.save_editor_as(editor)
@@ -553,6 +611,9 @@ class EditorTabs(QTabWidget):
         for editor in self.editors():
             if editor.is_dirty:
                 self.save_editor(editor)
+        for page in self.viewers():
+            if page.is_dirty:
+                page.save()
 
     # ---- Darstellung -------------------------------------------------------
     def _refresh_title(self, editor: Editor) -> None:
@@ -923,6 +984,9 @@ class EditorTabs(QTabWidget):
         return mode
 
     def apply_preview_settings(self) -> None:
+        pdf_viewer = self.VIEWERS.get("pdf")
+        if pdf_viewer is not None:
+            pdf_viewer.backup_to_trash = bool(self.config.get("pdf_backup_trash", True))
         mermaid = bool(self.config.get("preview_mermaid", True))
         changed = mermaid != MarkdownPreview.mermaid_enabled
         MarkdownPreview.mermaid_enabled = mermaid

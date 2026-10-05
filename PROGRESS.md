@@ -533,6 +533,18 @@ davon wird gelöscht; der Besitzer entscheidet, wie damit umgegangen wird (siehe
   wohlgeformt und ohne script/foreignObject/href/url(), Fehler, Limits, Markdown/Export), `tests/test_mermaid_ui.py`
   (Vorschau-Bild, PNG/SVG, PDF mit Bild, Einstellung, Palette, .ntx-Rückfrage).
 
+### Block S: PDF bearbeiten (05.10.2026, Besitzer: „PDFs sinnvoll bearbeiten“, Umfang gewählt: Seiten,
+Kommentieren, Formulare + Unterschrift, Textfelder, echtes Schwärzen)
+- **S1 Seiten organisieren – erledigt.** Kern `notex/core/pdfpages.py` (Bytes rein/raus: rearrange/rotate/delete/move/
+  extract/insert/merge/split, parse_ranges/parse_groups/every/part_names/describe). Neu aufgebaut wird immer per
+  frischem `PdfWriter.append` → gelöschte Seiten hinterlassen keine Objekte (Test `contains_anywhere`).
+  UI: Stift im PDF-Tab → Bearbeiten-Leiste + `PageStrip` (Miniaturen, Ziehen, Mehrfachauswahl, Kontextmenü),
+  Undo/Redo als Byte-Stapel (max. 40), `ViewerPage` kann jetzt `is_dirty`/`save`/`save_as`/`saved`/`notice`/
+  `open_requested` (Tabs: Punkt am Tab, Ctrl+S, Nachfrage beim Schließen/Beenden). Speichern atomar, vorher einmal je
+  Tab Original in den Papierkorb (`pdf_backup_trash`). Extern geändert + ungespeichert → eigene Fassung bleibt.
+  Passwortgeschützte PDFs: nur lesen (Entscheidung: kein Passwort für das Zurückverschlüsseln im Speicher halten).
+  Palette: pdf:edit/merge/split/rotate_left/rotate_right/delete_pages/extract/insert/pages.
+
 ## Offen
 
 ### Block C – 1.3.0

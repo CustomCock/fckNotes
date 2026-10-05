@@ -453,7 +453,7 @@ Für `.json` und `.yaml`/`.yml` (Menü Bearbeiten → JSON/YAML oder Command Pal
 
 ## PDF
 
-PDFs öffnen als eigener Tab (nur lesen):
+PDFs öffnen als eigener Tab – zum Lesen und, mit dem **Stift** rechts oben, zum Bearbeiten:
 
 - Scrollen, Zoom (Seitenbreite, ganze Seite, 50–300 %, `Ctrl+Mausrad`, `Ctrl+Plus/Minus`), Seite springen
   (`Ctrl+G`, auch Seitenbezeichnungen wie „iv“), Textsuche mit Trefferzähler (`Ctrl+F`, `F3`/`Shift+F3`),
@@ -469,12 +469,30 @@ PDFs öffnen als eigener Tab (nur lesen):
   ```
 
   Ohne Teilung landet das Zitat in der Zwischenablage. Teilen geht jetzt auch aus einem PDF-Tab heraus (`Ctrl+\`).
-- Keine Formulare, keine Skripte, keine Link-Aktionen: fckNotes zeigt nur an und liest Text aus. Die Datei wird in den
-  Speicher gelesen und gleich wieder geschlossen – umbenennen/verschieben geht auch, während der Tab offen ist.
-  Passwortgeschützte PDFs fragen nach dem Passwort (es wird nirgends gespeichert).
-- Technik: QtPdf (PDFium), ohne QtWebEngine; der Build wächst dadurch um wenige MB.
+- Keine Skripte, keine Link-Aktionen. Die Datei wird in den Speicher gelesen und gleich wieder geschlossen –
+  umbenennen/verschieben geht auch, während der Tab offen ist. Passwortgeschützte PDFs fragen nach dem Passwort (es
+  wird nirgends gespeichert) und lassen sich nur ansehen, nicht bearbeiten.
+- Technik: QtPdf (PDFium) zum Anzeigen, pypdf zum Bearbeiten; ohne QtWebEngine.
 
 ![PDF mit Zitat](docs/45-pdf-quote.png)
+
+### PDF bearbeiten
+
+Der Stift schaltet eine zweite Leiste und die **Seitenleiste** (Miniaturen) ein. Alles passiert erst im Speicher:
+`Ctrl+Z`/`Ctrl+Y` machen jeden Schritt rückgängig, der Tab zeigt „●“, und erst `Ctrl+S` schreibt die Datei
+(`Ctrl+Shift+Alt+S` = Speichern unter). Vor dem ersten Überschreiben legt fckNotes das alte PDF in den Papierkorb
+(abschaltbar unter Einstellungen › Editor › PDF bearbeiten) – der Versionsverlauf gilt nur für Textdateien.
+
+**Seiten organisieren** – in der Seitenleiste Seiten anklicken (`Ctrl`/`Shift` für mehrere), dann:
+
+- **Ziehen** sortiert um, Rechtsklick: an den Anfang/ans Ende, drehen, herauslösen, PDF dahinter einfügen, löschen.
+- **Drehen** links/rechts (90°), **Löschen** (`Entf` in der Seitenleiste; die letzte Seite bleibt).
+- **Herauslösen**: gewählte Seiten als neues PDF speichern (öffnet gleich im Tab).
+- **PDF einfügen** hinter der gewählten Seite, **Aufteilen** in Einzelseiten, alle N Seiten oder nach Bereichen
+  (`1-3; 4-6; 7-`) – die Teile heißen `name_teil1.pdf` …
+- **PDFs zusammenfügen …** (Command Palette): Dateien wählen, Reihenfolge per Ziehen festlegen, speichern.
+- Gelöschte Seiten verschwinden **wirklich** aus der Datei (neu aufgebautes PDF, keine unsichtbaren Reste);
+  Lesezeichen und Metadaten bleiben erhalten, Lesezeichen auf gelöschte Seiten fallen weg.
 
 
 ## Strings
@@ -1180,6 +1198,10 @@ Alternativ per Docker: `docker run -d -p 8081:8010 erikvl87/languagetool` (dann 
 | Ctrl+G / Ctrl+F / F3 / Shift+F3 (im PDF-Tab) | Seite / Suchen / nächster / vorheriger Treffer |
 | Ctrl+Mausrad, Ctrl+Plus / Ctrl+Minus (im PDF-Tab) | PDF zoomen |
 | Ctrl+Shift+Alt+Q | PDF-Markierung als Zitat in die Notiz im anderen Teil einfügen |
+| Stift im PDF-Tab / Palette › PDF: Bearbeiten | PDF bearbeiten: Seitenleiste, Drehen, Löschen, Herauslösen, Einfügen, Aufteilen |
+| Ctrl+Z / Ctrl+Y / Ctrl+S (im PDF-Tab) | PDF-Änderung rückgängig / wiederholen / speichern |
+| Entf (Seitenleiste im PDF-Tab) | Gewählte Seiten löschen |
+| Palette › PDFs zusammenfügen | Mehrere PDFs in gewählter Reihenfolge zu einem neuen PDF |
 | Ctrl+C / Ctrl+V / Entf (in der Tabelle) | Zellen als Tab-getrennten Block kopieren / einfügen / leeren |
 | Ctrl+\ | Editor teilen / Teilung aufheben |
 | Ctrl+Alt+\ | Gruppen nebeneinander / untereinander |

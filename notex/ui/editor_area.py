@@ -27,7 +27,8 @@ from notex.ui.paper import EditorPage
 SHARED_ATTRS = {"font_size", "paper_mode", "resolve_link", "open_font_settings", "toolbar_visible", "line_numbers",
                 "context_menu_hook", "image_hook", "tools_menu_builder"}
 FORWARDED_SIGNALS = ("status_changed", "file_saved", "file_opened", "font_size_changed", "text_font_changed",
-                     "files_dropped", "link_activated", "completion_requested", "preview_link", "view_mode_changed", "pdf_quote")
+                     "files_dropped", "link_activated", "completion_requested", "preview_link", "view_mode_changed", "pdf_quote",
+                     "viewer_notice")
 
 
 class EditorArea(QWidget):
@@ -43,6 +44,7 @@ class EditorArea(QWidget):
     preview_link = Signal(object, str)
     view_mode_changed = Signal(str)
     pdf_quote = Signal(object, str)       # PDF-Viewer, Markdown-Zitat
+    viewer_notice = Signal(str)           # kurze Meldung eines Viewers (Toast)
     currentChanged = Signal(int)          # aktiver Tab oder aktive Gruppe hat gewechselt
     split_changed = Signal(bool)          # Teilung an/aus
 
@@ -258,6 +260,7 @@ class EditorArea(QWidget):
             new_index = target.addTab(page, icon_, title)
             target.setTabToolTip(new_index, tooltip)
             target.setCurrentIndex(new_index)
+            target._viewer_dirty(page, page.is_dirty)
             self.set_active(target)
             if source.count() == 0:
                 source.tabs_emptied.emit()
@@ -418,6 +421,13 @@ class EditorArea(QWidget):
                 group.setCurrentWidget(group.page_for(editor))
                 if not group._ask_save(editor):
                     return False
+        for group in self.groups:
+            for page in group.viewers():
+                if page.is_dirty:
+                    self.set_active(group)
+                    group.setCurrentWidget(page)
+                    if not group.ask_save_viewer(page):
+                        return False
         return True
 
     def close_paths_under(self, path: Path) -> None:

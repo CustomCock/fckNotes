@@ -1,9 +1,11 @@
-"""PDF-Tab (nur lesen): Scrollen, Zoom, Seitensprung, Textsuche, Lesezeichen, Text markieren → Zitat in die Notiz.
+"""PDF-Tab: Scrollen, Zoom, Seitensprung, Textsuche, Lesezeichen, Text markieren → Zitat in die Notiz – und im
+Bearbeiten-Modus (Stift) Seiten organisieren (Seitenleiste mit Miniaturen).
 
 Eigene Seitenansicht auf QPdfDocument statt QPdfView, weil QPdfView keine Textauswahl kann. Seiten werden in einem
 Hintergrund-Renderer gerastert (QPdfPageRenderer, mehrere Threads) und zwischengespeichert – die Oberfläche wartet
-nie auf eine Seite. Es gibt keine Formular-, Link- oder Skript-Interaktion: Notex zeigt nur an und liest Text aus.
-Die Datei wird in den Speicher gelesen und sofort geschlossen, damit sie umbenannt/verschoben werden kann.
+nie auf eine Seite. Es gibt keine Formular-, Link- oder Skript-Ausführung. Die Datei wird in den Speicher gelesen und
+sofort geschlossen, damit sie umbenannt/verschoben werden kann. Bearbeitet wird immer eine Kopie im Speicher
+(Bytes, jede Änderung ein Rückgängig-Schritt); erst Ctrl+S schreibt die Datei.
 """
 from __future__ import annotations
 
@@ -17,7 +19,7 @@ from PySide6.QtPdf import (QPdfBookmarkModel, QPdfDocument, QPdfDocumentRenderOp
 from PySide6.QtWidgets import (QAbstractScrollArea, QApplication, QComboBox, QFrame, QHBoxLayout, QInputDialog,
                                QLabel, QLineEdit, QMenu, QSplitter, QTreeView, QVBoxLayout)
 
-from notex.core import pdfdoc
+from notex.core import pdfdoc, pdfpages
 from notex.core.pdfdoc import PageLayout
 from notex.theme.theme import style_menu
 from notex.theme.tokens import COLORS, SPACING
@@ -25,6 +27,7 @@ from notex.ui.viewer_page import ViewerPage, human_size
 from notex.ui.widgets import IconButton
 
 CACHE_IMAGES = 24
+MAX_UNDO = 40
 ZOOM_STEPS = [0.25, 0.33, 0.5, 0.67, 0.75, 0.9, 1.0, 1.1, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0, 4.0, 6.0, 8.0]
 IN_MEMORY_LIMIT = 256 * 1024 * 1024
 PAGE_WHITE = "#ffffff"      # PDF-Seiten sind immer weiß gestaltet – unabhängig vom Blatt-Theme
@@ -346,12 +349,20 @@ class PdfPage(ViewerPage):
     kind = "pdf"
     icon_name = "file-type"
     quote_requested = Signal(str)          # fertiges Markdown-Zitat
+    backup_to_trash = True                 # Einstellung: vor dem ersten Überschreiben Original in den Papierkorb
 
     def __init__(self, path: Path) -> None:
         super().__init__(path)
         self.doc = QPdfDocument(self)
         self._buffer: QBuffer | None = None
         self.error = ""
+        self.data: bytes | None = None      # aktueller Stand (bearbeitbar), None = zu groß/nicht lesbar
+        self.encrypted = False
+        self._undo: list[tuple[bytes, int]] = []
+        self._redo: list[tuple[bytes, int]] = []
+        self._dirty = False
+        self._backed_up = False
+        self.redacted = False               # nach Schwärzen: nur „Speichern unter“ (Original bleibt unangetastet)
         self.canvas = _PdfCanvas(self.doc)
         self.canvas.page_changed.connect(self._on_page)
         self.canvas.zoom_changed.connect(self._on_zoom)
@@ -412,6 +423,20 @@ class PdfPage(ViewerPage):
         self.quote_button = IconButton("quote", "Markierten Text als Zitat in die Notiz im anderen Teil einfügen")
         self.quote_button.clicked.connect(self.quote)
         self.quote_button.setEnabled(False)
+        self.edit_button = IconButton("pencil", "PDF bearbeiten: Seiten, Anmerkungen, Formulare, Schwärzen")
+        self.edit_button.setCheckable(True)
+        self.edit_button.toggled.connect(self.set_editing)
+        self.edit_bar = self._build_edit_bar()
+        self.edit_bar.setVisible(False)
+        from notex.ui.pdf_edit import PageStrip
+        self.strip = PageStrip(self.doc)
+        self.strip.page_activated.connect(lambda index: self.canvas.go_to(index))
+        self.strip.order_changed.connect(self.reorder)
+        self.strip.customContextMenuRequested.connect(self._strip_menu)
+        self.strip.setVisible(False)
+        delete = QShortcut(QKeySequence(Qt.Key.Key_Delete), self.strip)
+        delete.setContext(Qt.ShortcutContext.WidgetShortcut)
+        delete.activated.connect(lambda: self.delete_pages() if self.strip.selected_pages() else None)
 
         strip = QFrame()
         strip.setObjectName("DataBar")
@@ -422,14 +447,16 @@ class PdfPage(ViewerPage):
             bar.addWidget(widget)
         bar.addSpacing(SPACING.md)
         bar.addWidget(self.search_field, 1)
-        for widget in (prev_hit, next_hit, self.hits_label, self.quote_button):
+        for widget in (prev_hit, next_hit, self.hits_label, self.quote_button, self.edit_button):
             bar.addWidget(widget)
         self.splitter = QSplitter(Qt.Orientation.Horizontal)
         self.splitter.setObjectName("PreviewSplitter")
+        self.splitter.addWidget(self.strip)
         self.splitter.addWidget(self.outline)
         self.splitter.addWidget(self.canvas)
-        self.splitter.setStretchFactor(1, 1)
-        self.splitter.setSizes([220, 900])
+        self.splitter.setStretchFactor(2, 1)
+        self.splitter.setCollapsible(0, False)
+        self.splitter.setSizes([self.strip.width(), 220, 900])
         self.outline.setVisible(False)
         frame = QFrame()
         frame.setObjectName("DataFrame")
@@ -437,12 +464,14 @@ class PdfPage(ViewerPage):
         frame_layout.setContentsMargins(0, 0, 0, 0)
         frame_layout.setSpacing(0)
         frame_layout.addWidget(strip)
+        frame_layout.addWidget(self.edit_bar)
         frame_layout.addWidget(self.splitter, 1)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(SPACING.lg, SPACING.md, SPACING.lg, SPACING.lg)
         layout.addWidget(frame)
         for sequence, slot in (("Ctrl+G", self._focus_page), ("F3", lambda: self.next_result(1)),
-                               ("Shift+F3", lambda: self.next_result(-1))):
+                               ("Shift+F3", lambda: self.next_result(-1)), ("Ctrl+Z", self.undo),
+                               ("Ctrl+Y", self.redo), ("Ctrl+Shift+Z", self.redo)):
             shortcut = QShortcut(QKeySequence(sequence), self)
             shortcut.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
             shortcut.activated.connect(slot)
@@ -453,14 +482,14 @@ class PdfPage(ViewerPage):
         self.doc.close()
         if password:
             self.doc.setPassword(password)
+        self.encrypted = bool(password)
         size = self.path.stat().st_size
         if size <= IN_MEMORY_LIMIT:
-            data = QByteArray(self.path.read_bytes())      # Datei gleich wieder zu (Windows: umbenennbar)
-            self._buffer = QBuffer(self)
-            self._buffer.setData(data)
-            self._buffer.open(QIODevice.OpenModeFlag.ReadOnly)
-            self.doc.load(self._buffer)
+            raw = self.path.read_bytes()                    # Datei gleich wieder zu (Windows: umbenennbar)
+            self.data = raw
+            self._set_buffer(raw)
         else:
+            self.data = None
             self.doc.load(str(self.path))
         if self.doc.error() == QPdfDocument.Error.IncorrectPassword:
             text, ok = QInputDialog.getText(self, "Passwortgeschütztes PDF", f"Passwort für „{self.path.name}“:",
@@ -473,13 +502,352 @@ class PdfPage(ViewerPage):
             self.error = f"PDF lässt sich nicht öffnen ({self.doc.error().name})"
         else:
             self.error = ""
-        self.canvas.reset_document()
+        self._after_load()
         has_outline = self.bookmarks.rowCount(QModelIndex()) > 0
-        self.outline_button.setEnabled(has_outline)
         self.outline_button.setChecked(has_outline)
-        self.page_count.setText(f"/ {self.doc.pageCount()}")
         self._on_page(0)
         self.status_changed.emit()
+
+    def _set_buffer(self, raw: bytes) -> None:
+        old = self._buffer
+        self._buffer = QBuffer(self)
+        self._buffer.setData(QByteArray(raw))
+        self._buffer.open(QIODevice.OpenModeFlag.ReadOnly)
+        self.doc.load(self._buffer)
+        if old is not None:
+            old.close()
+            old.deleteLater()
+
+    def _after_load(self) -> None:
+        self.canvas.reset_document()
+        self.outline_button.setEnabled(self.bookmarks.rowCount(QModelIndex()) > 0)
+        self.page_count.setText(f"/ {self.doc.pageCount()}")
+        if not self.strip.isHidden():
+            self.strip.rebuild()
+
+    # ---- Bearbeiten: Zustand, Rückgängig, Speichern -----------------------------------------------------------
+    def edit_block_reason(self) -> str:
+        """Warum nicht bearbeitet werden kann ("" = geht)."""
+        if self.error:
+            return self.error
+        if self.data is None:
+            return "Zu groß zum Bearbeiten (über 256 MB)"
+        if self.encrypted:
+            return "Passwortgeschützte PDFs lassen sich nur ansehen, nicht bearbeiten"
+        return ""
+
+    @property
+    def is_dirty(self) -> bool:
+        return self._dirty
+
+    def _set_dirty(self, dirty: bool) -> None:
+        if dirty != self._dirty:
+            self._dirty = dirty
+            self.dirty_changed.emit(dirty)
+        self._update_edit_actions()
+        self.status_changed.emit()
+
+    def set_editing(self, on: bool) -> None:
+        if on and self.edit_block_reason():
+            self.notice.emit(self.edit_block_reason())
+            self.edit_button.blockSignals(True)
+            self.edit_button.setChecked(False)
+            self.edit_button.blockSignals(False)
+            return
+        if self.edit_button.isChecked() != on:
+            self.edit_button.blockSignals(True)
+            self.edit_button.setChecked(on)
+            self.edit_button.blockSignals(False)
+        self.edit_bar.setVisible(on)
+        self.set_pages_visible(on)
+        self._update_edit_actions()
+        self.status_changed.emit()
+
+    @property
+    def editing(self) -> bool:
+        return not self.edit_bar.isHidden()
+
+    def set_pages_visible(self, on: bool) -> None:
+        self.strip.setVisible(on)
+        self.pages_button.setChecked(on)
+        if on:
+            self.strip.rebuild()
+            self.strip.select_page(self.canvas.current_page)
+
+    def apply(self, new_data: bytes, page: int | None = None) -> None:
+        """Neuen Stand übernehmen (ein Rückgängig-Schritt) und anzeigen."""
+        if self.data is None:
+            return
+        self._undo.append((self.data, self.canvas.current_page))
+        del self._undo[:-MAX_UNDO]
+        self._redo.clear()
+        self._show_data(new_data, self.canvas.current_page if page is None else page)
+        self._set_dirty(True)
+
+    def _show_data(self, data: bytes, page: int) -> None:
+        self.data = data
+        selected = self.strip.selected_pages()
+        self.canvas.selection = None
+        self.doc.close()
+        self._set_buffer(data)
+        self._after_load()
+        page = max(0, min(page, self.doc.pageCount() - 1))
+        self.canvas.go_to(page)
+        if not self.strip.isHidden() and selected:
+            self.strip.select_page(page)
+        self._results_changed() if self.search_field.text() else None
+
+    def undo(self) -> None:
+        if not self._undo or self.data is None:
+            return
+        data, page = self._undo.pop()
+        self._redo.append((self.data, self.canvas.current_page))
+        self._show_data(data, page)
+        self._set_dirty(True)
+
+    def redo(self) -> None:
+        if not self._redo or self.data is None:
+            return
+        data, page = self._redo.pop()
+        self._undo.append((self.data, self.canvas.current_page))
+        self._show_data(data, page)
+        self._set_dirty(True)
+
+    def _run(self, action, *args, page: int | None = None) -> bool:
+        """Kern-Funktion auf den aktuellen Stand anwenden; Fehler als Meldung statt Ausnahme."""
+        if self.edit_block_reason():
+            self.notice.emit(self.edit_block_reason())
+            return False
+        try:
+            result = action(self.data, *args)
+        except pdfpages.PdfEditError as error:
+            from notex.ui import dialogs
+            dialogs.warn(self, "PDF bearbeiten", str(error))
+            return False
+        except Exception as error:                      # noqa: BLE001 – kaputte PDFs dürfen den Tab nie mitreißen
+            from notex.ui import dialogs
+            dialogs.warn(self, "PDF bearbeiten", "Das ging bei diesem PDF schief.",
+                         informative=f"{type(error).__name__}: {error}")
+            return False
+        self.apply(result, page)
+        return True
+
+    def target_pages(self) -> list[int]:
+        """Seiten für Seiten-Befehle: Auswahl in der Seitenleiste, sonst die aktuelle Seite."""
+        if not self.strip.isHidden() and self.strip.selected_pages():
+            return self.strip.selected_pages()
+        return [self.canvas.current_page]
+
+    def save(self) -> bool:
+        if not self._dirty:
+            return True
+        if self.redacted:
+            return self.save_as()
+        try:
+            from notex.ui.pdf_edit import write_pdf
+            note = write_pdf(self.path, self.data, backup=self.backup_to_trash and not self._backed_up)
+        except OSError as error:
+            from notex.ui import dialogs
+            dialogs.warn(self, "Speichern fehlgeschlagen", str(self.path), informative=str(error))
+            return False
+        self._backed_up = True
+        self._set_dirty(False)
+        self.saved.emit(self.path, self.path)
+        if note:
+            self.notice.emit(note)
+        return True
+
+    def save_as(self, target: Path | str | None = None) -> bool:
+        if self.data is None:
+            return False
+        if target is None:
+            from PySide6.QtWidgets import QFileDialog
+            suggestion = self.path.with_name(f"{self.path.stem}_geschwärzt.pdf") if self.redacted else self.path
+            chosen, _ = QFileDialog.getSaveFileName(self, "PDF speichern unter", str(suggestion), "PDF (*.pdf)")
+            if not chosen:
+                return False
+            target = chosen
+        target = Path(target)
+        if target.suffix.lower() != ".pdf":
+            target = target.with_name(target.name + ".pdf")
+        if self.redacted and target.resolve() == self.path.resolve():
+            from notex.ui import dialogs
+            if not dialogs.confirm(self, "Original überschreiben?",
+                                   "Das Original wird durch die geschwärzte Fassung ersetzt.",
+                                   informative="Empfehlung: unter neuem Namen speichern und das Original behalten.",
+                                   yes="Überschreiben", danger=True):
+                return False
+        try:
+            from notex.ui.pdf_edit import write_pdf
+            write_pdf(target, self.data)
+        except OSError as error:
+            from notex.ui import dialogs
+            dialogs.warn(self, "Speichern fehlgeschlagen", str(target), informative=str(error))
+            return False
+        old = self.path
+        self.path = target
+        self.redacted = False
+        self._backed_up = True
+        self._set_dirty(False)
+        self.saved.emit(old, target)
+        return True
+
+    # ---- Seiten organisieren ------------------------------------------------------------------------------------
+    def rotate_pages(self, degrees: int, pages: list[int] | None = None) -> bool:
+        return self._run(pdfpages.rotate, pages or self.target_pages(), degrees)
+
+    def delete_pages(self, pages: list[int] | None = None) -> bool:
+        pages = pages or self.target_pages()
+        return self._run(pdfpages.delete, pages, page=min(pages))
+
+    def reorder(self, order: list[int]) -> bool:
+        current = self.canvas.current_page
+        return self._run(pdfpages.rearrange, list(order), page=order.index(current) if current in order else 0)
+
+    def move_pages(self, pages: list[int], before: int) -> bool:
+        return self._run(pdfpages.move, pages, before)
+
+    def extract_pages(self, pages: list[int] | None = None, target: Path | str | None = None) -> Path | None:
+        if self.edit_block_reason():
+            self.notice.emit(self.edit_block_reason())
+            return None
+        pages = pages or self.target_pages()
+        if target is None:
+            from PySide6.QtWidgets import QFileDialog
+            label = pdfpages.describe(pages).replace("–", "-").replace(", ", "_")
+            chosen, _ = QFileDialog.getSaveFileName(self, "Seiten als neues PDF speichern",
+                                                    str(self.path.with_name(f"{self.path.stem}_S{label}.pdf")),
+                                                    "PDF (*.pdf)")
+            if not chosen:
+                return None
+            target = chosen
+        target = Path(target)
+        try:
+            from notex.ui.pdf_edit import write_pdf
+            write_pdf(target, pdfpages.extract(self.data, pages))
+        except (pdfpages.PdfEditError, OSError) as error:
+            from notex.ui import dialogs
+            dialogs.warn(self, "Seiten herauslösen", str(error))
+            return None
+        self.notice.emit(f"Seiten {pdfpages.describe(pages)} → {target.name}")
+        self.open_requested.emit(target)
+        return target
+
+    def insert_pdf(self, source: Path | str | None = None, before: int | None = None) -> bool:
+        if source is None:
+            from PySide6.QtWidgets import QFileDialog
+            chosen, _ = QFileDialog.getOpenFileName(self, "PDF einfügen", str(self.path.parent), "PDF (*.pdf)")
+            if not chosen:
+                return False
+            source = chosen
+        if before is None:
+            before = max(self.target_pages()) + 1
+        try:
+            other = Path(source).read_bytes()
+        except OSError as error:
+            from notex.ui import dialogs
+            dialogs.warn(self, "PDF einfügen", str(error))
+            return False
+        return self._run(pdfpages.insert, other, before, page=before)
+
+    def split_pdf(self, groups: list[list[int]] | None = None, folder: Path | str | None = None) -> list[Path]:
+        if self.edit_block_reason():
+            self.notice.emit(self.edit_block_reason())
+            return []
+        if groups is None:
+            from PySide6.QtWidgets import QDialog
+            from notex.ui.pdf_edit import SplitDialog
+            dialog = SplitDialog(self, self.doc.pageCount(), self.path.parent, self.path.stem)
+            if dialog.exec() != QDialog.DialogCode.Accepted:
+                return []
+            groups, folder = dialog.groups, dialog.folder
+        folder = Path(folder or self.path.parent)
+        try:
+            parts = pdfpages.split(self.data, groups)
+        except pdfpages.PdfEditError as error:
+            from notex.ui import dialogs
+            dialogs.warn(self, "PDF aufteilen", str(error))
+            return []
+        from notex.core import fileops
+        from notex.ui.pdf_edit import write_pdf
+        written = []
+        try:
+            for name, part in zip(pdfpages.part_names(self.path.stem, len(parts)), parts):
+                stem, suffix = name.rsplit(".", 1)
+                target = fileops.unique_path(folder, stem, "." + suffix)
+                write_pdf(target, part)
+                written.append(target)
+        except OSError as error:
+            from notex.ui import dialogs
+            dialogs.warn(self, "PDF aufteilen", str(error))
+        if written:
+            self.notice.emit(f"{len(written)} PDF-Dateien in {folder.name or folder} erstellt")
+        return written
+
+    def _build_edit_bar(self) -> QFrame:
+        bar_frame = QFrame()
+        bar_frame.setObjectName("DataBar")
+        row = QHBoxLayout(bar_frame)
+        row.setContentsMargins(SPACING.md, 0, SPACING.md, SPACING.sm)
+        row.setSpacing(SPACING.sm)
+        self.pages_button = IconButton("layout-grid", "Seitenleiste ein/aus")
+        self.pages_button.setCheckable(True)
+        self.pages_button.toggled.connect(lambda on: self.set_pages_visible(on) if on == self.strip.isHidden() else None)
+        buttons = [
+            ("rotate-ccw", "Seite(n) nach links drehen", lambda: self.rotate_pages(-90)),
+            ("rotate-cw", "Seite(n) nach rechts drehen", lambda: self.rotate_pages(90)),
+            ("trash", "Seite(n) löschen  Entf (Seitenleiste)", lambda: self.delete_pages()),
+            ("file-output", "Seite(n) als neues PDF herauslösen …", lambda: self.extract_pages()),
+            ("file-plus", "PDF hinter der Seite einfügen …", lambda: self.insert_pdf()),
+            ("scissors", "PDF aufteilen …", lambda: self.split_pdf()),
+        ]
+        row.addWidget(self.pages_button)
+        self.page_actions = []
+        for name, tip, slot in buttons:
+            button = IconButton(name, tip)
+            button.clicked.connect(slot)
+            row.addWidget(button)
+            self.page_actions.append(button)
+        self.tool_row = QHBoxLayout()               # Werkzeuge für Anmerkungen/Formulare/Schwärzen (S2–S4)
+        self.tool_row.setSpacing(SPACING.sm)
+        row.addSpacing(SPACING.md)
+        row.addLayout(self.tool_row)
+        row.addStretch(1)
+        self.undo_button = IconButton("undo-2", "Rückgängig  Ctrl+Z")
+        self.undo_button.clicked.connect(self.undo)
+        self.redo_button = IconButton("redo-2", "Wiederholen  Ctrl+Y")
+        self.redo_button.clicked.connect(self.redo)
+        self.save_button = IconButton("save", "Speichern  Ctrl+S")
+        self.save_button.clicked.connect(self.save)
+        save_as = IconButton("file-down", "Speichern unter …  Ctrl+Shift+Alt+S")
+        save_as.clicked.connect(lambda: self.save_as())
+        for widget in (self.undo_button, self.redo_button, self.save_button, save_as):
+            row.addWidget(widget)
+        return bar_frame
+
+    def _update_edit_actions(self) -> None:
+        if not hasattr(self, "undo_button"):
+            return
+        self.undo_button.setEnabled(bool(self._undo))
+        self.redo_button.setEnabled(bool(self._redo))
+        self.save_button.setEnabled(self._dirty)
+
+    def _strip_menu(self, pos) -> None:
+        pages = self.strip.selected_pages() or [self.canvas.current_page]
+        label = pdfpages.describe(pages)
+        menu = style_menu(QMenu(self))
+        menu.addAction(f"Nach links drehen ({label})", lambda: self.rotate_pages(-90, pages))
+        menu.addAction(f"Nach rechts drehen ({label})", lambda: self.rotate_pages(90, pages))
+        menu.addSeparator()
+        menu.addAction("An den Anfang", lambda: self.move_pages(pages, 0))
+        menu.addAction("Ans Ende", lambda: self.move_pages(pages, self.doc.pageCount()))
+        menu.addSeparator()
+        menu.addAction(f"Als neues PDF herauslösen … ({label})", lambda: self.extract_pages(pages))
+        menu.addAction("PDF dahinter einfügen …", lambda: self.insert_pdf(before=max(pages) + 1))
+        menu.addSeparator()
+        delete = menu.addAction(f"Löschen ({label})", lambda: self.delete_pages(pages))
+        delete.setEnabled(len(pages) < self.doc.pageCount())
+        menu.exec(self.strip.viewport().mapToGlobal(pos))
 
     # ---- Seiten, Zoom, Lesezeichen ------------------------------------------------------------------
     def page_label(self, index: int) -> str:
@@ -488,6 +856,8 @@ class PdfPage(ViewerPage):
 
     def _on_page(self, index: int) -> None:
         self.page_field.setText(self.page_label(index))
+        if not self.strip.isHidden():
+            self.strip.select_page(index)
         self.status_changed.emit()
 
     def _on_zoom(self) -> None:
@@ -590,13 +960,24 @@ class PdfPage(ViewerPage):
         selected = len(self.canvas.selected_text())
         return [f"Seite {self.page_label(self.canvas.current_page)} ({self.canvas.current_page + 1} / {pages})",
                 human_size(self.path.stat().st_size) if self.path.exists() else "",
-                f"{selected} Zeichen markiert" if selected else "PDF · nur lesen",
+                f"{selected} Zeichen markiert" if selected else self._mode_text(),
                 f"{self.canvas.zoom_percent()} %"]
 
+    def _mode_text(self) -> str:
+        if self._dirty:
+            return "PDF · geändert (Ctrl+S speichert)"
+        return "PDF · bearbeiten" if self.editing else "PDF · nur lesen"
+
     def reload(self) -> None:
+        if self._dirty:                         # extern geändert, hier ungespeichert: eigene Fassung behalten
+            self.notice.emit(f"„{self.path.name}“ wurde extern geändert – deine ungespeicherten Änderungen bleiben")
+            return
         page = self.canvas.current_page
+        self._undo.clear()
+        self._redo.clear()
         self._load()
         self.canvas.go_to(page)
+        self._update_edit_actions()
 
     def retheme(self) -> None:
         self.canvas.viewport().update()
