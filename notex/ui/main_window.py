@@ -3607,6 +3607,18 @@ class MainWindow(QMainWindow):
                 "set_pages_visible", self._current_pdf() is not None and self._current_pdf().strip.isHidden()), "",
              "pdf seiten miniaturen thumbnails sortieren"),
         ]
+        pdf_cmds += [
+            ("pdf:highlight", "PDF: Auswahl markieren", lambda: self.pdf_command("add_markup", "highlight"), "",
+             "pdf markieren highlight textmarker gelb anmerkung"),
+            ("pdf:underline", "PDF: Auswahl unterstreichen", lambda: self.pdf_command("add_markup", "underline"), "",
+             "pdf unterstreichen underline anmerkung"),
+            ("pdf:strikeout", "PDF: Auswahl durchstreichen", lambda: self.pdf_command("add_markup", "strikeout"), "",
+             "pdf durchstreichen strikeout anmerkung"),
+            ("pdf:tool_note", "PDF: Werkzeug Notiz", lambda: self.pdf_command("set_tool", "note"), "",
+             "pdf notiz kommentar haftnotiz sticky note anmerkung"),
+            ("pdf:tool_text", "PDF: Werkzeug Text auf der Seite", lambda: self.pdf_command("set_tool", "text"), "",
+             "pdf text schreiben freitext textfeld textbox anmerkung"),
+        ]
         for key, title, callback, shortcut, keywords in pdf_cmds:
             self.registry.add(key, title, callback, category="PDF", shortcut=shortcut, keywords=keywords)
         self.registry.add("view:text", "Ansicht: Als Text bearbeiten", lambda: self.set_preview_mode("edit"),

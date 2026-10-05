@@ -544,6 +544,13 @@ Kommentieren, Formulare + Unterschrift, Textfelder, echtes Schwärzen)
   Tab Original in den Papierkorb (`pdf_backup_trash`). Extern geändert + ungespeichert → eigene Fassung bleibt.
   Passwortgeschützte PDFs: nur lesen (Entscheidung: kein Passwort für das Zurückverschlüsseln im Speicher halten).
   Palette: pdf:edit/merge/split/rotate_left/rotate_right/delete_pages/extract/insert/pages.
+- **S2 Kommentieren – erledigt.** Kern `notex/core/pdfannot.py`: `PageGeom` (Ansicht ↔ PDF inkl. CropBox-Versatz und
+  /Rotate 0/90/180/270, Form-Matrix für aufrechten Text), Markup mit QuadPoints (im ungedrehten Inhalt gerechnet),
+  Haftnotiz, FreeText (Helvetica/WinAnsi, Breiten aus pypdfs Core-14-Metriken, Umbruch), eigene /AP für alles,
+  `list_annotations`/`hit`/`update_text`/`delete_annotation`; `finish()` entfernt unreferenzierte Objekte.
+  UI: Werkzeuge (Auswahl/Markieren/Unterstreichen/Durchstreichen/Notiz/Text) + Farbwahl, Canvas mit Region-Modus
+  (Gummiband) und `menu_hook`; Esc → Auswahl. Geprüft per Rendern (PDFium) inkl. gedrehter Seite.
+  Entscheidung: kein Font-Einbetten (Helvetica/WinAnsi reicht für Deutsch; Emoji → „?“, dokumentiert).
 
 ## Offen
 

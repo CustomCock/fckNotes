@@ -494,6 +494,18 @@ Der Stift schaltet eine zweite Leiste und die **Seitenleiste** (Miniaturen) ein.
 - Gelöschte Seiten verschwinden **wirklich** aus der Datei (neu aufgebautes PDF, keine unsichtbaren Reste);
   Lesezeichen und Metadaten bleiben erhalten, Lesezeichen auf gelöschte Seiten fallen weg.
 
+**Kommentieren** – Werkzeuge in der Bearbeiten-Leiste (`Esc` = zurück zu „Auswählen“), Farbe über die Palette:
+
+- **Markieren / Unterstreichen / Durchstreichen**: Werkzeug wählen und Text überstreichen – oder Text markieren
+  und im Rechtsklick-Menü wählen.
+- **Notiz**: auf die Seite klicken, Text eingeben – erscheint als Notiz-Symbol, der Text beim Anklicken.
+- **Text auf der Seite**: Bereich aufziehen (oder klicken = 220 pt breit), Text, Größe, Farbe und Rahmen wählen;
+  bricht automatisch um. Schrift ist Helvetica (Westeuropäisch; Emoji o. Ä. werden zu „?“).
+- **Rechtsklick auf eine Anmerkung**: Text/Kommentar bearbeiten oder löschen – auch bei Anmerkungen aus anderen
+  Programmen.
+- Gespeichert werden normale PDF-Anmerkungen mit eigenem Erscheinungsbild: Acrobat, Browser und Vorschau-Programme
+  zeigen sie genauso an. Gelöschte Anmerkungen bleiben nicht als Reste in der Datei.
+
 
 ## Strings
 
@@ -1202,6 +1214,8 @@ Alternativ per Docker: `docker run -d -p 8081:8010 erikvl87/languagetool` (dann 
 | Ctrl+Z / Ctrl+Y / Ctrl+S (im PDF-Tab) | PDF-Änderung rückgängig / wiederholen / speichern |
 | Entf (Seitenleiste im PDF-Tab) | Gewählte Seiten löschen |
 | Palette › PDFs zusammenfügen | Mehrere PDFs in gewählter Reihenfolge zu einem neuen PDF |
+| Palette › PDF: Auswahl markieren / unterstreichen / durchstreichen | Anmerkung über dem markierten PDF-Text |
+| Palette › PDF: Werkzeug Notiz / Text | Notiz bzw. Text auf der Seite platzieren (Esc beendet das Werkzeug) |
 | Ctrl+C / Ctrl+V / Entf (in der Tabelle) | Zellen als Tab-getrennten Block kopieren / einfügen / leeren |
 | Ctrl+\ | Editor teilen / Teilung aufheben |
 | Ctrl+Alt+\ | Gruppen nebeneinander / untereinander |

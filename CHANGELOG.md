@@ -18,6 +18,9 @@ Alle nennenswerten Änderungen an fckNotes (bis 1.17.0: Notex). Format angelehnt
   „PDFs zusammenfügen …“ (Palette). Änderungen erst im Speicher mit Rückgängig/Wiederholen, `Ctrl+S` speichert;
   vor dem ersten Überschreiben landet das Original im Papierkorb (abschaltbar). Gelöschte Seiten bleiben nicht
   unsichtbar in der Datei. Passwortgeschützte PDFs bleiben nur lesbar.
+- **PDF kommentieren**: Markieren, Unterstreichen, Durchstreichen (Werkzeug oder Rechtsklick auf markierten Text),
+  Haftnotizen, Text direkt auf der Seite (Größe, Farbe, Rahmen, automatischer Umbruch, auch auf gedrehten Seiten);
+  Anmerkungen per Rechtsklick bearbeiten oder löschen. Eigene Erscheinungsbilder → sieht in Acrobat/Browser gleich aus.
 
 ## [1.17.1] – 2026-09-30
 

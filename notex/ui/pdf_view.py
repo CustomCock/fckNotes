@@ -13,19 +13,27 @@ from collections import OrderedDict
 from pathlib import Path
 
 from PySide6.QtCore import QBuffer, QByteArray, QIODevice, QModelIndex, QPointF, QRectF, QSize, Qt, QTimer, Signal
-from PySide6.QtGui import QColor, QKeySequence, QPainter, QPolygonF, QShortcut
+from PySide6.QtGui import QColor, QKeySequence, QPainter, QPen, QPolygonF, QShortcut
 from PySide6.QtPdf import (QPdfBookmarkModel, QPdfDocument, QPdfDocumentRenderOptions, QPdfPageRenderer,
                            QPdfSearchModel)
 from PySide6.QtWidgets import (QAbstractScrollArea, QApplication, QComboBox, QFrame, QHBoxLayout, QInputDialog,
                                QLabel, QLineEdit, QMenu, QSplitter, QTreeView, QVBoxLayout)
 
-from notex.core import pdfdoc, pdfpages
+from notex.core import pdfannot, pdfdoc, pdfpages
 from notex.core.pdfdoc import PageLayout
 from notex.theme.theme import style_menu
 from notex.theme.tokens import COLORS, SPACING
 from notex.ui.viewer_page import ViewerPage, human_size
 from notex.ui.widgets import IconButton
 
+TOOLS = [
+    ("select", "mouse-pointer-2", "Auswählen (Text markieren, Zitat)"),
+    ("highlight", "highlighter", "Markieren: Text überstreichen"),
+    ("underline", "underline", "Unterstreichen: Text überstreichen"),
+    ("strikeout", "strikethrough", "Durchstreichen: Text überstreichen"),
+    ("note", "sticky-note", "Notiz: auf die Seite klicken"),
+    ("text", "type", "Text auf der Seite: Bereich aufziehen oder klicken"),
+]
 CACHE_IMAGES = 24
 MAX_UNDO = 40
 ZOOM_STEPS = [0.25, 0.33, 0.5, 0.67, 0.75, 0.9, 1.0, 1.1, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0, 4.0, 6.0, 8.0]
@@ -39,11 +47,18 @@ def _alpha(color: str, alpha: int) -> QColor:
     return result
 
 
+REGION_TOOLS = {"note", "text", "field", "checkbox", "signature", "redact"}   # Ziehen/Klicken legt einen Bereich fest
+MARKUP_TOOLS = {"highlight", "underline", "strikeout", "redact_text"}          # Textauswahl → sofort anwenden
+
+
 class _PdfCanvas(QAbstractScrollArea):
     page_changed = Signal(int)
     selection_changed = Signal()
     zoom_changed = Signal()
     quote_requested = Signal()
+    region_chosen = Signal(int, QRectF)       # Seite, Bereich in Ansichts-Punkten (Klick = Breite/Höhe 0)
+    markup_chosen = Signal()                  # Textauswahl im Markier-Werkzeug fertig
+    tool_cancelled = Signal()                 # Esc: zurück zum Auswahl-Werkzeug
 
     def __init__(self, document: QPdfDocument) -> None:
         super().__init__()
@@ -68,6 +83,10 @@ class _PdfCanvas(QAbstractScrollArea):
         self.highlights: list[tuple[int, list]] = []   # (Seite, [QRectF in Punkt]) – Suchtreffer
         self.current_highlight: tuple[int, list] | None = None
         self.current_page = 0
+        self.tool = "select"
+        self.menu_hook = None                 # callable(menu, page, x_pt, y_pt) – ergänzt das Kontextmenü
+        self.overlays: list[tuple[int, QRectF, str]] = []    # (Seite, Rechteck in Punkt, Art) z. B. Schwärz-Vorschau
+        self._band: tuple[int, float, float, float, float] | None = None
         self.viewport().setCursor(Qt.CursorShape.IBeamCursor)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
@@ -209,6 +228,27 @@ class _PdfCanvas(QAbstractScrollArea):
                 for r in self.current_highlight[1]:
                     painter.drawRect(QRectF(target.x() + r.x() * scale, target.y() + r.y() * scale,
                                             r.width() * scale, r.height() * scale))
+            for index, rect, kind in self.overlays:
+                if index != page.index:
+                    continue
+                view = QRectF(target.x() + rect.x() * scale, target.y() + rect.y() * scale,
+                              rect.width() * scale, rect.height() * scale)
+                if kind == "redact":
+                    painter.setBrush(QColor(0, 0, 0, 150))
+                    painter.setPen(QPen(QColor(COLORS.danger), 1.5))
+                else:
+                    painter.setBrush(_alpha(COLORS.accent, 40))
+                    painter.setPen(QPen(QColor(COLORS.accent), 1.5))
+                painter.drawRect(view)
+                painter.setPen(Qt.PenStyle.NoPen)
+            if self._band is not None and self._band[0] == page.index:
+                _i, x0, y0, x1, y1 = self._band
+                painter.setBrush(_alpha(COLORS.accent, 30))
+                pen = QPen(QColor(COLORS.accent), 1.2, Qt.PenStyle.DashLine)
+                painter.setPen(pen)
+                painter.drawRect(QRectF(target.x() + min(x0, x1) * scale, target.y() + min(y0, y1) * scale,
+                                        abs(x1 - x0) * scale, abs(y1 - y0) * scale))
+                painter.setPen(Qt.PenStyle.NoPen)
             if self.selection is not None and self.selection_page == page.index:
                 painter.setBrush(QColor(COLORS.accent).lighter(130))
                 painter.setOpacity(0.35)
@@ -223,7 +263,19 @@ class _PdfCanvas(QAbstractScrollArea):
         return (event.position().x() + self.horizontalScrollBar().value(),
                 event.position().y() + self.verticalScrollBar().value())
 
+    def set_tool(self, tool: str) -> None:
+        self.tool = tool
+        self._band = None
+        self.viewport().setCursor(Qt.CursorShape.CrossCursor if tool in REGION_TOOLS else Qt.CursorShape.IBeamCursor)
+        self.viewport().update()
+
     def mousePressEvent(self, event) -> None:
+        if event.button() == Qt.MouseButton.LeftButton and self.layout_ is not None and self.tool in REGION_TOOLS:
+            hit = self.layout_.hit(*self._doc_pos(event))
+            if hit is not None:
+                page, x, y = hit
+                self._band = (page, x, y, x, y)
+            return
         if event.button() == Qt.MouseButton.LeftButton and self.layout_ is not None:
             hit = self.layout_.hit(*self._doc_pos(event))
             self._drag_start = hit
@@ -234,6 +286,12 @@ class _PdfCanvas(QAbstractScrollArea):
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event) -> None:
+        if self._band is not None and self.layout_ is not None:
+            page, x0, y0, _x1, _y1 = self._band
+            x1, y1 = self.layout_.clamp_hit(page, *self._doc_pos(event))
+            self._band = (page, x0, y0, x1, y1)
+            self.viewport().update()
+            return
         if self._drag_start is None or self.layout_ is None:
             return
         page, sx, sy = self._drag_start
@@ -267,10 +325,30 @@ class _PdfCanvas(QAbstractScrollArea):
         return None
 
     def mouseReleaseEvent(self, event) -> None:
+        if self._band is not None:
+            page, x0, y0, x1, y1 = self._band
+            self._band = None
+            self.viewport().update()
+            if abs(x1 - x0) < 4 and abs(y1 - y0) < 4:          # Klick statt Ziehen
+                x1, y1 = x0, y0
+            self.region_chosen.emit(page, QRectF(min(x0, x1), min(y0, y1), abs(x1 - x0), abs(y1 - y0)))
+            return
         if self._drag_start is not None:
             self._drag_start = None
             self.selection_changed.emit()
+            if self.tool in MARKUP_TOOLS and self.selected_text():
+                self.markup_chosen.emit()
         super().mouseReleaseEvent(event)
+
+    def selection_rects(self) -> list[tuple[float, float, float, float]]:
+        """Zeilen-Rechtecke der Auswahl (Ansichts-Punkte) – für Markieren und Schwärzen."""
+        if self.selection is None:
+            return []
+        out = []
+        for polygon in self.selection.bounds():
+            rect = polygon.boundingRect()
+            out.append((rect.left(), rect.top(), rect.right(), rect.bottom()))
+        return out
 
     def mouseDoubleClickEvent(self, event) -> None:
         """Doppelklick markiert die ganze Seite nicht – nur das Wort darunter über eine kleine Auswahl."""
@@ -299,6 +377,11 @@ class _PdfCanvas(QAbstractScrollArea):
             self.viewport().update()
 
     def keyPressEvent(self, event) -> None:
+        if event.key() == Qt.Key.Key_Escape and (self._band is not None or self.tool != "select"):
+            self._band = None
+            self.tool_cancelled.emit()
+            self.viewport().update()
+            return
         if event.matches(QKeySequence.StandardKey.Copy):
             if self.selected_text():
                 QApplication.clipboard().setText(self.selected_text())
@@ -342,6 +425,11 @@ class _PdfCanvas(QAbstractScrollArea):
         quote.setEnabled(has)
         menu.addSeparator()
         menu.addAction("Ganze Seite markieren", self.select_all_on_page)
+        if self.menu_hook is not None and self.layout_ is not None:
+            hit = self.layout_.hit(pos.x() + self.horizontalScrollBar().value(),
+                                   pos.y() + self.verticalScrollBar().value())
+            if hit is not None:
+                self.menu_hook(menu, *hit)
         menu.exec(self.viewport().mapToGlobal(pos))
 
 
@@ -368,6 +456,11 @@ class PdfPage(ViewerPage):
         self.canvas.zoom_changed.connect(self._on_zoom)
         self.canvas.selection_changed.connect(self._on_selection)
         self.canvas.quote_requested.connect(self.quote)
+        self.canvas.region_chosen.connect(self._on_region)
+        self.canvas.markup_chosen.connect(self._on_markup)
+        self.canvas.tool_cancelled.connect(lambda: self.set_tool("select"))
+        self.canvas.menu_hook = self._extend_menu
+        self.tool_colors: dict[str, str] = {}      # Werkzeug → gewählte Farbe (sonst Standard)
 
         self.bookmarks = QPdfBookmarkModel(self)
         self.bookmarks.setDocument(self.doc)
@@ -560,6 +653,8 @@ class PdfPage(ViewerPage):
             self.edit_button.blockSignals(False)
         self.edit_bar.setVisible(on)
         self.set_pages_visible(on)
+        if not on:
+            self.set_tool("select")
         self._update_edit_actions()
         self.status_changed.emit()
 
@@ -808,10 +903,21 @@ class PdfPage(ViewerPage):
             button.clicked.connect(slot)
             row.addWidget(button)
             self.page_actions.append(button)
-        self.tool_row = QHBoxLayout()               # Werkzeuge für Anmerkungen/Formulare/Schwärzen (S2–S4)
+        self.tool_row = QHBoxLayout()               # Werkzeuge: Auswahl, Anmerkungen, Formulare, Schwärzen
         self.tool_row.setSpacing(SPACING.sm)
         row.addSpacing(SPACING.md)
         row.addLayout(self.tool_row)
+        self.tool_buttons: dict[str, IconButton] = {}
+        for name, icon_name, tip in TOOLS:
+            button = IconButton(icon_name, tip)
+            button.setCheckable(True)
+            button.clicked.connect(lambda _c=False, n=name: self.set_tool(n))
+            self.tool_row.addWidget(button)
+            self.tool_buttons[name] = button
+        self.tool_buttons["select"].setChecked(True)
+        self.color_button = IconButton("palette", "Farbe für Markieren/Unterstreichen/Durchstreichen/Notiz")
+        self.color_button.clicked.connect(self._color_menu)
+        self.tool_row.addWidget(self.color_button)
         row.addStretch(1)
         self.undo_button = IconButton("undo-2", "Rückgängig  Ctrl+Z")
         self.undo_button.clicked.connect(self.undo)
@@ -824,6 +930,146 @@ class PdfPage(ViewerPage):
         for widget in (self.undo_button, self.redo_button, self.save_button, save_as):
             row.addWidget(widget)
         return bar_frame
+
+    # ---- Anmerkungen ----------------------------------------------------------------------------------------
+    def set_tool(self, tool: str) -> None:
+        if tool not in self.tool_buttons:
+            tool = "select"
+        for name, button in self.tool_buttons.items():
+            button.setChecked(name == tool)
+        self.canvas.set_tool(tool)
+        self.status_changed.emit()
+
+    def _ensure_editing(self) -> bool:
+        if not self.editing:
+            self.set_editing(True)
+        return self.editing
+
+    def _color(self, kind: str) -> str:
+        return self.tool_colors.get(kind) or pdfannot.DEFAULT_COLORS.get(kind, "#ffd400")
+
+    def _color_menu(self) -> None:
+        from notex.ui.pdf_edit import MARK_COLORS
+        tool = self.canvas.tool if self.canvas.tool in ("highlight", "underline", "strikeout", "note") else "highlight"
+        menu = style_menu(QMenu(self))
+        for label, value in MARK_COLORS:
+            action = menu.addAction(label, lambda v=value, t=tool: self.tool_colors.__setitem__(t, v))
+            action.setCheckable(True)
+            action.setChecked(self._color(tool) == value)
+        menu.addSeparator()
+        menu.addAction("Standardfarbe", lambda t=tool: self.tool_colors.pop(t, None))
+        menu.exec(self.color_button.mapToGlobal(self.color_button.rect().bottomLeft()))
+
+    def add_markup(self, kind: str, page: int | None = None, rects: list | None = None) -> bool:
+        """Markieren/Unterstreichen/Durchstreichen – ohne Angaben: die aktuelle Textauswahl."""
+        if rects is None:
+            rects, page = self.canvas.selection_rects(), self.canvas.selection_page
+        if not rects or page is None or page < 0:
+            self.notice.emit("Erst Text im PDF markieren")
+            return False
+        if not self._ensure_editing():
+            return False
+        done = self._run(pdfannot.add_markup, page, kind, list(rects), self._color(kind))
+        if done:
+            self.canvas.selection = None
+            self.canvas.selection_changed.emit()
+        return done
+
+    def add_note(self, page: int, x: float, y: float, text: str | None = None) -> bool:
+        if text is None:
+            from PySide6.QtWidgets import QDialog
+            from notex.ui.pdf_edit import TextDialog
+            dialog = TextDialog(self, "Notiz")
+            if dialog.exec() != QDialog.DialogCode.Accepted:
+                return False
+            text = dialog.values()[0]
+        if not text.strip() or not self._ensure_editing():
+            return False
+        return self._run(pdfannot.add_note, page, x, y, text, self._color("note"))
+
+    def add_text(self, page: int, rect: tuple, text: str | None = None, size: float = 12.0,
+                 color: str | None = None, border: bool = False) -> bool:
+        """Text direkt auf die Seite; `rect` in Ansichts-Punkten (Breite 0 = Standardbreite 220 pt)."""
+        if text is None:
+            from PySide6.QtWidgets import QDialog
+            from notex.ui.pdf_edit import TextDialog
+            dialog = TextDialog(self, "Text auf der Seite", with_style=True, color=color or "#1a1a1a")
+            if dialog.exec() != QDialog.DialogCode.Accepted:
+                return False
+            text, size, color, border = dialog.values()
+        if not text.strip() or not self._ensure_editing():
+            return False
+        x0, y0, x1, y1 = rect
+        if x1 - x0 < 20:
+            x1 = x0 + 220
+        return self._run(pdfannot.add_text, page, (x0, y0, x1, max(y1, y0 + 1)), text, size,
+                         color or pdfannot.DEFAULT_COLORS["text"], border)
+
+    def annotations(self, page: int) -> list:
+        if self.data is None:
+            return []
+        try:
+            return pdfannot.list_annotations(self.data, page)
+        except pdfpages.PdfEditError:
+            return []
+
+    def delete_annotation(self, page: int, index: int) -> bool:
+        if not self._ensure_editing():
+            return False
+        return self._run(pdfannot.delete_annotation, page, index)
+
+    def edit_annotation(self, page: int, index: int, text: str | None = None) -> bool:
+        info = next((a for a in self.annotations(page) if a.index == index), None)
+        if info is None:
+            return False
+        if text is None:
+            from PySide6.QtWidgets import QDialog
+            from notex.ui.pdf_edit import TextDialog
+            dialog = TextDialog(self, info.label + (" – Text" if info.kind == "text" else " – Kommentar"),
+                                info.contents)
+            if dialog.exec() != QDialog.DialogCode.Accepted:
+                return False
+            text = dialog.values()[0]
+        if not self._ensure_editing():
+            return False
+        return self._run(pdfannot.update_text, page, index, text)
+
+    def _on_markup(self) -> None:
+        tool = self.canvas.tool
+        if tool in ("highlight", "underline", "strikeout"):
+            self.add_markup(tool)
+        elif tool == "redact_text" and hasattr(self, "mark_redaction_from_selection"):
+            self.mark_redaction_from_selection()
+
+    def _on_region(self, page: int, rect: QRectF) -> None:
+        tool = self.canvas.tool
+        box = (rect.left(), rect.top(), rect.right(), rect.bottom())
+        if tool == "note":
+            self.add_note(page, rect.left(), rect.top())
+        elif tool == "text":
+            self.add_text(page, box)
+        elif hasattr(self, f"_region_{tool}"):
+            getattr(self, f"_region_{tool}")(page, box)
+
+    def _extend_menu(self, menu, page: int, x: float, y: float) -> None:
+        if self.edit_block_reason():
+            return
+        if self.canvas.selected_text():
+            menu.addSeparator()
+            for kind, label in (("highlight", "Markieren"), ("underline", "Unterstreichen"),
+                                ("strikeout", "Durchstreichen")):
+                menu.addAction(label, lambda k=kind: self.add_markup(k))
+        info = pdfannot.hit(self.annotations(page), x, y)
+        if info is not None:
+            menu.addSeparator()
+            if info.text_editable:
+                verb = "Text bearbeiten …" if info.kind == "text" else "Kommentar bearbeiten …"
+                menu.addAction(f"{info.label}: {verb}", lambda: self.edit_annotation(page, info.index))
+            menu.addAction(f"{info.label} löschen", lambda: self.delete_annotation(page, info.index))
+        elif self.editing:
+            menu.addSeparator()
+            menu.addAction("Notiz hier …", lambda: self.add_note(page, x, y))
+            menu.addAction("Text hier …", lambda: self.add_text(page, (x, y, x, y)))
 
     def _update_edit_actions(self) -> None:
         if not hasattr(self, "undo_button"):

@@ -10,7 +10,7 @@ from pathlib import Path
 
 from PySide6.QtCore import QItemSelectionModel, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QIcon, QImage, QPainter, QPixmap
-from PySide6.QtPdf import QPdfDocument
+from PySide6.QtPdf import QPdfDocument, QPdfDocumentRenderOptions
 from PySide6.QtWidgets import (QAbstractItemView, QButtonGroup, QDialog, QDialogButtonBox, QFileDialog, QGridLayout,
                                QLabel, QLineEdit, QListWidget, QListWidgetItem, QPushButton, QRadioButton, QSpinBox,
                                QVBoxLayout, QWidget)
@@ -69,6 +69,8 @@ class PageStrip(QListWidget):
         self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.setFixedWidth(THUMB_WIDTH + 2 * SPACING.lg + 14)
         self.itemClicked.connect(lambda item: self.page_activated.emit(item.data(Qt.ItemDataRole.UserRole)))
+        self._options = QPdfDocumentRenderOptions()
+        self._options.setRenderFlags(QPdfDocumentRenderOptions.RenderFlag.Annotations)
         self._queue: list[int] = []
         self._timer = QTimer(self)
         self._timer.setInterval(0)
@@ -105,7 +107,8 @@ class PageStrip(QListWidget):
                 continue
             dpr = self.devicePixelRatioF()
             size = self._thumb_size(index)
-            image = self.doc.render(index, QSize(round(size.width() * dpr), round(size.height() * dpr)))
+            image = self.doc.render(index, QSize(round(size.width() * dpr), round(size.height() * dpr)),
+                                    self._options)
             if image.isNull():
                 continue
             framed = QImage(image.size(), QImage.Format.Format_ARGB32_Premultiplied)
@@ -269,3 +272,51 @@ class MergeDialog(QDialog):
 
     def paths(self) -> list[Path]:
         return [Path(self.list.item(i).data(Qt.ItemDataRole.UserRole)) for i in range(self.list.count())]
+
+
+TEXT_COLORS = [("Schwarz", "#1a1a1a"), ("Blau", "#2f6fdf"), ("Rot", "#d03030"), ("Grün", "#2f8f4f")]
+MARK_COLORS = [("Gelb", "#ffd400"), ("Grün", "#7fd36b"), ("Blau", "#6cb6ff"), ("Rosa", "#ff8fc8"), ("Rot", "#ff6b6b")]
+
+
+class TextDialog(QDialog):
+    """Text für eine Haftnotiz oder Text auf der Seite (mit Schriftgröße, Farbe, Rahmen)."""
+
+    def __init__(self, parent: QWidget, title: str, text: str = "", with_style: bool = False, size: float = 12.0,
+                 color: str = "#1a1a1a", border: bool = False) -> None:
+        super().__init__(parent)
+        from PySide6.QtWidgets import QCheckBox, QComboBox, QHBoxLayout, QPlainTextEdit
+        self.setWindowTitle(title)
+        self.resize(460, 260)
+        self.edit = QPlainTextEdit(text)
+        self.size = QSpinBox()
+        self.size.setRange(6, 72)
+        self.size.setValue(round(size))
+        self.size.setSuffix(" pt")
+        self.color = QComboBox()
+        for name, value in TEXT_COLORS:
+            self.color.addItem(name, value)
+        index = self.color.findData(color)
+        self.color.setCurrentIndex(max(0, index))
+        self.border = QCheckBox("Rahmen")
+        self.border.setChecked(border)
+        layout = QVBoxLayout(self)
+        layout.addWidget(self.edit, 1)
+        if with_style:
+            row = QHBoxLayout()
+            for widget in (QLabel("Größe"), self.size, QLabel("Farbe"), self.color, self.border):
+                row.addWidget(widget)
+            row.addStretch(1)
+            layout.addLayout(row)
+            note = QLabel("Schrift: Helvetica. Zeichen außerhalb von Westeuropäisch (z. B. Emoji) erscheinen als „?“.")
+            note.setObjectName("SettingsNote")
+            note.setWordWrap(True)
+            layout.addWidget(note)
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+        self.edit.setFocus()
+
+    def values(self) -> tuple[str, float, str, bool]:
+        return self.edit.toPlainText().strip(), float(self.size.value()), self.color.currentData(), \
+            self.border.isChecked()
