@@ -1115,9 +1115,9 @@ class PdfPage(ViewerPage):
                                 ("strikeout", "Durchstreichen")):
                 menu.addAction(label, lambda k=kind: self.add_markup(k))
             menu.addAction("Markierung schwärzen (vormerken)", self.mark_redaction_from_selection)
-        hits = self.search.rowCount(QModelIndex()) if self.search_field.text().strip() else 0
-        if hits:
-            menu.addAction(f"Alle {hits} Suchtreffer schwärzen (vormerken)", self.mark_search_results)
+        term = self.search_field.text().strip()
+        if term:
+            menu.addAction(f"Jedes „{term[:30]}“ schwärzen (vormerken)", lambda: self.mark_search_results(term))
         field = next((f for f in self.fields if f.page == page and f.rect[0] - 2 <= x <= f.rect[2] + 2
                       and f.rect[1] - 2 <= y <= f.rect[3] + 2), None)
         if field is not None:
@@ -1282,41 +1282,43 @@ class PdfPage(ViewerPage):
         self._sync_redactions()
         return True
 
-    def mark_search_results(self) -> int:
-        """Alle Treffer der PDF-Suche zum Schwärzen vormerken (z. B. jeden Vorkommen eines Namens)."""
-        term = self.search_field.text().strip()
-        if term and self.search.searchString() != term:
-            self._search_timer.stop()
-            self._run_search()
-        count = self._settled_search_count() if term else 0
-        if not count:
+    def find_text(self, term: str) -> list[tuple[int, tuple]]:
+        """Alle Vorkommen von `term` (Groß/klein egal) mit Rechtecken – synchron über alle Seiten.
+
+        Bewusst nicht über QPdfSearchModel: das liefert Treffer häppchenweise im Hintergrund, und auf langsamen
+        Rechnern fehlten beim Schwärzen sonst Treffer auf späteren Seiten."""
+        import re
+        out: list[tuple[int, tuple]] = []
+        pattern = re.compile(re.escape(term), re.IGNORECASE)
+        for page in range(self.doc.pageCount()):
+            text = self.doc.getAllText(page).text()
+            for match in pattern.finditer(text):
+                selection = self.doc.getSelectionAtIndex(page, match.start(), len(match.group()))
+                if selection.text().casefold() != match.group().casefold():
+                    continue                              # Index passt nicht (seltene Sonderzeichen) – Restprüfung meldet es
+                for polygon in selection.bounds():
+                    rect = polygon.boundingRect()
+                    out.append((page, (rect.left(), rect.top(), rect.right(), rect.bottom())))
+        return out
+
+    def mark_search_results(self, term: str | None = None) -> int:
+        """Jedes Vorkommen des Suchbegriffs zum Schwärzen vormerken (z. B. einen Namen im ganzen Dokument)."""
+        term = (self.search_field.text() if term is None else term).strip()
+        if not term:
             self.notice.emit("Erst im PDF suchen – dann werden alle Treffer vorgemerkt")
+            return 0
+        hits = self.find_text(term)
+        if not hits:
+            self.notice.emit(f"„{term}“ kommt im PDF nicht vor")
             return 0
         if not self._ensure_editing():
             return 0
-        for i in range(count):
-            link = self.search.resultAtIndex(i)
-            for r in link.rectangles():
-                self.redactions.append((link.page(), (r.left(), r.top(), r.right(), r.bottom())))
+        self.redactions.extend(hits)
         self.redact_terms.append(term)
         self._sync_redactions()
-        self.notice.emit(f"{count} Treffer für „{term}“ zum Schwärzen vorgemerkt")
-        return count
-
-    def _settled_search_count(self, timeout: float = 3.0) -> int:
-        """QPdfSearchModel liefert Treffer häppchenweise – warten, bis die Zahl stabil ist (alle Seiten durch)."""
-        import time
-        start = time.monotonic()
-        last, stable = -1, 0
-        while time.monotonic() - start < timeout:
-            QApplication.processEvents()
-            count = self.search.rowCount(QModelIndex())
-            stable = stable + 1 if count == last else 0
-            last = count
-            if stable >= 8 and (count > 0 or time.monotonic() - start > 0.5):
-                break
-            time.sleep(0.01)
-        return max(last, 0)
+        pages = len({page for page, _r in hits})
+        self.notice.emit(f"„{term}“: {len(hits)} Stelle(n) auf {pages} Seite(n) zum Schwärzen vorgemerkt")
+        return len(hits)
 
     def remove_redaction(self, index: int) -> None:
         if 0 <= index < len(self.redactions):

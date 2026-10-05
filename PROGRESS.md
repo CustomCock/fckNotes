@@ -573,6 +573,10 @@ Kommentieren, Formulare + Unterschrift, Textfelder, echtes Schwärzen)
   **Befund + Fix (gilt für S1–S3):** pypdfs `remove_unreferenced` lässt Objekte stehen, die nur von anderen Waisen
   referenziert werden (alte Outline-Ketten, Anhänge). `pdfannot.prune_unreachable` macht echte Erreichbarkeit ab
   Katalog/Info; `finish`, `pdfpages.to_bytes` und `redact_pages` nutzen es. Tests prüfen Bytes und alle Objekte.
+- **Fix nach Windows-CI (S4):** „Alle Suchtreffer schwärzen“ las QPdfSearchModel, das Treffer im Hintergrund
+  häppchenweise liefert – unter Windows fehlten so Treffer auf späteren Seiten (Name blieb stehen!). Jetzt
+  `PdfPage.find_text`: synchron je Seite `getAllText` + `getSelectionAtIndex` (Groß/klein egal); Regressionstest
+  mit 30 Seiten ohne Warten.
 - Block S abgeschlossen. Screenshots 72 (Bearbeiten) und 73 (Schwärzen) über `tools/screenshot.py`.
 
 ## Offen

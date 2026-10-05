@@ -55,6 +55,18 @@ def test_selection_and_search_are_marked_with_terms(secret_tab):
     assert {p for p, _r in secret_tab.redactions} == {1, 2} and secret_tab.redact_terms == [SECRET]
 
 
+def test_search_marking_is_complete_without_waiting(win):
+    """Regression (Windows-CI): die Hintergrund-Suche war noch nicht durch – spätere Seiten fehlten."""
+    path = win.root / "lang.pdf"
+    path.write_bytes(make_pdf([f"Seite {i} {SECRET}" if i % 3 == 0 else f"Seite {i} mustermann" for i in range(30)],
+                              outline=False))
+    page = win.tabs.open_viewer(path, "pdf")
+    page.search_field.setText(SECRET)                     # Suche hat noch nichts geliefert
+    assert page.mark_search_results() == 30               # jede Seite, Groß/klein egal
+    assert {p for p, _r in page.redactions} == set(range(30))
+    assert page.mark_search_results("gibt es nicht") == 0
+
+
 def test_apply_removes_text_for_real(secret_tab):
     _search(secret_tab, SECRET)
     secret_tab.mark_search_results()
