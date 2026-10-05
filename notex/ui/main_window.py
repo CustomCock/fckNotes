@@ -3618,6 +3618,16 @@ class MainWindow(QMainWindow):
              "pdf notiz kommentar haftnotiz sticky note anmerkung"),
             ("pdf:tool_text", "PDF: Werkzeug Text auf der Seite", lambda: self.pdf_command("set_tool", "text"), "",
              "pdf text schreiben freitext textfeld textbox anmerkung"),
+            ("pdf:form", "PDF: Formular ausfüllen", lambda: self.pdf_command("set_form_visible", True), "",
+             "pdf formular ausfüllen felder acroform form"),
+            ("pdf:tool_field", "PDF: Werkzeug Textfeld anlegen", lambda: self.pdf_command("set_tool", "field"), "",
+             "pdf textfeld formularfeld anlegen erstellen form field"),
+            ("pdf:tool_checkbox", "PDF: Werkzeug Kontrollkästchen anlegen",
+             lambda: self.pdf_command("set_tool", "checkbox"), "", "pdf kontrollkästchen checkbox haken formular"),
+            ("pdf:tool_signature", "PDF: Unterschrift einsetzen", lambda: self.pdf_command("set_tool", "signature"),
+             "", "pdf unterschrift unterschreiben signatur signature zeichnen"),
+            ("pdf:flatten", "PDF: Anmerkungen und Formular einbrennen …", lambda: self.pdf_command("flatten"), "",
+             "pdf einbrennen flatten fixieren formular abschließen"),
         ]
         for key, title, callback, shortcut, keywords in pdf_cmds:
             self.registry.add(key, title, callback, category="PDF", shortcut=shortcut, keywords=keywords)

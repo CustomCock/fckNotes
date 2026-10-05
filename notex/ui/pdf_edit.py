@@ -320,3 +320,236 @@ class TextDialog(QDialog):
     def values(self) -> tuple[str, float, str, bool]:
         return self.edit.toPlainText().strip(), float(self.size.value()), self.color.currentData(), \
             self.border.isChecked()
+
+
+# ---- Formular-Panel ----------------------------------------------------------------------------------------------
+class FormPanel(QWidget):
+    """Alle Formularfelder untereinander: ausfüllen, „Übernehmen“ schreibt alles in einem Schritt (Ctrl+Z-fähig)."""
+    apply_requested = Signal(dict)       # Feldname → Wert
+    field_activated = Signal(object)     # FieldInfo (zum Feld springen)
+
+    def __init__(self) -> None:
+        super().__init__()
+        from PySide6.QtWidgets import QHBoxLayout, QScrollArea
+        self.setObjectName("PdfForm")
+        self.setMinimumWidth(240)
+        self.fields: list = []
+        self.editors: dict[str, QWidget] = {}
+        self.title = QLabel("Formular")
+        self.title.setObjectName("SettingsNote")
+        self.area = QScrollArea()
+        self.area.setWidgetResizable(True)
+        self.inner = QWidget()
+        self.grid = QGridLayout(self.inner)
+        self.grid.setContentsMargins(SPACING.sm, SPACING.sm, SPACING.sm, SPACING.sm)
+        self.grid.setVerticalSpacing(SPACING.sm)
+        self.area.setWidget(self.inner)
+        self.apply_button = QPushButton("Übernehmen")
+        self.apply_button.clicked.connect(lambda: self.apply_requested.emit(self.changed_values()))
+        reset = QPushButton("Zurücksetzen")
+        reset.clicked.connect(lambda: self.set_fields(self.fields))
+        row = QHBoxLayout()
+        row.addWidget(reset)
+        row.addStretch(1)
+        row.addWidget(self.apply_button)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(self.title)
+        layout.addWidget(self.area, 1)
+        layout.addLayout(row)
+
+    def set_fields(self, fields: list) -> None:
+        from PySide6.QtWidgets import QCheckBox, QComboBox, QPlainTextEdit
+        while self.grid.count():
+            item = self.grid.takeAt(0)
+            if item.widget() is not None:
+                item.widget().hide()                 # sofort weg, nicht erst beim nächsten deleteLater-Durchlauf
+                item.widget().deleteLater()
+        self.fields = list(fields)
+        self.editors = {}
+        editable = [f for f in self.fields if f.kind in ("text", "checkbox", "radio", "choice")]
+        self.title.setText(f"Formular · {len(self.fields)} Felder" if self.fields else
+                           "Keine Formularfelder – mit „Textfeld“/„Kästchen“ anlegen")
+        for row, info in enumerate(self.fields):
+            label = QPushButton(info.name + (" (schreibgeschützt)" if info.read_only else ""))
+            label.setFlat(True)
+            label.setStyleSheet("text-align: left; padding: 2px 0;")
+            label.setCursor(Qt.CursorShape.PointingHandCursor)
+            label.setToolTip(f"Zum Feld springen (Seite {info.page + 1})")
+            label.clicked.connect(lambda _c=False, i=info: self.field_activated.emit(i))
+            if info.kind == "text" and info.multiline:
+                editor = QPlainTextEdit(info.value)
+                editor.setFixedHeight(64)
+            elif info.kind == "text":
+                editor = QLineEdit(info.value)
+            elif info.kind == "checkbox":
+                editor = QCheckBox()
+                editor.setChecked(info.checked)
+            elif info.kind in ("radio", "choice"):
+                editor = QComboBox()
+                editor.addItem("—", "")
+                for option in info.options:
+                    editor.addItem(option, option)
+                editor.setCurrentIndex(max(0, editor.findData(info.value)))
+                if info.kind == "choice" and info.value and editor.findData(info.value) < 0:
+                    editor.addItem(info.value, info.value)
+                    editor.setCurrentIndex(editor.count() - 1)
+            else:
+                editor = QLabel("(hier nicht ausfüllbar)" if info.kind != "signature" else "(digitale Signatur)")
+            editor.setEnabled(not info.read_only and info in editable)
+            self.grid.addWidget(label, row * 2, 0)
+            self.grid.addWidget(editor, row * 2 + 1, 0)
+            self.editors[info.name] = editor
+        self.grid.setRowStretch(len(self.fields) * 2, 1)
+        self.apply_button.setEnabled(bool(editable))
+
+    def value_of(self, info):
+        from PySide6.QtWidgets import QCheckBox, QComboBox, QPlainTextEdit
+        editor = self.editors.get(info.name)
+        if isinstance(editor, QPlainTextEdit):
+            return editor.toPlainText()
+        if isinstance(editor, QLineEdit):
+            return editor.text()
+        if isinstance(editor, QCheckBox):
+            return editor.isChecked()
+        if isinstance(editor, QComboBox):
+            return editor.currentData() or ""
+        return None
+
+    def set_value(self, name: str, value) -> None:
+        from PySide6.QtWidgets import QCheckBox, QComboBox, QPlainTextEdit
+        editor = self.editors.get(name)
+        if isinstance(editor, QPlainTextEdit):
+            editor.setPlainText(str(value))
+        elif isinstance(editor, QLineEdit):
+            editor.setText(str(value))
+        elif isinstance(editor, QCheckBox):
+            editor.setChecked(bool(value))
+        elif isinstance(editor, QComboBox):
+            editor.setCurrentIndex(max(0, editor.findData(value)))
+
+    def changed_values(self) -> dict:
+        out = {}
+        for info in self.fields:
+            if info.read_only or info.kind not in ("text", "checkbox", "radio", "choice"):
+                continue
+            value = self.value_of(info)
+            before = info.checked if info.kind == "checkbox" else info.value
+            if value is not None and value != before:
+                out[info.name] = value
+        return out
+
+
+# ---- Unterschrift ------------------------------------------------------------------------------------------------
+class _SignaturePad(QWidget):
+    def __init__(self) -> None:
+        super().__init__()
+        self.setMinimumSize(480, 180)
+        self.strokes: list[list[tuple[float, float]]] = []
+        self.setCursor(Qt.CursorShape.CrossCursor)
+
+    def paintEvent(self, event) -> None:
+        from PySide6.QtGui import QPen
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.fillRect(self.rect(), QColor("#ffffff"))
+        painter.setPen(QPen(QColor("#c8c8c8"), 1, Qt.PenStyle.DashLine))
+        base = self.height() * 0.75
+        painter.drawLine(20, round(base), self.width() - 20, round(base))
+        painter.setPen(QPen(QColor("#1a2a6c"), 2.4, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap,
+                            Qt.PenJoinStyle.RoundJoin))
+        for stroke in self.strokes:
+            for (x0, y0), (x1, y1) in zip(stroke, stroke[1:]):
+                painter.drawLine(round(x0), round(y0), round(x1), round(y1))
+        painter.end()
+
+    def mousePressEvent(self, event) -> None:
+        self.strokes.append([(event.position().x(), event.position().y())])
+        self.update()
+
+    def mouseMoveEvent(self, event) -> None:
+        if self.strokes and event.buttons() & Qt.MouseButton.LeftButton:
+            self.strokes[-1].append((event.position().x(), event.position().y()))
+            self.update()
+
+    def clear(self) -> None:
+        self.strokes = []
+        self.update()
+
+
+def normalize_strokes(strokes: list[list[tuple[float, float]]], margin: float = 4.0):
+    """Gezeichnete Striche auf ihren Umriss zuschneiden → (Striche 0..1, Seitenverhältnis Breite/Höhe)."""
+    points = [p for s in strokes for p in s]
+    if not points:
+        return [], 1.0
+    x0, y0 = min(p[0] for p in points) - margin, min(p[1] for p in points) - margin
+    x1, y1 = max(p[0] for p in points) + margin, max(p[1] for p in points) + margin
+    w, h = max(1.0, x1 - x0), max(1.0, y1 - y0)
+    out = [[((x - x0) / w, (y - y0) / h) for x, y in s] for s in strokes if len(s) >= 2]
+    return out, w / h
+
+
+def image_to_bytes(image: QImage, max_width: int = 1200) -> tuple[int, int, bytes, bytes | None]:
+    """QImage → (Breite, Höhe, RGB-Bytes, Alpha-Bytes oder None) für den Kern; große Bilder verkleinert."""
+    if image.width() > max_width:
+        image = image.scaledToWidth(max_width, Qt.TransformationMode.SmoothTransformation)
+    rgba = image.convertToFormat(QImage.Format.Format_RGBA8888)
+    w, h = rgba.width(), rgba.height()
+    stride = rgba.bytesPerLine()
+    raw = bytes(rgba.constBits())[: stride * h]
+    pixels = raw if stride == w * 4 else b"".join(raw[y * stride: y * stride + w * 4] for y in range(h))
+    rgb = bytearray(w * h * 3)
+    for channel in range(3):
+        rgb[channel::3] = pixels[channel::4]
+    alpha = pixels[3::4]
+    return w, h, bytes(rgb), alpha if alpha.count(255) != len(alpha) else None
+
+
+class SignatureDialog(QDialog):
+    """Unterschrift zeichnen oder ein Bild wählen. Es wird nichts gespeichert – nur in dieses PDF gesetzt."""
+
+    def __init__(self, parent: QWidget, start_dir: Path) -> None:
+        super().__init__(parent)
+        from PySide6.QtWidgets import QHBoxLayout
+        self.setWindowTitle("Unterschrift")
+        self.start_dir = start_dir
+        self.image: QImage | None = None
+        self.pad = _SignaturePad()
+        clear = QPushButton("Leeren")
+        clear.clicked.connect(self.pad.clear)
+        load = QPushButton("Bild laden …")
+        load.clicked.connect(self._load)
+        note = QLabel("Mit der Maus oder dem Stift unterschreiben – oder ein Bild (PNG mit transparentem Hintergrund) "
+                      "laden. Danach auf der Seite einen Bereich aufziehen oder klicken. Das ist eine sichtbare "
+                      "Unterschrift, keine digitale Signatur; gespeichert wird sie nirgends.")
+        note.setObjectName("SettingsNote")
+        note.setWordWrap(True)
+        row = QHBoxLayout()
+        row.addWidget(clear)
+        row.addWidget(load)
+        row.addStretch(1)
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        buttons.button(QDialogButtonBox.StandardButton.Ok).setText("Platzieren")
+        buttons.accepted.connect(lambda: self.accept() if self.pad.strokes or self.image is not None else None)
+        buttons.rejected.connect(self.reject)
+        layout = QVBoxLayout(self)
+        layout.addWidget(self.pad, 1)
+        layout.addLayout(row)
+        layout.addWidget(note)
+        layout.addWidget(buttons)
+
+    def _load(self) -> None:
+        chosen, _ = QFileDialog.getOpenFileName(self, "Bild der Unterschrift", str(self.start_dir),
+                                                "Bilder (*.png *.jpg *.jpeg *.bmp *.webp)")
+        if chosen:
+            image = QImage(chosen)
+            if not image.isNull():
+                self.image = image
+                self.accept()
+
+    def result_value(self):
+        """("image", QImage) oder ("strokes", Striche 0..1, Seitenverhältnis)."""
+        if self.image is not None:
+            return ("image", self.image)
+        strokes, aspect = normalize_strokes(self.pad.strokes)
+        return ("strokes", strokes, aspect)

@@ -506,6 +506,22 @@ Der Stift schaltet eine zweite Leiste und die **Seitenleiste** (Miniaturen) ein.
 - Gespeichert werden normale PDF-Anmerkungen mit eigenem Erscheinungsbild: Acrobat, Browser und Vorschau-Programme
   zeigen sie genauso an. Gelöschte Anmerkungen bleiben nicht als Reste in der Datei.
 
+**Formulare und Unterschrift**
+
+- **Ausfüllen**: Klemmbrett-Knopf (oder Palette › PDF: Formular ausfüllen) zeigt rechts alle Felder – Text,
+  Kontrollkästchen, Optionsfelder, Auswahllisten. „Übernehmen“ schreibt alle Änderungen in einem Schritt; Klick auf
+  einen Feldnamen springt zum Feld. Schreibgeschützte Felder bleiben gesperrt. Feldwerte sind jetzt auch in der
+  Ansicht sichtbar (vorher zeigte fckNotes ausgefüllte Formulare leer).
+- **Felder anlegen**: Werkzeug „Textfeld“ (Bereich aufziehen; höher als eine Zeile = mehrzeilig) oder
+  „Kästchen“ (klicken), Namen vergeben – ergibt ein normales ausfüllbares PDF-Formular. Rechtsklick auf ein Feld:
+  ausfüllen oder löschen.
+- **Unterschrift**: Werkzeug „Unterschrift“ – mit Maus/Stift zeichnen oder ein Bild (PNG mit transparentem
+  Hintergrund) laden, dann Bereich aufziehen oder klicken. Das ist eine **sichtbare** Unterschrift, keine digitale
+  Signatur; fckNotes speichert sie nirgends.
+- **Fest einbrennen** (Doppelhaken): Anmerkungen, Unterschriften und Formularfelder werden Teil der Seiten und sind
+  danach nicht mehr änderbar – sinnvoll vor dem Verschicken.
+- XFA-Formulare (Adobe LiveCycle) werden beim Ändern auf normale Formularfelder zurückgeführt.
+
 
 ## Strings
 
@@ -1216,6 +1232,10 @@ Alternativ per Docker: `docker run -d -p 8081:8010 erikvl87/languagetool` (dann 
 | Palette › PDFs zusammenfügen | Mehrere PDFs in gewählter Reihenfolge zu einem neuen PDF |
 | Palette › PDF: Auswahl markieren / unterstreichen / durchstreichen | Anmerkung über dem markierten PDF-Text |
 | Palette › PDF: Werkzeug Notiz / Text | Notiz bzw. Text auf der Seite platzieren (Esc beendet das Werkzeug) |
+| Palette › PDF: Formular ausfüllen | Feldliste rechts, „Übernehmen“ schreibt alle Werte (Ctrl+Z-fähig) |
+| Palette › PDF: Werkzeug Textfeld / Kontrollkästchen anlegen | Neues Formularfeld aufziehen bzw. anklicken |
+| Palette › PDF: Unterschrift einsetzen | Zeichnen oder Bild wählen, dann auf der Seite platzieren |
+| Palette › PDF: Anmerkungen und Formular einbrennen | Alles fest in die Seiten übernehmen (vor dem Verschicken) |
 | Ctrl+C / Ctrl+V / Entf (in der Tabelle) | Zellen als Tab-getrennten Block kopieren / einfügen / leeren |
 | Ctrl+\ | Editor teilen / Teilung aufheben |
 | Ctrl+Alt+\ | Gruppen nebeneinander / untereinander |

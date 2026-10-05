@@ -19,7 +19,7 @@ from PySide6.QtPdf import (QPdfBookmarkModel, QPdfDocument, QPdfDocumentRenderOp
 from PySide6.QtWidgets import (QAbstractScrollArea, QApplication, QComboBox, QFrame, QHBoxLayout, QInputDialog,
                                QLabel, QLineEdit, QMenu, QSplitter, QTreeView, QVBoxLayout)
 
-from notex.core import pdfannot, pdfdoc, pdfpages
+from notex.core import pdfannot, pdfdoc, pdfforms, pdfpages
 from notex.core.pdfdoc import PageLayout
 from notex.theme.theme import style_menu
 from notex.theme.tokens import COLORS, SPACING
@@ -33,6 +33,9 @@ TOOLS = [
     ("strikeout", "strikethrough", "Durchstreichen: Text überstreichen"),
     ("note", "sticky-note", "Notiz: auf die Seite klicken"),
     ("text", "type", "Text auf der Seite: Bereich aufziehen oder klicken"),
+    ("field", "text-cursor-input", "Neues Textfeld (Formular): Bereich aufziehen"),
+    ("checkbox", "square-check", "Neues Kontrollkästchen (Formular): klicken"),
+    ("signature", "signature", "Unterschrift: zeichnen oder Bild wählen, dann Bereich aufziehen/klicken"),
 ]
 CACHE_IMAGES = 24
 MAX_UNDO = 40
@@ -527,6 +530,12 @@ class PdfPage(ViewerPage):
         self.strip.order_changed.connect(self.reorder)
         self.strip.customContextMenuRequested.connect(self._strip_menu)
         self.strip.setVisible(False)
+        from notex.ui.pdf_edit import FormPanel
+        self.form_panel = FormPanel()
+        self.form_panel.apply_requested.connect(lambda values: self.fill_form(values))
+        self.form_panel.field_activated.connect(self.show_field)
+        self.form_panel.setVisible(False)
+        self.fields: list = []
         delete = QShortcut(QKeySequence(Qt.Key.Key_Delete), self.strip)
         delete.setContext(Qt.ShortcutContext.WidgetShortcut)
         delete.activated.connect(lambda: self.delete_pages() if self.strip.selected_pages() else None)
@@ -547,9 +556,10 @@ class PdfPage(ViewerPage):
         self.splitter.addWidget(self.strip)
         self.splitter.addWidget(self.outline)
         self.splitter.addWidget(self.canvas)
+        self.splitter.addWidget(self.form_panel)
         self.splitter.setStretchFactor(2, 1)
         self.splitter.setCollapsible(0, False)
-        self.splitter.setSizes([self.strip.width(), 220, 900])
+        self.splitter.setSizes([self.strip.width(), 220, 900, 280])
         self.outline.setVisible(False)
         frame = QFrame()
         frame.setObjectName("DataFrame")
@@ -580,7 +590,7 @@ class PdfPage(ViewerPage):
         if size <= IN_MEMORY_LIMIT:
             raw = self.path.read_bytes()                    # Datei gleich wieder zu (Windows: umbenennbar)
             self.data = raw
-            self._set_buffer(raw)
+            self._set_buffer(self._display_bytes(raw))
         else:
             self.data = None
             self.doc.load(str(self.path))
@@ -601,6 +611,13 @@ class PdfPage(ViewerPage):
         self._on_page(0)
         self.status_changed.emit()
 
+    def _display_bytes(self, raw: bytes) -> bytes:
+        """Für die Anzeige: Formularfelder sichtbar machen (PDFium zeichnet sie in QtPdf sonst nicht)."""
+        try:
+            return pdfforms.display_copy(raw) or raw
+        except Exception:                                  # noqa: BLE001 – Anzeige darf nie am Formular scheitern
+            return raw
+
     def _set_buffer(self, raw: bytes) -> None:
         old = self._buffer
         self._buffer = QBuffer(self)
@@ -617,6 +634,7 @@ class PdfPage(ViewerPage):
         self.page_count.setText(f"/ {self.doc.pageCount()}")
         if not self.strip.isHidden():
             self.strip.rebuild()
+        self.refresh_form()
 
     # ---- Bearbeiten: Zustand, Rückgängig, Speichern -----------------------------------------------------------
     def edit_block_reason(self) -> str:
@@ -655,6 +673,7 @@ class PdfPage(ViewerPage):
         self.set_pages_visible(on)
         if not on:
             self.set_tool("select")
+            self.set_form_visible(False)
         self._update_edit_actions()
         self.status_changed.emit()
 
@@ -684,7 +703,7 @@ class PdfPage(ViewerPage):
         selected = self.strip.selected_pages()
         self.canvas.selection = None
         self.doc.close()
-        self._set_buffer(data)
+        self._set_buffer(self._display_bytes(data))
         self._after_load()
         page = max(0, min(page, self.doc.pageCount() - 1))
         self.canvas.go_to(page)
@@ -918,6 +937,13 @@ class PdfPage(ViewerPage):
         self.color_button = IconButton("palette", "Farbe für Markieren/Unterstreichen/Durchstreichen/Notiz")
         self.color_button.clicked.connect(self._color_menu)
         self.tool_row.addWidget(self.color_button)
+        self.form_button = IconButton("clipboard-list", "Formular ausfüllen (Feldliste) ein/aus")
+        self.form_button.setCheckable(True)
+        self.form_button.toggled.connect(self.set_form_visible)
+        self.tool_row.addWidget(self.form_button)
+        flatten = IconButton("check-check", "Anmerkungen und Formular fest einbrennen …")
+        flatten.clicked.connect(lambda: self.flatten())
+        self.tool_row.addWidget(flatten)
         row.addStretch(1)
         self.undo_button = IconButton("undo-2", "Rückgängig  Ctrl+Z")
         self.undo_button.clicked.connect(self.undo)
@@ -1059,6 +1085,14 @@ class PdfPage(ViewerPage):
             for kind, label in (("highlight", "Markieren"), ("underline", "Unterstreichen"),
                                 ("strikeout", "Durchstreichen")):
                 menu.addAction(label, lambda k=kind: self.add_markup(k))
+        field = next((f for f in self.fields if f.page == page and f.rect[0] - 2 <= x <= f.rect[2] + 2
+                      and f.rect[1] - 2 <= y <= f.rect[3] + 2), None)
+        if field is not None:
+            menu.addSeparator()
+            menu.addAction(f"Feld „{field.name}“ ausfüllen …", lambda: (self.set_form_visible(True),
+                                                                        self.show_field(field)))
+            menu.addAction(f"Feld „{field.name}“ löschen", lambda: self.remove_field(field.name))
+            return
         info = pdfannot.hit(self.annotations(page), x, y)
         if info is not None:
             menu.addSeparator()
@@ -1070,6 +1104,123 @@ class PdfPage(ViewerPage):
             menu.addSeparator()
             menu.addAction("Notiz hier …", lambda: self.add_note(page, x, y))
             menu.addAction("Text hier …", lambda: self.add_text(page, (x, y, x, y)))
+
+    # ---- Formulare und Unterschrift ---------------------------------------------------------------------------
+    def refresh_form(self) -> None:
+        try:
+            self.fields = pdfforms.list_fields(self.data) if self.data is not None and not self.encrypted else []
+        except Exception:                                  # noqa: BLE001
+            self.fields = []
+        if not self.form_panel.isHidden():
+            self.form_panel.set_fields(self.fields)
+
+    def set_form_visible(self, on: bool) -> None:
+        if on and not self._ensure_editing():
+            on = False
+        self.form_button.blockSignals(True)
+        self.form_button.setChecked(on)
+        self.form_button.blockSignals(False)
+        self.form_panel.setVisible(on)
+        if on:
+            self.form_panel.set_fields(self.fields)
+
+    def show_field(self, info) -> None:
+        x0, y0, x1, y1 = info.rect
+        self.canvas.go_to(info.page, QPointF(x0, y0))
+        self.canvas.overlays = [o for o in self.canvas.overlays if o[2] != "field"] + \
+            [(info.page, QRectF(x0, y0, x1 - x0, y1 - y0), "field")]
+        self.canvas.viewport().update()
+        QTimer.singleShot(1500, self._clear_field_overlay)
+
+    def _clear_field_overlay(self) -> None:
+        self.canvas.overlays = [o for o in self.canvas.overlays if o[2] != "field"]
+        self.canvas.viewport().update()
+
+    def fill_form(self, values: dict) -> bool:
+        if not values:
+            self.notice.emit("Nichts geändert")
+            return False
+        if not self._ensure_editing():
+            return False
+        return self._run(pdfforms.fill, values)
+
+    def add_field(self, page: int, rect: tuple, name: str | None = None, multiline: bool | None = None) -> bool:
+        if name is None:
+            from notex.ui import dialogs
+            name = dialogs.ask_text(self, "Neues Textfeld", "Feldname:", self._free_name("Feld"))
+            if not name:
+                return False
+        if multiline is None:
+            multiline = rect[3] - rect[1] > 34
+        if not self._ensure_editing():
+            return False
+        return self._run(pdfforms.add_text_field, page, rect, name, "", multiline)
+
+    def add_checkbox(self, page: int, rect: tuple, name: str | None = None) -> bool:
+        if name is None:
+            from notex.ui import dialogs
+            name = dialogs.ask_text(self, "Neues Kontrollkästchen", "Feldname:", self._free_name("Kästchen"))
+            if not name:
+                return False
+        if not self._ensure_editing():
+            return False
+        return self._run(pdfforms.add_checkbox, page, rect, name)
+
+    def remove_field(self, name: str) -> bool:
+        if not self._ensure_editing():
+            return False
+        return self._run(pdfforms.remove_field, name)
+
+    def _free_name(self, stem: str) -> str:
+        names = {f.name for f in self.fields}
+        number = 1
+        while f"{stem}{number}" in names:
+            number += 1
+        return f"{stem}{number}"
+
+    def add_signature(self, page: int, rect: tuple, value=None) -> bool:
+        """`value`: ("strokes", Striche 0..1, Seitenverhältnis) oder ("image", QImage); None = Dialog."""
+        if value is None:
+            from PySide6.QtWidgets import QDialog
+            from notex.ui.pdf_edit import SignatureDialog
+            dialog = SignatureDialog(self, self.path.parent)
+            if dialog.exec() != QDialog.DialogCode.Accepted:
+                return False
+            value = dialog.result_value()
+        if not self._ensure_editing():
+            return False
+        if value[0] == "image":
+            from notex.ui.pdf_edit import image_to_bytes
+            image = value[1]
+            target = pdfforms.fit_rect(rect, image.width() / max(1, image.height()))
+            width, height, rgb, alpha = image_to_bytes(image)
+            return self._run(pdfforms.add_image, page, target, width, height, rgb, alpha)
+        _kind, strokes, aspect = value
+        return self._run(pdfforms.add_strokes, page, pdfforms.fit_rect(rect, aspect), strokes)
+
+    def flatten(self, confirm: bool = True) -> bool:
+        if confirm:
+            from notex.ui import dialogs
+            if not dialogs.confirm(self, "Fest einbrennen",
+                                   "Alle Anmerkungen, Unterschriften und Formularfelder werden Teil der Seiten.",
+                                   informative="Danach lassen sie sich nicht mehr ändern oder ausfüllen "
+                                               "(Ctrl+Z geht bis zum Schließen). Sinnvoll vor dem Verschicken.",
+                                   yes="Einbrennen"):
+                return False
+        if not self._ensure_editing():
+            return False
+        return self._run(pdfforms.flatten)
+
+    def _region_field(self, page: int, box: tuple) -> None:
+        if box[2] - box[0] < 8 or box[3] - box[1] < 8:
+            box = (box[0], box[1], box[0] + 180, box[1] + 20)
+        self.add_field(page, box)
+
+    def _region_checkbox(self, page: int, box: tuple) -> None:
+        self.add_checkbox(page, box)
+
+    def _region_signature(self, page: int, box: tuple) -> None:
+        self.add_signature(page, box)
 
     def _update_edit_actions(self) -> None:
         if not hasattr(self, "undo_button"):
@@ -1212,7 +1363,8 @@ class PdfPage(ViewerPage):
     def _mode_text(self) -> str:
         if self._dirty:
             return "PDF · geändert (Ctrl+S speichert)"
-        return "PDF · bearbeiten" if self.editing else "PDF · nur lesen"
+        form = f" · Formular ({len(self.fields)} Felder)" if self.fields else ""
+        return ("PDF · bearbeiten" if self.editing else "PDF · nur lesen") + form
 
     def reload(self) -> None:
         if self._dirty:                         # extern geändert, hier ungespeichert: eigene Fassung behalten

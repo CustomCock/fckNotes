@@ -551,6 +551,17 @@ Kommentieren, Formulare + Unterschrift, Textfelder, echtes Schwärzen)
   UI: Werkzeuge (Auswahl/Markieren/Unterstreichen/Durchstreichen/Notiz/Text) + Farbwahl, Canvas mit Region-Modus
   (Gummiband) und `menu_hook`; Esc → Auswahl. Geprüft per Rendern (PDFium) inkl. gedrehter Seite.
   Entscheidung: kein Font-Einbetten (Helvetica/WinAnsi reicht für Deutsch; Emoji → „?“, dokumentiert).
+- **S3 Formulare, Textfelder, Unterschrift – erledigt.** Kern `notex/core/pdfforms.py`: `list_fields` (qualifizierte
+  Namen, geerbte /FT /Ff /V /Opt, Radio-Gruppen über Kinder, Kontrollkästchen-Zustand aus /AP), `fill` (eigene
+  Text-Erscheinungsbilder: Größe aus /DA oder passend, /Q, mehrzeilig, /MK-Rahmen/-Hintergrund/-Drehung; Btn über
+  /V + /AS; /XFA und /NeedAppearances entfernt), `add_text_field`/`add_checkbox`/`remove_field`, `add_strokes`
+  (Vektor) / `add_image` (Flate + SMask) als /Stamp, `fit_rect`, `flatten` (AP → Form-XObject in den Inhalt, Links
+  bleiben, fehlende Text-AP werden vorher gezeichnet), `display_copy`.
+  **Entscheidung/Befund:** QtPdf/PDFium zeichnet Widgets nicht (Formular-Umgebung) → Anzeige-Kopie mit Widgets als
+  /Stamp und ohne /AcroForm; `self.data` bleibt das echte PDF. Unterschrift = sichtbar, keine kryptografische
+  Signatur, nichts gespeichert (Regel „keine Zugangsdaten/Schlüssel“ unberührt).
+  UI: `FormPanel` (rechts im Splitter), Werkzeuge Textfeld/Kästchen/Unterschrift, `SignatureDialog` (Zeichenfeld
+  oder Bild), Einbrennen-Knopf, Feld-Kontextmenü, Formular-Hinweis in der Statusleiste.
 
 ## Offen
 

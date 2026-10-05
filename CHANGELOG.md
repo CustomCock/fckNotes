@@ -21,6 +21,13 @@ Alle nennenswerten Änderungen an fckNotes (bis 1.17.0: Notex). Format angelehnt
 - **PDF kommentieren**: Markieren, Unterstreichen, Durchstreichen (Werkzeug oder Rechtsklick auf markierten Text),
   Haftnotizen, Text direkt auf der Seite (Größe, Farbe, Rahmen, automatischer Umbruch, auch auf gedrehten Seiten);
   Anmerkungen per Rechtsklick bearbeiten oder löschen. Eigene Erscheinungsbilder → sieht in Acrobat/Browser gleich aus.
+- **PDF-Formulare**: Feldliste zum Ausfüllen (Text, Kontrollkästchen, Optionsfelder, Auswahllisten) mit einem
+  Rückgängig-Schritt pro „Übernehmen“; neue Textfelder und Kontrollkästchen anlegen, Felder löschen; sichtbare
+  **Unterschrift** (zeichnen oder Bild, nichts wird gespeichert); **fest einbrennen** vor dem Verschicken.
+
+### Behoben
+- PDF-Ansicht: Werte in Formularfeldern waren unsichtbar (PDFium zeichnet Felder in QtPdf nicht) – fckNotes zeigt
+  jetzt eine Anzeige-Kopie, in der Felder sichtbar sind; fehlende Erscheinungsbilder werden nachgezeichnet.
 
 ## [1.17.1] – 2026-09-30
 
