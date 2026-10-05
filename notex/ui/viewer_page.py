@@ -1,7 +1,8 @@
 """Tabs, die keine Texteditoren sind: Bilder, Hex-Ansicht, PDF.
 
 ViewerPage ist die gemeinsame Basis: sie kennt ihren Pfad, liefert Text für die Statusleiste und kann bei
-Umbenennen/Verschieben nachgezogen werden. Viewer schreiben nie in die Datei (alle nur lesend).
+Umbenennen/Verschieben nachgezogen werden. Viewer schreiben nur, wenn sie ausdrücklich bearbeitbar sind (PDF im
+Bearbeiten-Modus): dann melden sie `dirty_changed` und speichern über `save`/`save_as` (Ctrl+S wie bei Texten).
 """
 from __future__ import annotations
 
@@ -24,6 +25,10 @@ class ViewerPage(QWidget):
     kind = "viewer"
     icon_name = "file"
     status_changed = Signal()
+    dirty_changed = Signal(bool)     # nur bearbeitbare Viewer (PDF)
+    saved = Signal(Path, Path)       # (alter Pfad, neuer Pfad) nach Speichern bzw. Speichern unter
+    notice = Signal(str)             # kurze Meldung für den Toast
+    open_requested = Signal(Path)    # z. B. neu erzeugtes PDF in einem Tab öffnen
 
     def __init__(self, path: Path) -> None:
         super().__init__()
@@ -36,6 +41,17 @@ class ViewerPage(QWidget):
             return [human_size(self.path.stat().st_size)]
         except OSError:
             return []
+
+    @property
+    def is_dirty(self) -> bool:
+        return False
+
+    def save(self) -> bool:
+        """Ungespeicherte Änderungen schreiben; False = nicht gespeichert (abgebrochen/Fehler)."""
+        return True
+
+    def save_as(self) -> bool:
+        return False
 
     def rename(self, new_path: Path) -> None:
         self.path = Path(new_path)

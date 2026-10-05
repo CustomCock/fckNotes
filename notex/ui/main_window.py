@@ -197,6 +197,7 @@ class MainWindow(QMainWindow):
         tree.follow_requested.connect(self.toggle_live)
         self.tabs.view_mode_changed.connect(self._on_view_mode_changed)
         self.tabs.pdf_quote.connect(self._insert_pdf_quote)
+        self.tabs.viewer_notice.connect(lambda text: self.toast.show_message(text, "info"))
         tree.path_deleted.connect(lambda p: (self.links.remove(self.tabs.relative(p)), self.file_index.request_rescan()))
 
         self.tabs.status_changed.connect(self._update_status)
@@ -2383,6 +2384,55 @@ class MainWindow(QMainWindow):
         else:
             viewer.quote()
 
+    def pdf_command(self, method: str, *args, edit: bool = True):
+        """Befehl aus Palette/Menü an den aktuellen PDF-Tab; schaltet bei Bedarf den Bearbeiten-Modus ein."""
+        viewer = self._current_pdf()
+        if viewer is None:
+            self.toast.show_message("Erst ein PDF öffnen", "info")
+            return None
+        if edit and not viewer.editing:
+            viewer.set_editing(True)
+            if not viewer.editing:
+                return None
+        return getattr(viewer, method)(*args)
+
+    def merge_pdfs(self, paths: list[Path] | None = None, target: Path | None = None) -> Path | None:
+        """Mehrere PDFs zu einem neuen zusammenfügen (Reihenfolge im Dialog festlegen) und öffnen."""
+        from PySide6.QtWidgets import QDialog, QFileDialog
+        from notex.core import pdfpages
+        from notex.ui.pdf_edit import MergeDialog, write_pdf
+        if paths is None:
+            current = self._current_pdf()
+            start = current.path.parent if current is not None else self.root
+            chosen, _ = QFileDialog.getOpenFileNames(self, "PDFs zusammenfügen", str(start), "PDF (*.pdf)")
+            if not chosen:
+                return None
+            initial = ([current.path] if current is not None and str(current.path) not in chosen else []) + \
+                [Path(c) for c in sorted(chosen, key=str.lower)]
+            dialog = MergeDialog(self, initial, start)
+            if dialog.exec() != QDialog.DialogCode.Accepted:
+                return None
+            paths = dialog.paths()
+        if len(paths) < 2:
+            self.toast.show_message("Mindestens zwei PDFs auswählen", "info")
+            return None
+        if target is None:
+            suggestion = paths[0].with_name(f"{paths[0].stem}_zusammengefügt.pdf")
+            chosen_target, _ = QFileDialog.getSaveFileName(self, "Zusammengefügtes PDF speichern", str(suggestion),
+                                                           "PDF (*.pdf)")
+            if not chosen_target:
+                return None
+            target = Path(chosen_target)
+        try:
+            data = pdfpages.merge([Path(p).read_bytes() for p in paths])
+            write_pdf(target, data)
+        except (pdfpages.PdfEditError, OSError) as error:
+            dialogs.warn(self, "PDFs zusammenfügen", str(error))
+            return None
+        self.toast.show_message(f"{len(paths)} PDFs → {target.name}")
+        self.tabs.open_viewer(target, "pdf")
+        return target
+
     def toggle_pdf_outline(self) -> None:
         viewer = self._current_pdf()
         if viewer is not None and viewer.outline_button.isEnabled():
@@ -3538,6 +3588,57 @@ class MainWindow(QMainWindow):
                           shortcut="Ctrl+Shift+Alt+Q", keywords="pdf zitat quote markierung notiz quelle")
         self.registry.add("pdf:outline", "PDF: Lesezeichen ein/aus", self.toggle_pdf_outline, category="PDF",
                           keywords="pdf lesezeichen inhaltsverzeichnis outline bookmarks")
+        pdf_cmds = [
+            ("pdf:edit", "PDF: Bearbeiten ein/aus", lambda: self.pdf_command("set_editing", not (self._current_pdf()
+             and self._current_pdf().editing), edit=False), "", "pdf bearbeiten edit stift seiten anmerkungen"),
+            ("pdf:merge", "PDFs zusammenfügen …", lambda: self.merge_pdfs(), "", "pdf merge zusammenfügen kombinieren"),
+            ("pdf:split", "PDF: Aufteilen …", lambda: self.pdf_command("split_pdf"), "", "pdf split teilen trennen"),
+            ("pdf:rotate_right", "PDF: Seite(n) nach rechts drehen", lambda: self.pdf_command("rotate_pages", 90), "",
+             "pdf drehen rotieren uhrzeigersinn"),
+            ("pdf:rotate_left", "PDF: Seite(n) nach links drehen", lambda: self.pdf_command("rotate_pages", -90), "",
+             "pdf drehen rotieren gegen uhrzeigersinn"),
+            ("pdf:delete_pages", "PDF: Seite(n) löschen", lambda: self.pdf_command("delete_pages"), "",
+             "pdf seite löschen entfernen"),
+            ("pdf:extract", "PDF: Seite(n) als neues PDF herauslösen …", lambda: self.pdf_command("extract_pages"), "",
+             "pdf extrahieren herauslösen seiten speichern"),
+            ("pdf:insert", "PDF: PDF einfügen …", lambda: self.pdf_command("insert_pdf"), "",
+             "pdf einfügen anhängen seiten"),
+            ("pdf:pages", "PDF: Seitenleiste ein/aus", lambda: self.pdf_command(
+                "set_pages_visible", self._current_pdf() is not None and self._current_pdf().strip.isHidden()), "",
+             "pdf seiten miniaturen thumbnails sortieren"),
+        ]
+        pdf_cmds += [
+            ("pdf:highlight", "PDF: Auswahl markieren", lambda: self.pdf_command("add_markup", "highlight"), "",
+             "pdf markieren highlight textmarker gelb anmerkung"),
+            ("pdf:underline", "PDF: Auswahl unterstreichen", lambda: self.pdf_command("add_markup", "underline"), "",
+             "pdf unterstreichen underline anmerkung"),
+            ("pdf:strikeout", "PDF: Auswahl durchstreichen", lambda: self.pdf_command("add_markup", "strikeout"), "",
+             "pdf durchstreichen strikeout anmerkung"),
+            ("pdf:tool_note", "PDF: Werkzeug Notiz", lambda: self.pdf_command("set_tool", "note"), "",
+             "pdf notiz kommentar haftnotiz sticky note anmerkung"),
+            ("pdf:tool_text", "PDF: Werkzeug Text auf der Seite", lambda: self.pdf_command("set_tool", "text"), "",
+             "pdf text schreiben freitext textfeld textbox anmerkung"),
+            ("pdf:form", "PDF: Formular ausfüllen", lambda: self.pdf_command("set_form_visible", True), "",
+             "pdf formular ausfüllen felder acroform form"),
+            ("pdf:tool_field", "PDF: Werkzeug Textfeld anlegen", lambda: self.pdf_command("set_tool", "field"), "",
+             "pdf textfeld formularfeld anlegen erstellen form field"),
+            ("pdf:tool_checkbox", "PDF: Werkzeug Kontrollkästchen anlegen",
+             lambda: self.pdf_command("set_tool", "checkbox"), "", "pdf kontrollkästchen checkbox haken formular"),
+            ("pdf:tool_signature", "PDF: Unterschrift einsetzen", lambda: self.pdf_command("set_tool", "signature"),
+             "", "pdf unterschrift unterschreiben signatur signature zeichnen"),
+            ("pdf:flatten", "PDF: Anmerkungen und Formular einbrennen …", lambda: self.pdf_command("flatten"), "",
+             "pdf einbrennen flatten fixieren formular abschließen"),
+            ("pdf:tool_redact", "PDF: Werkzeug Schwärzen", lambda: self.pdf_command("set_tool", "redact"), "",
+             "pdf schwärzen redact anonymisieren unkenntlich zensieren dsgvo"),
+            ("pdf:redact_selection", "PDF: Markierung schwärzen (vormerken)",
+             lambda: self.pdf_command("mark_redaction_from_selection"), "", "pdf schwärzen markierung redact"),
+            ("pdf:redact_search", "PDF: Alle Suchtreffer schwärzen (vormerken)",
+             lambda: self.pdf_command("mark_search_results"), "", "pdf schwärzen suchtreffer alle namen redact dsgvo"),
+            ("pdf:redact_apply", "PDF: Schwärzen anwenden …", lambda: self.pdf_command("apply_redactions"), "",
+             "pdf schwärzen anwenden endgültig redact"),
+        ]
+        for key, title, callback, shortcut, keywords in pdf_cmds:
+            self.registry.add(key, title, callback, category="PDF", shortcut=shortcut, keywords=keywords)
         self.registry.add("view:text", "Ansicht: Als Text bearbeiten", lambda: self.set_preview_mode("edit"),
                           category="Ansicht", keywords="csv json yaml text roh quelltext")
         self.registry.add("nav:goto", "Gehe zu Zeile", lambda: (self.show_palette("files"), self.palette.field.setText(":")), category="Navigation")

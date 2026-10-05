@@ -13,6 +13,27 @@ Alle nennenswerten Änderungen an fckNotes (bis 1.17.0: Notex). Format angelehnt
 - Rechtsklick auf ein Diagramm in der Vorschau: **als PNG oder SVG speichern** (bei `.ntx` nur nach Rückfrage).
 - Command Palette: **„Mermaid-Diagramm einfügen …“** setzt ein Startbeispiel des gewählten Typs an den Cursor.
 - Einstellung „Mermaid-Diagramme zeichnen“ (Einstellungen › Editor › Markdown-Vorschau, Standard an).
+- **PDF bearbeiten** (Stift im PDF-Tab): Seitenleiste mit Miniaturen, Seiten per Ziehen umsortieren, drehen,
+  löschen, als neues PDF herauslösen, ein PDF einfügen, aufteilen (einzeln / alle N Seiten / nach Bereichen) und
+  „PDFs zusammenfügen …“ (Palette). Änderungen erst im Speicher mit Rückgängig/Wiederholen, `Ctrl+S` speichert;
+  vor dem ersten Überschreiben landet das Original im Papierkorb (abschaltbar). Gelöschte Seiten bleiben nicht
+  unsichtbar in der Datei. Passwortgeschützte PDFs bleiben nur lesbar.
+- **PDF kommentieren**: Markieren, Unterstreichen, Durchstreichen (Werkzeug oder Rechtsklick auf markierten Text),
+  Haftnotizen, Text direkt auf der Seite (Größe, Farbe, Rahmen, automatischer Umbruch, auch auf gedrehten Seiten);
+  Anmerkungen per Rechtsklick bearbeiten oder löschen. Eigene Erscheinungsbilder → sieht in Acrobat/Browser gleich aus.
+- **PDF-Formulare**: Feldliste zum Ausfüllen (Text, Kontrollkästchen, Optionsfelder, Auswahllisten) mit einem
+  Rückgängig-Schritt pro „Übernehmen“; neue Textfelder und Kontrollkästchen anlegen, Felder löschen; sichtbare
+  **Unterschrift** (zeichnen oder Bild, nichts wird gespeichert); **fest einbrennen** vor dem Verschicken.
+- **PDF echt schwärzen**: Bereiche, markierten Text oder alle Suchtreffer vormerken; „Schwärzen anwenden“ erzeugt
+  die betroffenen Seiten als Bild mit eingemalten Balken neu, entfernt deren Text, Schriften, Anmerkungen und
+  Formularwerte, auf Wunsch Metadaten, Anhänge/Skripte und Lesezeichen, und prüft danach, ob die Wörter noch irgendwo
+  stehen. Speichern nur unter neuem Namen.
+
+### Behoben
+- PDF bearbeiten: Nach Löschen von Seiten/Anmerkungen blieben verwaiste Objekte (z. B. alte Lesezeichen-Ketten) in
+  der Datei – jetzt wird nur geschrieben, was vom Dokument aus erreichbar ist.
+- PDF-Ansicht: Werte in Formularfeldern waren unsichtbar (PDFium zeichnet Felder in QtPdf nicht) – fckNotes zeigt
+  jetzt eine Anzeige-Kopie, in der Felder sichtbar sind; fehlende Erscheinungsbilder werden nachgezeichnet.
 
 ## [1.17.1] – 2026-09-30
 

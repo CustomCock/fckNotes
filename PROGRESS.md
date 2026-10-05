@@ -533,6 +533,52 @@ davon wird gelöscht; der Besitzer entscheidet, wie damit umgegangen wird (siehe
   wohlgeformt und ohne script/foreignObject/href/url(), Fehler, Limits, Markdown/Export), `tests/test_mermaid_ui.py`
   (Vorschau-Bild, PNG/SVG, PDF mit Bild, Einstellung, Palette, .ntx-Rückfrage).
 
+### Block S: PDF bearbeiten (05.10.2026, Besitzer: „PDFs sinnvoll bearbeiten“, Umfang gewählt: Seiten,
+Kommentieren, Formulare + Unterschrift, Textfelder, echtes Schwärzen)
+- **S1 Seiten organisieren – erledigt.** Kern `notex/core/pdfpages.py` (Bytes rein/raus: rearrange/rotate/delete/move/
+  extract/insert/merge/split, parse_ranges/parse_groups/every/part_names/describe). Neu aufgebaut wird immer per
+  frischem `PdfWriter.append` → gelöschte Seiten hinterlassen keine Objekte (Test `contains_anywhere`).
+  UI: Stift im PDF-Tab → Bearbeiten-Leiste + `PageStrip` (Miniaturen, Ziehen, Mehrfachauswahl, Kontextmenü),
+  Undo/Redo als Byte-Stapel (max. 40), `ViewerPage` kann jetzt `is_dirty`/`save`/`save_as`/`saved`/`notice`/
+  `open_requested` (Tabs: Punkt am Tab, Ctrl+S, Nachfrage beim Schließen/Beenden). Speichern atomar, vorher einmal je
+  Tab Original in den Papierkorb (`pdf_backup_trash`). Extern geändert + ungespeichert → eigene Fassung bleibt.
+  Passwortgeschützte PDFs: nur lesen (Entscheidung: kein Passwort für das Zurückverschlüsseln im Speicher halten).
+  Palette: pdf:edit/merge/split/rotate_left/rotate_right/delete_pages/extract/insert/pages.
+- **S2 Kommentieren – erledigt.** Kern `notex/core/pdfannot.py`: `PageGeom` (Ansicht ↔ PDF inkl. CropBox-Versatz und
+  /Rotate 0/90/180/270, Form-Matrix für aufrechten Text), Markup mit QuadPoints (im ungedrehten Inhalt gerechnet),
+  Haftnotiz, FreeText (Helvetica/WinAnsi, Breiten aus pypdfs Core-14-Metriken, Umbruch), eigene /AP für alles,
+  `list_annotations`/`hit`/`update_text`/`delete_annotation`; `finish()` entfernt unreferenzierte Objekte.
+  UI: Werkzeuge (Auswahl/Markieren/Unterstreichen/Durchstreichen/Notiz/Text) + Farbwahl, Canvas mit Region-Modus
+  (Gummiband) und `menu_hook`; Esc → Auswahl. Geprüft per Rendern (PDFium) inkl. gedrehter Seite.
+  Entscheidung: kein Font-Einbetten (Helvetica/WinAnsi reicht für Deutsch; Emoji → „?“, dokumentiert).
+- **S3 Formulare, Textfelder, Unterschrift – erledigt.** Kern `notex/core/pdfforms.py`: `list_fields` (qualifizierte
+  Namen, geerbte /FT /Ff /V /Opt, Radio-Gruppen über Kinder, Kontrollkästchen-Zustand aus /AP), `fill` (eigene
+  Text-Erscheinungsbilder: Größe aus /DA oder passend, /Q, mehrzeilig, /MK-Rahmen/-Hintergrund/-Drehung; Btn über
+  /V + /AS; /XFA und /NeedAppearances entfernt), `add_text_field`/`add_checkbox`/`remove_field`, `add_strokes`
+  (Vektor) / `add_image` (Flate + SMask) als /Stamp, `fit_rect`, `flatten` (AP → Form-XObject in den Inhalt, Links
+  bleiben, fehlende Text-AP werden vorher gezeichnet), `display_copy`.
+  **Entscheidung/Befund:** QtPdf/PDFium zeichnet Widgets nicht (Formular-Umgebung) → Anzeige-Kopie mit Widgets als
+  /Stamp und ohne /AcroForm; `self.data` bleibt das echte PDF. Unterschrift = sichtbar, keine kryptografische
+  Signatur, nichts gespeichert (Regel „keine Zugangsdaten/Schlüssel“ unberührt).
+  UI: `FormPanel` (rechts im Splitter), Werkzeuge Textfeld/Kästchen/Unterschrift, `SignatureDialog` (Zeichenfeld
+  oder Bild), Einbrennen-Knopf, Feld-Kontextmenü, Formular-Hinweis in der Statusleiste.
+- **S4 Echtes Schwärzen – erledigt.** Kern `notex/core/pdfredact.py`: `redact_pages` ersetzt Inhalt/Ressourcen der
+  betroffenen Seiten (Seitenobjekt bleibt, damit Lesezeichen gültig bleiben) durch ein Bild in Anzeige-Ausrichtung
+  (MediaBox = angezeigte Größe, /Rotate 0), entfernt Annots der Seite samt Feldern aus /AcroForm, /StructTreeRoot,
+  /MarkInfo; Optionen Metadaten/Anhänge+JS+OpenAction/Lesezeichen. `leftovers` sucht Wörter in Seitentext,
+  Anmerkungen/Feldwerten, Lesezeichen, Info und XMP. UI: Werkzeug „Schwärzen“, Vormerken aus Auswahl/Suchtreffern
+  (wartet, bis QPdfSearchModel fertig ist), rote Vorschau-Overlays, `RedactDialog` (dpi, Optionen),
+  `render_redacted` (PDFium inkl. Anmerkungen, Balken in Pixeln), danach Restprüfung (+ Angebot, Lesezeichen zu
+  entfernen) und `redacted` → Speichern nur unter neuem Namen.
+  **Befund + Fix (gilt für S1–S3):** pypdfs `remove_unreferenced` lässt Objekte stehen, die nur von anderen Waisen
+  referenziert werden (alte Outline-Ketten, Anhänge). `pdfannot.prune_unreachable` macht echte Erreichbarkeit ab
+  Katalog/Info; `finish`, `pdfpages.to_bytes` und `redact_pages` nutzen es. Tests prüfen Bytes und alle Objekte.
+- **Fix nach Windows-CI (S4):** „Alle Suchtreffer schwärzen“ las QPdfSearchModel, das Treffer im Hintergrund
+  häppchenweise liefert – unter Windows fehlten so Treffer auf späteren Seiten (Name blieb stehen!). Jetzt
+  `PdfPage.find_text`: synchron je Seite `getAllText` + `getSelectionAtIndex` (Groß/klein egal); Regressionstest
+  mit 30 Seiten ohne Warten.
+- Block S abgeschlossen. Screenshots 72 (Bearbeiten) und 73 (Schwärzen) über `tools/screenshot.py`.
+
 ## Offen
 
 ### Block C – 1.3.0
@@ -610,7 +656,9 @@ rdap, scanner, logs, pcap. Standardmäßig an: variables, hex, ports, ioc.
 
 - **P (Inventar/Docusnap-artig) ist ZURÜCKGESTELLT** (Entscheidung Besitzer 27.09.2026): vorerst NICHT bauen.
 
-**Mermaid-Diagramme erledigt** (auf dem Arbeitsbranch, CHANGELOG unter „Unveröffentlicht“). Beim nächsten Release
+**Mermaid-Diagramme und Block S (PDF bearbeiten) erledigt** (auf dem Arbeitsbranch, CHANGELOG unter
+„Unveröffentlicht“). Offen beim Besitzer: Praxistest mit echten PDFs (Behördenformulare, gescannte PDFs, große
+Dateien) und in Acrobat/Browser gegenprüfen, ob Anmerkungen, Formulare und Schwärzungen dort gleich aussehen. Beim nächsten Release
 `__version__` auf 1.18.0 setzen und den CHANGELOG-Abschnitt benennen – sonst meldet die App wieder die alte Nummer.
 
 Keine offenen Blöcke auf Entwicklerseite – auf neue Wünsche des Besitzers warten.

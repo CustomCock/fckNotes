@@ -432,6 +432,16 @@ class SettingsDialog(QDialog):
                   "und Spalte in der Statusleiste. YAML wird nur sicher gelesen (safe_load) – Kommentare gehen beim "
                   "Formatieren verloren, davor wird gefragt.")
 
+        page.section("PDF bearbeiten")
+        pdf_backup = QCheckBox("Vor dem ersten Überschreiben das Original in den Papierkorb legen")
+        pdf_backup.setChecked(bool(self.config.get("pdf_backup_trash", True)))
+        pdf_backup.toggled.connect(lambda on: (self.config.__setitem__("pdf_backup_trash", on),
+                                               self.window_.tabs.apply_preview_settings()))
+        page.row("", pdf_backup)
+        page.note("Im PDF-Tab schaltet der Stift die Bearbeitung ein. Alle Änderungen passieren erst im Speicher "
+                  "(Ctrl+Z/Ctrl+Y), Ctrl+S schreibt die Datei. Der Versionsverlauf gilt nur für Textdateien – "
+                  "deshalb landet das alte PDF auf Wunsch einmal je Tab im Papierkorb.")
+
         page.section("Versionshistorie")
         self.history_box = QCheckBox("Bei jedem Speichern einen Schnappschuss in history/ ablegen")
         self.history_box.toggled.connect(lambda on: self.config.setdefault("history", {}).__setitem__("enabled", on)

@@ -453,7 +453,7 @@ Für `.json` und `.yaml`/`.yml` (Menü Bearbeiten → JSON/YAML oder Command Pal
 
 ## PDF
 
-PDFs öffnen als eigener Tab (nur lesen):
+PDFs öffnen als eigener Tab – zum Lesen und, mit dem **Stift** rechts oben, zum Bearbeiten:
 
 - Scrollen, Zoom (Seitenbreite, ganze Seite, 50–300 %, `Ctrl+Mausrad`, `Ctrl+Plus/Minus`), Seite springen
   (`Ctrl+G`, auch Seitenbezeichnungen wie „iv“), Textsuche mit Trefferzähler (`Ctrl+F`, `F3`/`Shift+F3`),
@@ -469,12 +469,77 @@ PDFs öffnen als eigener Tab (nur lesen):
   ```
 
   Ohne Teilung landet das Zitat in der Zwischenablage. Teilen geht jetzt auch aus einem PDF-Tab heraus (`Ctrl+\`).
-- Keine Formulare, keine Skripte, keine Link-Aktionen: fckNotes zeigt nur an und liest Text aus. Die Datei wird in den
-  Speicher gelesen und gleich wieder geschlossen – umbenennen/verschieben geht auch, während der Tab offen ist.
-  Passwortgeschützte PDFs fragen nach dem Passwort (es wird nirgends gespeichert).
-- Technik: QtPdf (PDFium), ohne QtWebEngine; der Build wächst dadurch um wenige MB.
+- Keine Skripte, keine Link-Aktionen. Die Datei wird in den Speicher gelesen und gleich wieder geschlossen –
+  umbenennen/verschieben geht auch, während der Tab offen ist. Passwortgeschützte PDFs fragen nach dem Passwort (es
+  wird nirgends gespeichert) und lassen sich nur ansehen, nicht bearbeiten.
+- Technik: QtPdf (PDFium) zum Anzeigen, pypdf zum Bearbeiten; ohne QtWebEngine.
 
 ![PDF mit Zitat](docs/45-pdf-quote.png)
+
+### PDF bearbeiten
+
+Der Stift schaltet eine zweite Leiste und die **Seitenleiste** (Miniaturen) ein. Alles passiert erst im Speicher:
+`Ctrl+Z`/`Ctrl+Y` machen jeden Schritt rückgängig, der Tab zeigt „●“, und erst `Ctrl+S` schreibt die Datei
+(`Ctrl+Shift+Alt+S` = Speichern unter). Vor dem ersten Überschreiben legt fckNotes das alte PDF in den Papierkorb
+(abschaltbar unter Einstellungen › Editor › PDF bearbeiten) – der Versionsverlauf gilt nur für Textdateien.
+
+**Seiten organisieren** – in der Seitenleiste Seiten anklicken (`Ctrl`/`Shift` für mehrere), dann:
+
+- **Ziehen** sortiert um, Rechtsklick: an den Anfang/ans Ende, drehen, herauslösen, PDF dahinter einfügen, löschen.
+- **Drehen** links/rechts (90°), **Löschen** (`Entf` in der Seitenleiste; die letzte Seite bleibt).
+- **Herauslösen**: gewählte Seiten als neues PDF speichern (öffnet gleich im Tab).
+- **PDF einfügen** hinter der gewählten Seite, **Aufteilen** in Einzelseiten, alle N Seiten oder nach Bereichen
+  (`1-3; 4-6; 7-`) – die Teile heißen `name_teil1.pdf` …
+- **PDFs zusammenfügen …** (Command Palette): Dateien wählen, Reihenfolge per Ziehen festlegen, speichern.
+- Gelöschte Seiten verschwinden **wirklich** aus der Datei (neu aufgebautes PDF, keine unsichtbaren Reste);
+  Lesezeichen und Metadaten bleiben erhalten, Lesezeichen auf gelöschte Seiten fallen weg.
+
+**Kommentieren** – Werkzeuge in der Bearbeiten-Leiste (`Esc` = zurück zu „Auswählen“), Farbe über die Palette:
+
+- **Markieren / Unterstreichen / Durchstreichen**: Werkzeug wählen und Text überstreichen – oder Text markieren
+  und im Rechtsklick-Menü wählen.
+- **Notiz**: auf die Seite klicken, Text eingeben – erscheint als Notiz-Symbol, der Text beim Anklicken.
+- **Text auf der Seite**: Bereich aufziehen (oder klicken = 220 pt breit), Text, Größe, Farbe und Rahmen wählen;
+  bricht automatisch um. Schrift ist Helvetica (Westeuropäisch; Emoji o. Ä. werden zu „?“).
+- **Rechtsklick auf eine Anmerkung**: Text/Kommentar bearbeiten oder löschen – auch bei Anmerkungen aus anderen
+  Programmen.
+- Gespeichert werden normale PDF-Anmerkungen mit eigenem Erscheinungsbild: Acrobat, Browser und Vorschau-Programme
+  zeigen sie genauso an. Gelöschte Anmerkungen bleiben nicht als Reste in der Datei.
+
+**Formulare und Unterschrift**
+
+- **Ausfüllen**: Klemmbrett-Knopf (oder Palette › PDF: Formular ausfüllen) zeigt rechts alle Felder – Text,
+  Kontrollkästchen, Optionsfelder, Auswahllisten. „Übernehmen“ schreibt alle Änderungen in einem Schritt; Klick auf
+  einen Feldnamen springt zum Feld. Schreibgeschützte Felder bleiben gesperrt. Feldwerte sind jetzt auch in der
+  Ansicht sichtbar (vorher zeigte fckNotes ausgefüllte Formulare leer).
+- **Felder anlegen**: Werkzeug „Textfeld“ (Bereich aufziehen; höher als eine Zeile = mehrzeilig) oder
+  „Kästchen“ (klicken), Namen vergeben – ergibt ein normales ausfüllbares PDF-Formular. Rechtsklick auf ein Feld:
+  ausfüllen oder löschen.
+- **Unterschrift**: Werkzeug „Unterschrift“ – mit Maus/Stift zeichnen oder ein Bild (PNG mit transparentem
+  Hintergrund) laden, dann Bereich aufziehen oder klicken. Das ist eine **sichtbare** Unterschrift, keine digitale
+  Signatur; fckNotes speichert sie nirgends.
+- **Fest einbrennen** (Doppelhaken): Anmerkungen, Unterschriften und Formularfelder werden Teil der Seiten und sind
+  danach nicht mehr änderbar – sinnvoll vor dem Verschicken.
+- XFA-Formulare (Adobe LiveCycle) werden beim Ändern auf normale Formularfelder zurückgeführt.
+
+![PDF bearbeiten: Markierung, Notiz, Text](docs/72-pdf-bearbeiten.png)
+
+**Echt schwärzen** – nicht nur ein schwarzes Kästchen über dem Text (das lässt sich herauskopieren), sondern weg:
+
+1. Vormerken: Werkzeug „Schwärzen“ und Bereiche aufziehen, oder Text markieren › Rechtsklick „Markierung schwärzen“,
+   oder im PDF suchen › Rechtsklick „Alle Suchtreffer schwärzen“ (z. B. jedes Vorkommen eines Namens). Vorgemerkte
+   Bereiche sind rot umrandet; Rechtsklick entfernt einen wieder.
+2. **„Schwärzen anwenden“**: Die betroffenen Seiten werden als Bild (150/200/300 dpi) mit eingemalten Balken neu
+   erzeugt – Text, Schriften, Anmerkungen und Formularwerte dieser Seiten verschwinden aus der Datei. Optional (an):
+   Metadaten, Anhänge und Skripte entfernen; optional Lesezeichen entfernen.
+3. Danach prüft fckNotes, ob die geschwärzten Wörter noch irgendwo stehen (andere Seiten, Anmerkungen, Lesezeichen,
+   Metadaten) und nennt die Stellen.
+4. Gespeichert wird **unter neuem Namen** (`…_geschwärzt.pdf`), das Original bleibt unberührt.
+
+Auf den geschwärzten Seiten ist danach auch der übrige Text nicht mehr markier- oder durchsuchbar (Bild), und die
+Datei wird etwas größer.
+
+![Suchtreffer zum Schwärzen vorgemerkt](docs/73-pdf-schwaerzen.png)
 
 
 ## Strings
@@ -1180,6 +1245,19 @@ Alternativ per Docker: `docker run -d -p 8081:8010 erikvl87/languagetool` (dann 
 | Ctrl+G / Ctrl+F / F3 / Shift+F3 (im PDF-Tab) | Seite / Suchen / nächster / vorheriger Treffer |
 | Ctrl+Mausrad, Ctrl+Plus / Ctrl+Minus (im PDF-Tab) | PDF zoomen |
 | Ctrl+Shift+Alt+Q | PDF-Markierung als Zitat in die Notiz im anderen Teil einfügen |
+| Stift im PDF-Tab / Palette › PDF: Bearbeiten | PDF bearbeiten: Seitenleiste, Drehen, Löschen, Herauslösen, Einfügen, Aufteilen |
+| Ctrl+Z / Ctrl+Y / Ctrl+S (im PDF-Tab) | PDF-Änderung rückgängig / wiederholen / speichern |
+| Entf (Seitenleiste im PDF-Tab) | Gewählte Seiten löschen |
+| Palette › PDFs zusammenfügen | Mehrere PDFs in gewählter Reihenfolge zu einem neuen PDF |
+| Palette › PDF: Auswahl markieren / unterstreichen / durchstreichen | Anmerkung über dem markierten PDF-Text |
+| Palette › PDF: Werkzeug Notiz / Text | Notiz bzw. Text auf der Seite platzieren (Esc beendet das Werkzeug) |
+| Palette › PDF: Formular ausfüllen | Feldliste rechts, „Übernehmen“ schreibt alle Werte (Ctrl+Z-fähig) |
+| Palette › PDF: Werkzeug Textfeld / Kontrollkästchen anlegen | Neues Formularfeld aufziehen bzw. anklicken |
+| Palette › PDF: Unterschrift einsetzen | Zeichnen oder Bild wählen, dann auf der Seite platzieren |
+| Palette › PDF: Anmerkungen und Formular einbrennen | Alles fest in die Seiten übernehmen (vor dem Verschicken) |
+| Palette › PDF: Werkzeug Schwärzen | Bereiche zum Schwärzen aufziehen (Esc beendet) |
+| Palette › PDF: Markierung / Alle Suchtreffer schwärzen | Text bzw. jedes Vorkommen des Suchbegriffs vormerken |
+| Palette › PDF: Schwärzen anwenden | Vorgemerktes endgültig schwärzen, prüfen, unter neuem Namen speichern |
 | Ctrl+C / Ctrl+V / Entf (in der Tabelle) | Zellen als Tab-getrennten Block kopieren / einfügen / leeren |
 | Ctrl+\ | Editor teilen / Teilung aufheben |
 | Ctrl+Alt+\ | Gruppen nebeneinander / untereinander |
