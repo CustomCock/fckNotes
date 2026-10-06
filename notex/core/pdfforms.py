@@ -24,6 +24,7 @@ from pypdf.generic import (ArrayObject, DecodedStreamObject, DictionaryObject, N
 from notex.core import pdfannot as A
 from notex.core.pdfpages import PdfEditError, open_reader
 
+PLACEHOLDER_KEY = "/fckNotesKind"     # eigene Markierung: Feld ist Platzhalter (z. B. für die Unterschrift)
 FF_READONLY = 1
 FF_MULTILINE = 1 << 12
 FF_RADIO = 1 << 15
@@ -44,6 +45,7 @@ class FieldInfo:
     read_only: bool = False
     on_state: str = ""              # Kontrollkästchen: Name des „an“-Zustands (z. B. Yes)
     widgets: list[tuple[int, int]] = field(default_factory=list)   # (Seite, Position in /Annots)
+    placeholder: str = ""           # "signature": Platzhalter, ein Klick in fckNotes setzt die Unterschrift
 
     @property
     def checked(self) -> bool:
@@ -151,6 +153,8 @@ def list_fields(data: bytes) -> list[FieldInfo]:
                 info = FieldInfo(name, kind, value, _options(field_obj) if kind == "choice" else [], page_index,
                                  geom.rect_to_view((min(x0, x1), min(y0, y1), max(x0, x1), max(y0, y1))),
                                  bool(flags & FF_MULTILINE), bool(flags & FF_READONLY))
+                marker = field_obj.get(PLACEHOLDER_KEY)
+                info.placeholder = str(marker).lstrip("/").lower() if marker is not None else ""
                 fields[name] = info
             info.widgets.append((page_index, position))
             states = _states(widget)
@@ -335,8 +339,10 @@ def fill(data: bytes, values: dict[str, object]) -> bytes:
 
 
 # ---- Anlegen / Löschen -------------------------------------------------------------------------------------------
-def _new_widget(writer, page_index: int, rect_view: A.Rect, name: str, ft: str) -> tuple[DictionaryObject, int]:
-    existing = {f.name for f in list_fields(_bytes(writer))}
+def _new_widget(writer, page_index: int, rect_view: A.Rect, name: str, ft: str,
+                existing: set[str] | None = None) -> tuple[DictionaryObject, int]:
+    if existing is None:
+        existing = {f.name for f in list_fields(_bytes(writer))}
     name = name.strip()
     if not name or "." in name:
         raise PdfEditError("Feldname darf nicht leer sein und keinen Punkt enthalten")
@@ -370,27 +376,60 @@ def _register(writer, page_index: int, widget: DictionaryObject) -> None:
 
 
 def add_text_field(data: bytes, page_index: int, rect_view: A.Rect, name: str, value: str = "",
-                   multiline: bool = False, size: float = 0.0) -> bytes:
-    """Neues ausfüllbares Textfeld. `size` 0 = Schriftgröße passt sich an."""
+                   multiline: bool = False, size: float = 0.0, placeholder: str = "") -> bytes:
+    """Neues ausfüllbares Textfeld. `size` 0 = Schriftgröße passt sich an. `placeholder` "signature" = Platzhalter
+    für die Unterschrift (in anderen Programmen ein normales Textfeld)."""
     writer = A.open_writer(data)
+    _add_text_widget(writer, page_index, rect_view, name, value, multiline, size, placeholder)
+    return A.finish(writer)
+
+
+def _add_text_widget(writer, page_index, rect_view, name, value="", multiline=False, size=0.0, placeholder="",
+                     existing: set[str] | None = None, border: bool = True) -> None:
     x0, y0, x1, y1 = rect_view
     if x1 - x0 < 8 or y1 - y0 < 8:
         raise PdfEditError("Das Feld ist zu klein – Bereich aufziehen")
-    widget, _rotate = _new_widget(writer, page_index, rect_view, name, "/Tx")
+    widget, _rotate = _new_widget(writer, page_index, rect_view, name, "/Tx", existing)
+    if not border:                                        # Linie/Kasten steht schon auf dem Blatt
+        del widget["/MK"][NameObject("/BC")]
     widget[NameObject("/DA")] = TextStringObject(f"/Helv {A._num(size)} Tf 0 g")
     widget[NameObject("/V")] = TextStringObject(value)
     if multiline:
         widget[NameObject("/Ff")] = NumberObject(FF_MULTILINE)
+    if placeholder:
+        widget[NameObject(PLACEHOLDER_KEY)] = NameObject("/" + placeholder.capitalize())
+        widget[NameObject("/TU")] = TextStringObject("Unterschrift – in fckNotes anklicken zum Unterschreiben")
     _set_text_appearance(writer, widget, widget, value)
     _register(writer, page_index, widget)
+    if existing is not None:
+        existing.add(name.strip())
+
+
+def add_fields(data: bytes, specs: list[dict]) -> bytes:
+    """Mehrere Felder in einem Schritt anlegen (Felderkennung). Je Eintrag: page, rect, name, kind
+    ("text" | "checkbox" | "signature"), optional multiline."""
+    writer = A.open_writer(data)
+    existing = {f.name for f in list_fields(data)}
+    for spec in specs:
+        kind = spec.get("kind", "text")
+        if kind == "checkbox":
+            _add_checkbox_widget(writer, spec["page"], spec["rect"], spec["name"], False, existing)
+        else:
+            _add_text_widget(writer, spec["page"], spec["rect"], spec["name"], "", bool(spec.get("multiline")),
+                             0.0, "signature" if kind == "signature" else "", existing, bool(spec.get("border", True)))
     return A.finish(writer)
 
 
 def add_checkbox(data: bytes, page_index: int, rect_view: A.Rect, name: str, checked: bool = False) -> bytes:
     writer = A.open_writer(data)
+    _add_checkbox_widget(writer, page_index, rect_view, name, checked)
+    return A.finish(writer)
+
+
+def _add_checkbox_widget(writer, page_index, rect_view, name, checked=False, existing: set[str] | None = None) -> None:
     x0, y0, x1, y1 = rect_view
     side = max(8.0, min(x1 - x0, y1 - y0)) if x1 - x0 >= 4 and y1 - y0 >= 4 else 14.0
-    widget, rotate = _new_widget(writer, page_index, (x0, y0, x0 + side, y0 + side), name, "/Btn")
+    widget, rotate = _new_widget(writer, page_index, (x0, y0, x0 + side, y0 + side), name, "/Btn", existing)
     state = NameObject("/Yes") if checked else NameObject("/Off")
     widget[NameObject("/V")] = state
     widget[NameObject("/AS")] = state
@@ -398,7 +437,8 @@ def add_checkbox(data: bytes, page_index: int, rect_view: A.Rect, name: str, che
     widget["/MK"][NameObject("/CA")] = TextStringObject("4")
     _set_checkbox_appearance(writer, widget)
     _register(writer, page_index, widget)
-    return A.finish(writer)
+    if existing is not None:
+        existing.add(name.strip())
 
 
 def _set_checkbox_appearance(writer, widget, on_state: str = "Yes") -> None:

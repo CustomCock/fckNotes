@@ -19,7 +19,7 @@ from PySide6.QtPdf import (QPdfBookmarkModel, QPdfDocument, QPdfDocumentRenderOp
 from PySide6.QtWidgets import (QAbstractScrollArea, QApplication, QComboBox, QFrame, QHBoxLayout, QInputDialog,
                                QLabel, QLineEdit, QMenu, QPushButton, QSplitter, QTreeView, QVBoxLayout)
 
-from notex.core import pdfannot, pdfdoc, pdfforms, pdfobjects, pdfpages, pdfredact
+from notex.core import pdfannot, pdfdetect, pdfdoc, pdfforms, pdfobjects, pdfpages, pdfredact
 from notex.core.pdfdoc import PageLayout
 from notex.theme.theme import style_menu
 from notex.theme.tokens import COLORS, SPACING
@@ -505,6 +505,7 @@ class PdfPage(ViewerPage):
     icon_name = "file-type"
     quote_requested = Signal(str)          # fertiges Markdown-Zitat
     backup_to_trash = True                 # Einstellung: vor dem ersten Überschreiben Original in den Papierkorb
+    highlight_fields = True                # Einstellung: Formularfelder in der Ansicht hinterlegen
 
     def __init__(self, path: Path) -> None:
         super().__init__(path)
@@ -532,6 +533,7 @@ class PdfPage(ViewerPage):
         self.canvas.menu_hook = self._extend_menu
         from notex.ui.pdf_objects import ObjectController
         self.objects = ObjectController(self)
+        self.objects.highlight_fields = self.highlight_fields
         self.canvas.object_handler = self.objects
         self.tool_colors: dict[str, str] = {}      # Werkzeug → gewählte Farbe (sonst Standard)
 
@@ -1016,6 +1018,9 @@ class PdfPage(ViewerPage):
         self.form_button.setCheckable(True)
         self.form_button.toggled.connect(self.set_form_visible)
         self.tool_row.addWidget(self.form_button)
+        detect = IconButton("scan-text", "Formularfelder automatisch erkennen (Name, Datum, Unterschrift …)")
+        detect.clicked.connect(lambda: self.detect_fields())
+        self.tool_row.addWidget(detect)
         flatten = IconButton("check-check", "Anmerkungen und Formular fest einbrennen …")
         flatten.clicked.connect(lambda: self.flatten())
         self.tool_row.addWidget(flatten)
@@ -1299,6 +1304,86 @@ class PdfPage(ViewerPage):
         if not self._ensure_editing():
             return False
         return self._run(pdfforms.update_field, info.name, new_name, multiline, size, page=obj.page)
+
+    # ---- Felderkennung -----------------------------------------------------------------------------------------
+    def page_words(self, page: int) -> list:
+        """Wörter der Seite mit Rahmen (PDFium) – Unterstrich-Folgen und Kästchen-Zeichen als eigene Wörter."""
+        out = []
+        text = self.doc.getAllText(page).text()
+        for match in pdfdetect.TOKEN_RE.finditer(text):
+            selection = self.doc.getSelectionAtIndex(page, match.start(), len(match.group()))
+            polygons = selection.bounds()
+            if not polygons:
+                continue
+            rect = polygons[0].boundingRect()
+            for polygon in polygons[1:]:
+                rect = rect.united(polygon.boundingRect())
+            out.append(pdfdetect.Word(match.group(), (rect.left(), rect.top(), rect.right(), rect.bottom())))
+        return out
+
+    def detect_fields(self, pages: list[int] | None = None, apply: bool = True) -> list:
+        """Formularfelder erkennen und (apply) in einem Rückgängig-Schritt anlegen."""
+        if self.edit_block_reason():
+            self.notice.emit(self.edit_block_reason())
+            return []
+        pages = list(range(min(self.doc.pageCount(), 50))) if pages is None else pages
+        found = []
+        for page in pages:
+            existing = [o.rect for o in self.objects.objects(page) if o.kind in ("field", "text", "signature",
+                                                                                  "diagram", "stamp")]
+            size = self.doc.pagePointSize(page)
+            try:
+                graphics = pdfdetect.page_graphics(self.data, page)
+            except pdfpages.PdfEditError:
+                graphics = pdfdetect.Graphics()
+            found += pdfdetect.detect(self.page_words(page), graphics, (size.width(), size.height()), existing, page)
+        pdfdetect.unique_against(found, {f.name for f in self.fields})
+        if not apply:
+            return found
+        if not found:
+            self.notice.emit("Keine Formularfelder erkannt – Felder lassen sich mit „Textfeld“ selbst aufziehen")
+            return []
+        if not self._ensure_editing():
+            return []
+        specs = [{"page": s.page, "rect": s.rect, "name": s.name, "kind": s.kind, "multiline": s.multiline,
+                  "border": False} for s in found]
+        if not self._run(pdfforms.add_fields, specs, page=found[0].page):
+            return []
+        names = ", ".join(s.name for s in found[:6]) + (" …" if len(found) > 6 else "")
+        self.notice.emit(f"{len(found)} Feld(er) erkannt: {names} – reinklicken zum Ausfüllen")
+        self.canvas.overlays = [o for o in self.canvas.overlays if o[2] != "field"] + \
+            [(s.page, QRectF(s.rect[0], s.rect[1], s.rect[2] - s.rect[0], s.rect[3] - s.rect[1]), "field")
+             for s in found]
+        self.canvas.viewport().update()
+        QTimer.singleShot(2500, self._clear_field_overlay)
+        return found
+
+    def is_signature_placeholder(self, info) -> bool:
+        return getattr(info, "placeholder", "") == "signature"
+
+    def sign_placeholder(self, obj, value=None) -> bool:
+        """Klick in einen Unterschrifts-Platzhalter: Unterschrift zeichnen/wählen und genau dort einsetzen."""
+        if value is None:
+            from PySide6.QtWidgets import QDialog
+            from notex.ui.pdf_edit import SignatureDialog
+            dialog = SignatureDialog(self, self.path.parent)
+            if dialog.exec() != QDialog.DialogCode.Accepted:
+                return False
+            value = dialog.result_value()
+        if not self._ensure_editing():
+            return False
+        page, rect, name = obj.page, obj.rect, obj.field
+        if value[0] == "image":
+            from notex.ui.pdf_edit import image_to_bytes
+            image = value[1]
+            target = pdfforms.fit_rect(rect, image.width() / max(1, image.height()))
+            width, height, rgb, alpha = image_to_bytes(image)
+            return self._run(lambda d: pdfforms.add_image(pdfforms.remove_field(d, name), page, target, width,
+                                                          height, rgb, alpha), page=page)
+        _kind, strokes, aspect = value
+        target = pdfforms.fit_rect(rect, aspect)
+        return self._run(lambda d: pdfforms.add_strokes(pdfforms.remove_field(d, name), page, target, strokes),
+                         page=page)
 
     # ---- Formulare und Unterschrift ---------------------------------------------------------------------------
     def refresh_form(self) -> None:

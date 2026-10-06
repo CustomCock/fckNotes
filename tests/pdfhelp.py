@@ -125,3 +125,43 @@ def make_form_pdf() -> bytes:
     buffer = io.BytesIO()
     writer.write(buffer)
     return buffer.getvalue()
+
+
+WORKSHEET_LINES = [
+    # (x, y von oben, Text)
+    (72, 80, "Arbeitsblatt Bruchrechnung"),
+    (72, 120, "Name: ______________________"),
+    (330, 120, "Klasse:"),
+    (72, 150, "Datum:"),
+    (72, 180, "Thema:"),
+    (72, 260, "1. Kuerze den Bruch 6/8 so weit wie moeglich."),
+    (92, 300, "Ich habe die Aufgabe verstanden"),
+    (72, 760, "Unterschrift"),
+]
+
+
+def make_worksheet_pdf() -> bytes:
+    """Arbeitsblatt wie aus der Schule: Unterstriche im Text, gezeichnete Linie (Klasse), Kasten (Datum), freier
+    Platz (Thema), Kästchen (gezeichnet), Linie über „Unterschrift“."""
+    writer = PdfWriter()
+    font = writer._add_object(DictionaryObject({
+        NameObject("/Type"): NameObject("/Font"), NameObject("/Subtype"): NameObject("/Type1"),
+        NameObject("/BaseFont"): NameObject("/Helvetica"), NameObject("/Encoding"): NameObject("/WinAnsiEncoding")}))
+    page = writer.add_blank_page(595, 842)
+    ops = []
+    for x, y, text in WORKSHEET_LINES:
+        size = 16 if y == 80 else 11
+        ops.append(f"BT /F1 {size} Tf {x} {842 - y} Td ({text}) Tj ET")
+    ops += [
+        "0 0 0 RG 0.8 w 372 721 m 520 721 l S",            # Linie rechts von „Klasse:“ (y=121 von oben)
+        "0.5 w 112 686 200 20 re S",                        # Kasten rechts von „Datum:“ (y 136..156)
+        "0.8 w 72 541 10 10 re S",                          # Kästchen vor „Ich habe …“ (y 291..301)
+        "0.8 w 72 95 m 260 95 l S",                         # Linie über „Unterschrift“ (y=747)
+    ]
+    stream = DecodedStreamObject()
+    stream.set_data("\n".join(ops).encode("latin-1"))
+    page[NameObject("/Contents")] = writer._add_object(stream)
+    page[NameObject("/Resources")] = DictionaryObject({NameObject("/Font"): DictionaryObject({NameObject("/F1"): font})})
+    buffer = io.BytesIO()
+    writer.write(buffer)
+    return buffer.getvalue()

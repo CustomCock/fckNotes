@@ -56,6 +56,7 @@ class ObjectController(QObject):
         self._ghost = None                     # Rahmen während des Ziehens (Ansichts-Punkte)
         self.editor = None                     # offenes Eingabefeld auf der Seite
         self._editor_obj = None
+        self.highlight_fields = True           # Formularfelder in der Ansicht hinterlegen
 
     # ---- Daten ---------------------------------------------------------------------------------
     def invalidate(self) -> None:
@@ -175,6 +176,14 @@ class ObjectController(QObject):
             x0, y0, x1, y1 = rect
             return QRectF(target.x() + x0 * scale, target.y() + y0 * scale, (x1 - x0) * scale, (y1 - y0) * scale)
 
+        if self.highlight_fields:                         # wie Acrobat: Felder zart hinterlegen (nur Anzeige)
+            painter.save()
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(QColor(110, 140, 255, 38))
+            for other in self.objects(page_index):
+                if other.kind == "field":
+                    painter.drawRect(view(other.rect))
+            painter.restore()
         obj = self.selected
         if obj is None or obj.page != page_index:
             return

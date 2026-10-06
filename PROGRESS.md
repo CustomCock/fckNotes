@@ -591,6 +591,14 @@ Plan: T1 Objekte bearbeiten + direkt ausfüllen → T2 Felderkennung → T3 Diag
   (`ObjectController`: Griffe, Ziehen, Tasten, Cursor, Eingabe auf der Seite für Text/Auswahl, Klick für
   Kästchen/Optionen; Eingabe wandert bei Scroll/Größenänderung mit), `FieldDialog`. Objekte nur im
   Bearbeiten-Modus verschiebbar; Felder ausfüllen geht immer (schaltet Bearbeiten ein).
+- **T2 – erledigt.** Kern `notex/core/pdfdetect.py`: `page_graphics` (Content-Stream mit cm/q/Q, eine Ebene
+  Form-XObjects: waagerechte Linien, dünne Rechtecke als Linien, Kästen, kleine Quadrate), `detect` (Zeilen bilden,
+  Beschriftung = Schlüsselwort-Liste (de/en, Mehrwort zuerst) oder „…:“; Reihenfolge Linie rechts → Kasten rechts →
+  Linie darüber (nur bekannte Begriffe/Unterschrift) → Leerraum ≥ 60 pt (nur erstes Wort der Zeile); Kästchen aus
+  Quadraten/☐ mit Zeilentext als Name; Überlappung mit vorhandenen Objekten/Vorschlägen verworfen; Namen
+  durchnummeriert). Wörter liefert die UI über PDFium (`TOKEN_RE` trennt „Name:___“). `pdfforms.add_fields` legt
+  alles in einem Writer an; Unterschrift als Textfeld mit `/fckNotesKind /Signature` (+ /TU) → Klick in fckNotes
+  ersetzt es durch die Unterschrift. Erkannte Felder ohne Rahmen; Ansicht hinterlegt Felder (`pdf_highlight_fields`).
 
 ## Offen
 

@@ -34,6 +34,12 @@ Alle nennenswerten Änderungen an fckNotes (bis 1.17.0: Notex). Format angelehnt
   Größe, Farbe und Rahmen, Unterschrift ersetzen, Feld-Eigenschaften (Name, mehrzeilig, Schriftgröße).
 - **PDF-Formularfelder direkt auf der Seite ausfüllen**: Klick ins Feld öffnet die Eingabe genau dort (Enter bzw.
   Ctrl+Enter übernimmt, Esc verwirft), Kästchen und Optionsfelder schalten per Klick, Auswahllisten klappen auf.
+- **PDF: Formularfelder automatisch erkennen** (Knopf mit Scan-Symbol / Palette): Beschriftungen wie Name, Vorname,
+  Datum, Klasse, Kurs, Thema, Fach, Lehrkraft, Ort, Unterschrift … (oder alles mit Doppelpunkt) werden mit der Linie,
+  den Unterstrichen, dem Kasten oder dem freien Platz daneben zu Feldern; Linien über „Unterschrift“ oder „Ort, Datum“
+  ebenso; Kästchen (gezeichnet oder ☐) werden Kontrollkästchen mit dem Text daneben als Namen. Ein Schritt
+  (Ctrl+Z), keine Doppelten. Ins Unterschriftsfeld klicken öffnet den Unterschrift-Dialog und setzt sie genau dort ein.
+- PDF-Formularfelder werden in der Ansicht zart hinterlegt (abschaltbar), damit man sieht, wo man reinklicken kann.
 
 ### Behoben
 - PDF bearbeiten: Nach Löschen von Seiten/Anmerkungen blieben verwaiste Objekte (z. B. alte Lesezeichen-Ketten) in

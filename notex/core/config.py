@@ -54,6 +54,7 @@ DEFAULTS: dict[str, Any] = {
     "preview_sync_scroll": True,  # Vorschau scrollt mit dem Editor (geteilte Ansicht)
     "preview_mermaid": True,      # ```mermaid-Blöcke als Diagramm zeichnen (Vorschau)
     "pdf_backup_trash": True,     # PDF bearbeiten: vor dem ersten Überschreiben Original in den Papierkorb
+    "pdf_highlight_fields": True, # PDF: Formularfelder in der Ansicht zart hinterlegen (wie Acrobat)
     "theme": default_theme(), # das aktive Theme, komplett (Presets/Dateien sind nur Vorlagen)
     "spellcheck": {
         "enabled": True,

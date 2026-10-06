@@ -520,6 +520,12 @@ Der Stift schaltet eine zweite Leiste und die **Seitenleiste** (Miniaturen) ein.
 
 - **Direkt ausfüllen**: in ein Feld klicken und tippen – Enter übernimmt (mehrzeilig: Ctrl+Enter), Esc verwirft.
   Kästchen und Optionsfelder schalten per Klick, Auswahllisten klappen auf. Ziehen am Feld verschiebt es stattdessen.
+- **Felder automatisch erkennen** (Scan-Knopf oder Palette › PDF: Formularfelder automatisch erkennen): fckNotes
+  sucht Beschriftungen wie *Name, Vorname, Datum, Klasse, Kurs, Thema, Fach, Lehrkraft, Ort, Unterschrift* (und alles
+  mit Doppelpunkt) und legt daneben ein Feld an – auf der Linie, den Unterstrichen, im Kasten oder im freien Platz.
+  Steht die Beschriftung unter einer Linie (*Unterschrift*, *Ort, Datum*), kommt das Feld auf die Linie; Kästchen
+  (gezeichnet oder ☐) werden Kontrollkästchen. Danach einfach reinklicken. Ein Klick ins Unterschriftsfeld öffnet den
+  Unterschrift-Dialog und setzt die Unterschrift genau dort ein. Falsch erkannt? Feld anklicken, Entf.
 - **Ausfüllen in der Liste**: Klemmbrett-Knopf (oder Palette › PDF: Formular ausfüllen) zeigt rechts alle Felder – Text,
   Kontrollkästchen, Optionsfelder, Auswahllisten. „Übernehmen“ schreibt alle Änderungen in einem Schritt; Klick auf
   einen Feldnamen springt zum Feld. Schreibgeschützte Felder bleiben gesperrt. Feldwerte sind jetzt auch in der
@@ -1272,6 +1278,7 @@ Alternativ per Docker: `docker run -d -p 8081:8010 erikvl87/languagetool` (dann 
 | Doppelklick (PDF, Objekt) | Bearbeiten: Text mit Stil, Notiz, Unterschrift ersetzen |
 | Klick in ein Formularfeld | Direkt auf der Seite ausfüllen (Enter / Ctrl+Enter übernimmt, Esc verwirft) |
 | Palette › PDF: Ausgewähltes bearbeiten / löschen | Wie Doppelklick bzw. Entf |
+| Palette › PDF: Formularfelder automatisch erkennen | Name, Datum, Klasse, Thema, Unterschrift … als Felder anlegen |
 | Palette › PDF: Werkzeug Schwärzen | Bereiche zum Schwärzen aufziehen (Esc beendet) |
 | Palette › PDF: Markierung / Alle Suchtreffer schwärzen | Text bzw. jedes Vorkommen des Suchbegriffs vormerken |
 | Palette › PDF: Schwärzen anwenden | Vorgemerktes endgültig schwärzen, prüfen, unter neuem Namen speichern |
