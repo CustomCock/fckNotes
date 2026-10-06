@@ -617,6 +617,23 @@ Plan: T1 Objekte bearbeiten + direkt ausfüllen → T2 Felderkennung → T3 Diag
   komprimiert). UI: Editor „draw.io …“ (`import_drawio` setzt unter den Inhalt, `export_drawio`), PdfPage
   `import_drawio` (Editor dazwischen, oben links 36 pt) / `export_drawio`, Palette + Rechtsklick.
   **Grenzen:** Wegpunkte, Bilder, Drehung, Schriftarten, Ebenen werden nicht übernommen (eigenes Routing).
+- **Nachbesserung nach Test durch Besitzer:** (1) freie Verbinder-Enden: `model.align_point`/`align_free_ends`
+  (Toleranz 8 px, Shift erzwingt Achse), Editor rastet zusätzlich an freie Enden anderer Linien ein; (2) Formen-
+  Symbole mit `ink=COLORS.text` (Schwarz → Textfarbe, Weiß → durchsichtig); (3) Import lehnte SVG-Exporte ab:
+  **Entscheidung:** DOCTYPE ohne internen Teil (`[...]`) entfernen statt ablehnen – ENTITY/interner DTD-Teil bleibt
+  gesperrt, expat lädt keine externen DTDs → kein XXE/Billion Laughs; „Bild einfügen“ als Ersatz daher unnötig.
+  Neu: `drawio.load(bytes)` für `.drawio.png` (tEXt/zTXt/iTXt „mxfile“) und HTML-Export (`data-mxgraph`).
+- **UML vollständig (Wunsch Besitzer: „alle UML-Symbole“).** 41 Formen in `model.GROUPS` (Leiste gruppiert, 3 Spalten,
+  scrollbar), `CLASS_KINDS` (Klasse/Schnittstelle/Aufzählung/Objekt teilen Abschnitte + `ClassDialog(kind)`),
+  `CONTAINER_KINDS` (Rahmen, Swimlane, Systemgrenze, Lebenslinie: beim Anlegen nach vorne in die Liste, gezeichnet
+  vor den Verbindern), `LABEL_BELOW`, `ROUND_KINDS`. Neue Spitzen dot/cross/containment, 13 neue Beziehungen
+  (Stereotyp-Beschriftung fällt beim Wechsel weg). **Entscheidung:** Lebenslinie/Aktivierung haben freie
+  Andockhöhen (`y0.35`, `wy0.35`/`ey0.35` → `free_port`), weil feste Punkte Nachrichten schief machen;
+  `level_message` macht fast waagerechte Nachrichten waagerecht. draw.io: `fckNotesKind=` im Stil für exakten
+  Rücktausch, draw.io-eigene Formen über `NATIVE_SHAPES`, swimlane ohne stackLayout = Swimlane, «interface»-Zeile →
+  Schnittstelle, unterstrichen → Objekt, Rahmen-Bedingungen als Text-Kinder.
+  **Bewusst nicht:** Timing-Diagramm-Verläufe, Kommunikationsdiagramm-Nummerierung, Profile/Metaklassen als eigene
+  Formen (mit Rechteck/Klasse + Stereotyp-Text darstellbar).
 
 ## Offen
 

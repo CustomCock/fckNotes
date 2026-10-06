@@ -1390,7 +1390,7 @@ class PdfPage(ViewerPage):
             return False
         if path is None:
             path, _ = QFileDialog.getOpenFileName(self, "draw.io-Datei einfügen", str(self.path.parent),
-                                                  "draw.io (*.drawio *.drawio.xml *.xml *.drawio.svg *.svg)")
+                                                  "draw.io (*.drawio *.xml *.svg *.png *.html)")
             if not path:
                 return False
         diagram = read_drawio_file(self, path, file_page)

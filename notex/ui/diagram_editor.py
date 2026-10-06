@@ -19,7 +19,7 @@ from pathlib import Path
 from PySide6.QtCore import QPointF, QRectF, QSize, Qt, Signal
 from PySide6.QtGui import QColor, QImage, QKeySequence, QPainter, QPen
 from PySide6.QtWidgets import (QCheckBox, QColorDialog, QComboBox, QDialog, QDialogButtonBox, QFileDialog,
-                               QFormLayout, QHBoxLayout, QInputDialog, QLabel, QLineEdit, QMenu, QMessageBox,
+                               QFormLayout, QGridLayout, QHBoxLayout, QInputDialog, QLabel, QLineEdit, QMenu, QMessageBox,
                                QPlainTextEdit, QPushButton, QScrollArea, QSpinBox, QToolButton, QVBoxLayout, QWidget)
 
 from notex.core.diagram import model as M
@@ -33,9 +33,11 @@ PORT_COLOR = "#2f6fdf"
 SNAP = 5.0
 HANDLE = 4.0
 ARROW_LABELS = {"none": "ohne", "arrow": "Pfeil", "open": "offener Pfeil", "triangle": "Dreieck (Vererbung)",
-                "diamond": "Raute hohl (Aggregation)", "diamond_filled": "Raute voll (Komposition)", "circle": "Kreis"}
-PALETTE_ORDER = ("class", "rect", "rounded", "ellipse", "actor", "diamond", "note", "text", "package", "database",
-                 "parallelogram", "circle", "endstate")
+                "diamond": "Raute hohl (Aggregation)", "diamond_filled": "Raute voll (Komposition)", "circle": "Kreis",
+                "dot": "Punkt (verloren/gefunden)", "cross": "× (nicht navigierbar)",
+                "containment": "⊕ (Enthaltensein)"}
+PALETTE_ORDER = tuple(kind for _group, kinds in M.GROUPS for kind in kinds)
+PALETTE_COLUMNS = 3
 
 
 def _snap(value: float, on: bool) -> float:
@@ -138,7 +140,7 @@ class DiagramCanvas(QWidget):
     # ---- Treffer ------------------------------------------------------------------------------------
     def shape_at(self, x: float, y: float) -> M.Shape | None:
         for shape in reversed(self.model.shapes):
-            extra = 14 if shape.kind == "actor" else 0
+            extra = 14 if shape.kind in M.LABEL_BELOW and shape.text else 0
             if shape.x - 2 <= x <= shape.x + shape.w + 2 and shape.y - 2 <= y <= shape.y + shape.h + extra:
                 return shape
         return None
@@ -201,11 +203,12 @@ class DiagramCanvas(QWidget):
         if self.tool == "connect":
             shape = self.shape_at(x, y)
             port = self.port_at(x, y)
-            if port is not None:
+            if port is not None and port[0].kind in M.FREE_PORT_KINDS:
+                self._start_connect(port[0], self._attach(port[0], x, y), x, y)
+            elif port is not None:
                 self._start_connect(port[0], port[1], x, y)
             elif shape is not None:
-                name, _d = M.nearest_port(shape, x, y)
-                self._start_connect(shape, name, x, y)
+                self._start_connect(shape, self._attach(shape, x, y), x, y)
             else:
                 self._drag = {"mode": "connect", "source": M.End(None, None, _snap(x, snap), _snap(y, snap)),
                               "now": (x, y)}
@@ -226,7 +229,8 @@ class DiagramCanvas(QWidget):
             return
         port = self.port_at(x, y, [s for s in self.model.shapes if s.id == self.hover])
         if port is not None and not shift:
-            self._start_connect(port[0], port[1], x, y)
+            name = self._attach(port[0], x, y) if port[0].kind in M.FREE_PORT_KINDS else port[1]
+            self._start_connect(port[0], name, x, y)
             return
         shape = self.shape_at(x, y)
         if shape is not None:
@@ -282,6 +286,9 @@ class DiagramCanvas(QWidget):
             if mode in ("connect", "endpoint"):
                 shape = self.shape_at(x, y)
                 self.hover = shape.id if shape is not None else None
+                if shape is None and self.port_at(x, y) is None:      # frei: gerade ausrichten wie beim Loslassen
+                    drag["now"] = M.align_point((_snap(x, snap), _snap(y, snap)), self._drag_anchor(drag),
+                                                self.tolerance(8), self._shift(event))
         elif mode == "move":
             dx, dy = x - drag["start"][0], y - drag["start"][1]
             if not drag["saved"]:
@@ -340,7 +347,7 @@ class DiagramCanvas(QWidget):
                 shape.x, shape.y = _snap(shape.x, self.snap), _snap(shape.y, self.snap)
             else:
                 shape = self.model.add_shape(kind, min(x0, x1), min(y0, y1), abs(x1 - x0), abs(y1 - y0))
-            if kind == "class":
+            if kind in M.CLASS_KINDS:
                 shape.h = max(shape.h, render.min_class_height(shape))
             self.set_tool("select")
             self.select([shape.id])
@@ -357,6 +364,10 @@ class DiagramCanvas(QWidget):
                 return
             self.checkpoint()
             conn = self.model.connect(source, target, self.relation, route=self.route_mode)
+            M.align_free_ends(self.model, conn, self.tolerance(8), self._shift(event))
+            M.level_message(self.model, conn, self.tolerance(10))
+            self._join_free_end(conn.source, conn.id)
+            self._join_free_end(conn.target, conn.id)
             self.select([conn.id])
             self._changed()
         elif mode == "endpoint":
@@ -364,6 +375,12 @@ class DiagramCanvas(QWidget):
             if conn is not None:
                 self.checkpoint()
                 setattr(conn, drag["which"], self._end_at(x, y, exclude=None))
+                moved = getattr(conn, drag["which"])
+                if moved.shape is None:                           # nur das gezogene Ende ausrichten
+                    other = conn.target if drag["which"] == "source" else conn.source
+                    moved.x, moved.y = M.align_point((moved.x, moved.y), M.anchor(self.model, other),
+                                                     self.tolerance(8), self._shift(event))
+                    self._join_free_end(moved, conn.id)
                 self._changed()
         elif mode == "band":
             (x0, y0), (x1, y1) = drag["start"], drag["now"]
@@ -378,15 +395,49 @@ class DiagramCanvas(QWidget):
             self._changed()
         self.update()
 
+    @staticmethod
+    def _shift(event) -> bool:
+        return bool(event.modifiers() & Qt.KeyboardModifier.ShiftModifier)
+
+    def _drag_anchor(self, drag: dict) -> tuple[float, float]:
+        """Gegenende beim Ziehen eines Verbinders (für die Ausrichtung)."""
+        if drag["mode"] == "connect":
+            return M.anchor(self.model, drag["source"])
+        conn = self.model.connector(drag["conn"])
+        return M.anchor(self.model, conn.target if drag["which"] == "source" else conn.source)
+
+    def _join_free_end(self, end: M.End, skip: str | None = None) -> None:
+        """Freies Ende auf ein vorhandenes freies Linienende einrasten (Linien-Ketten stoßen sauber aneinander)."""
+        if end.shape is not None:
+            return
+        tolerance = self.tolerance(8)
+        for conn in self.model.connectors:
+            if conn.id == skip:
+                continue
+            for other in (conn.source, conn.target):
+                if other.shape is None and other is not end and \
+                        math.dist((other.x, other.y), (end.x, end.y)) <= tolerance:
+                    end.x, end.y = other.x, other.y
+                    return
+
     def _end_at(self, x: float, y: float, exclude=None) -> M.End:
+        shape = self.shape_at(x, y)
+        if shape is not None and shape.kind in M.FREE_PORT_KINDS:     # genau auf Höhe, nicht am Raster-Punkt
+            return M.End(shape.id, self._attach(shape, x, y))
         port = self.port_at(x, y)
         if port is not None:
             return M.End(port[0].id, port[1])
         shape = self.shape_at(x, y)
         if shape is not None:
-            name, _d = M.nearest_port(shape, x, y)
-            return M.End(shape.id, name)
+            return M.End(shape.id, self._attach(shape, x, y))
         return M.End(None, None, _snap(x, self.snap), _snap(y, self.snap))
+
+    @staticmethod
+    def _attach(shape: M.Shape, x: float, y: float) -> str:
+        """Andockpunkt beim Loslassen auf einer Form: Lebenslinie/Aktivierung genau auf Höhe, sonst der nächste."""
+        if shape.kind in M.FREE_PORT_KINDS:
+            return M.free_port_name(shape, x, y)
+        return M.nearest_port(shape, x, y)[0]
 
     def mouseDoubleClickEvent(self, event) -> None:
         x, y = self.to_model(event.position())
@@ -401,13 +452,14 @@ class DiagramCanvas(QWidget):
     # ---- Text bearbeiten ------------------------------------------------------------------------------
     def edit_shape_text(self, shape: M.Shape, text: str | None = None) -> bool:
         if text is None:
-            dialog = ClassDialog(self, shape.text) if shape.kind == "class" else ShapeTextDialog(self, shape.text)
+            dialog = ClassDialog(self, shape.text, shape.kind) if shape.kind in M.CLASS_KINDS else \
+                ShapeTextDialog(self, shape.text)
             if dialog.exec() != QDialog.DialogCode.Accepted:
                 return False
             text = dialog.text()
         self.checkpoint()
         shape.text = text
-        if shape.kind == "class":
+        if shape.kind in M.CLASS_KINDS:
             shape.h = max(shape.h, render.min_class_height(shape))
         self._changed()
         return True
@@ -680,9 +732,16 @@ class ShapeTextDialog(QDialog):
 class ClassDialog(QDialog):
     """UML-Klasse: Name, Attribute, Methoden getrennt eingeben (gespeichert mit „--“-Trennzeilen)."""
 
-    def __init__(self, parent, text: str) -> None:
+    TITLES = {"class": ("UML-Klasse", "Attribute", "Methoden"),
+              "interface": ("Schnittstelle «interface»", "Attribute", "Methoden"),
+              "enum": ("Aufzählung «enumeration»", "Werte", "Methoden"),
+              "object": ("Objekt", "Attributwerte", "")}
+
+    def __init__(self, parent, text: str, kind: str = "class") -> None:
         super().__init__(parent)
-        self.setWindowTitle("UML-Klasse")
+        self.kind = kind
+        title, first, second = self.TITLES.get(kind, self.TITLES["class"])
+        self.setWindowTitle(title)
         sections = (text.split("\n--\n") + ["", "", ""])[:3]
         if "\n--\n" not in text:
             sections = M.Shape("x", "class", 0, 0, 1, 1, text).class_sections() + ["", ""]
@@ -694,10 +753,15 @@ class ClassDialog(QDialog):
         for edit in (self.attributes, self.methods):
             edit.setPlaceholderText("je Zeile eins, z. B.  - name: String   /   + gruessen(): void")
         form = QFormLayout()
+        if kind == "object":
+            self.name.setPlaceholderText("objekt : Klasse")
+            self.attributes.setPlaceholderText("je Zeile eins, z. B.  name = \"Anna\"")
         form.addRow("Name", self.name)
-        form.addRow("", self.abstract)
-        form.addRow("Attribute", self.attributes)
-        form.addRow("Methoden", self.methods)
+        if kind == "class":
+            form.addRow("", self.abstract)
+        form.addRow(first, self.attributes)
+        if second:
+            form.addRow(second, self.methods)
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
@@ -706,8 +770,12 @@ class ClassDialog(QDialog):
         layout.addWidget(buttons)
 
     def text(self) -> str:
-        name = ("{abstract}\n" if self.abstract.isChecked() else "") + self.name.text().strip()
-        return f"{name}\n--\n{self.attributes.toPlainText().rstrip()}\n--\n{self.methods.toPlainText().rstrip()}"
+        abstract = self.kind == "class" and self.abstract.isChecked()
+        name = ("{abstract}\n" if abstract else "") + self.name.text().strip()
+        methods = self.methods.toPlainText().rstrip()
+        if self.kind in ("enum", "object") and not methods:     # kein leerer Methoden-Abschnitt
+            return f"{name}\n--\n{self.attributes.toPlainText().rstrip()}"
+        return f"{name}\n--\n{self.attributes.toPlainText().rstrip()}\n--\n{methods}"
 
 
 class ConnectorDialog(QDialog):
@@ -741,7 +809,7 @@ def read_drawio_file(parent, path: str, page: int | None = None) -> M.Diagram | 
         file = Path(path)
         if file.stat().st_size > drawio.MAX_FILE:
             raise drawio.DrawioError("Datei zu groß")
-        text = file.read_text(encoding="utf-8", errors="replace")
+        text = drawio.load(file.read_bytes())
         names = drawio.page_names(text)
         if page is None:
             page = 0
@@ -783,19 +851,36 @@ class DiagramEditor(QDialog):
         self.scroll.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         # Formen-Leiste
-        side = QVBoxLayout()
-        side.setSpacing(4)
+        side_widget = QWidget()
+        side_layout = QVBoxLayout(side_widget)
+        side_layout.setContentsMargins(0, 0, 4, 0)
+        side_layout.setSpacing(2)
         self.shape_buttons: dict[str, QToolButton] = {}
-        for kind in PALETTE_ORDER:
-            button = QToolButton()
-            button.setIcon(shape_icon(kind))
-            button.setIconSize(QSize(28, 28))
-            button.setToolTip(M.LABELS[kind] + " – klicken, dann auf die Fläche klicken oder aufziehen")
-            button.setCheckable(True)
-            button.clicked.connect(lambda _c=False, k=kind: self.canvas.set_tool(k))
-            side.addWidget(button)
-            self.shape_buttons[kind] = button
-        side.addStretch(1)
+        ink = COLORS.text                                               # Theme-Textfarbe: hell und dunkel lesbar
+        for group, kinds in M.GROUPS:                                   # nach Diagrammart gruppiert
+            header = QLabel(group)
+            header.setObjectName("SettingsNote")
+            side_layout.addWidget(header)
+            grid = QGridLayout()
+            grid.setSpacing(2)
+            grid.setAlignment(Qt.AlignmentFlag.AlignLeft)              # kurze Gruppen nicht auseinanderziehen
+            for number, kind in enumerate(kinds):
+                button = QToolButton()
+                button.setIcon(shape_icon(kind, ink=ink))
+                button.setIconSize(QSize(26, 26))
+                button.setToolTip(M.LABELS[kind] + " – klicken, dann auf die Fläche klicken oder aufziehen")
+                button.setCheckable(True)
+                button.clicked.connect(lambda _c=False, k=kind: self.canvas.set_tool(k))
+                grid.addWidget(button, number // PALETTE_COLUMNS, number % PALETTE_COLUMNS)
+                self.shape_buttons[kind] = button
+            side_layout.addLayout(grid)
+        side_layout.addStretch(1)
+        side = QScrollArea()
+        side.setWidget(side_widget)
+        side.setWidgetResizable(True)
+        side.setFrameShape(QScrollArea.Shape.NoFrame)
+        side.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        side.setFixedWidth(side_widget.sizeHint().width() + 14)
 
         # Werkzeuge und Eigenschaften
         self.select_button = IconButton("mouse-pointer-2", "Auswählen / verschieben (Esc)")
@@ -890,7 +975,7 @@ class DiagramEditor(QDialog):
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         body = QHBoxLayout()
-        body.addLayout(side)
+        body.addWidget(side)
         body.addWidget(self.scroll, 1)
         layout = QVBoxLayout(self)
         layout.addLayout(top)
@@ -953,6 +1038,8 @@ class DiagramEditor(QDialog):
         if conns:
             self.canvas.checkpoint()
             for c in conns:
+                if "label" not in M.RELATIONS[name] and c.label.startswith("«") and c.label.endswith("»"):
+                    c.label = ""                                    # «include» o. Ä. gehört zur alten Beziehung
                 for key, value in M.RELATIONS[name].items():
                     setattr(c, key, value)
             self.canvas._changed()
@@ -979,7 +1066,7 @@ class DiagramEditor(QDialog):
         self.canvas.checkpoint()
         for s in shapes:
             setattr(s, attr, value)
-            if s.kind == "class":
+            if s.kind in M.CLASS_KINDS:
                 s.h = max(s.h, render.min_class_height(s))
         self.canvas._changed()
 
@@ -1006,7 +1093,7 @@ class DiagramEditor(QDialog):
         """draw.io-Datei lesen (bei mehreren Seiten fragen) und in die Fläche einsetzen."""
         if path is None:
             path, _ = QFileDialog.getOpenFileName(self, "draw.io-Datei öffnen", str(Path.home()),
-                                                  "draw.io (*.drawio *.drawio.xml *.xml *.drawio.svg *.svg)")
+                                                  "draw.io (*.drawio *.xml *.svg *.png *.html)")
             if not path:
                 return []
         part = read_drawio_file(self, path, page)

@@ -544,29 +544,48 @@ Der Stift schaltet eine zweite Leiste und die **Seitenleiste** (Miniaturen) ein.
 aufziehen (oder klicken) – es öffnet sich ein Zeichen-Editor im Stil von draw.io, mit der Seite blass im Hintergrund,
 damit das Diagramm genau in den vorgesehenen Platz passt (außerhalb der Seite grau).
 
-- **Formen** links: Rechteck, abgerundet, Ellipse, Raute (Entscheidung), Start/Ende (Kreis), Notiz, Text, Akteur,
-  UML-Klasse, Paket, Datenbank, Parallelogramm (Ein-/Ausgabe). Klicken und auf die Fläche klicken oder aufziehen.
+- **Formen** links, nach Diagrammart gruppiert (Tooltip nennt den UML-Namen); klicken und auf die Fläche klicken
+  oder aufziehen:
+  - *Allgemein*: Rechteck, abgerundet, Ellipse, Raute, Parallelogramm, Notiz/Kommentar, Text, Datenbank,
+    **Rahmen / kombiniertes Fragment** (`alt`, `opt`, `loop`, `sd …`; weitere Abschnitte mit `--` = Operanden mit
+    Bedingung, gestrichelt getrennt).
+  - *Klassen & Objekte*: Klasse, **Schnittstelle «interface»**, **Aufzählung «enumeration»**, **Objekt**
+    (Name unterstrichen), Paket, **bereitgestellte (Lolli) und benötigte Schnittstelle (Buchse)**, **Port**.
+  - *Komponenten & Verteilung*: **Komponente**, **Knoten** (3D-Kasten, z. B. «device»), **Artefakt**.
+  - *Use Case*: Akteur, **Systemgrenze**, **Boundary / Control / Entity**.
+  - *Aktivität*: Start, Ende, **Ablaufende**, **Gabelung/Vereinigung (Balken)**, **Signal senden**, **Ereignis
+    empfangen**, **Zeitereignis**, **Aktivitätsbereich (Swimlane)**.
+  - *Zustand*: **Zustand** (Name, `--`, `entry / …`), **Historie flach/tief (H, H\*)**, **Ein-/Austrittspunkt**,
+    **Terminierung / Zerstörung (×)**.
+  - *Sequenz*: **Lebenslinie** und **Aktivierung**. Nachrichten docken genau auf der Höhe an, wo du loslässt, und
+    werden waagerecht, wenn sie fast waagerecht sind.
+  Rahmen, Bereiche, Systemgrenzen und Lebenslinien liegen automatisch hinten.
 - **Andockpunkte**: Fährt die Maus über eine Form, erscheinen blaue Kreuze. Von einem Kreuz aus ziehen = Verbinder,
   der an diesem Punkt festhängt (auch Werkzeug „Verbinden“: von Form zu Form ziehen). Verschiebt man die Form,
   wandern die Linien mit. Endpunkte einer gewählten Linie lassen sich auf einen anderen Punkt ziehen oder frei setzen.
-- **Beziehung** wählen (gilt für neue und markierte Linien): Linie, Pfeil, Assoziation, gerichtete Assoziation,
-  Vererbung, Realisierung, Abhängigkeit, Aggregation, Komposition, Nachricht, Antwort – oder Spitzen am Anfang/Ende,
-  gestrichelt und Verlauf (rechtwinklig/gerade) einzeln einstellen.
+- **Beziehung** wählen (gilt für neue und markierte Linien): Linie, Pfeil, Assoziation, gerichtete und nicht
+  navigierbare Assoziation (×), Vererbung, Realisierung, Abhängigkeit, Aggregation, Komposition, Enthaltensein (⊕),
+  «include», «extend», «import», «use», Steuerfluss/Übergang, Nachricht synchron/asynchron, Antwort, «create»,
+  verlorene/gefundene Nachricht – oder Spitzen am Anfang/Ende, gestrichelt und Verlauf (rechtwinklig/gerade)
+  einzeln einstellen.
 - **Doppelklick** auf eine Form bearbeitet den Text, bei Klassen Name/abstrakt/Attribute/Methoden in eigenen
   Feldern; auf eine Linie: Beschriftung und Multiplizitäten an beiden Enden (`1`, `*` …).
 - Füllung, Linienfarbe, Schriftgröße, fett; **Vorlage …** setzt ein fertiges Klassen-, Use-Case-, Aktivitäts-,
-  Fluss- oder Sequenzdiagramm ein, das danach frei bearbeitbar ist. Raster (5 pt, `Alt` beim Ziehen = ohne),
+  Fluss-, Sequenz-, Zustands-, Komponenten-, Verteilungs- oder Objektdiagramm ein, das danach frei bearbeitbar ist. Raster (5 pt, `Alt` beim Ziehen = ohne),
   Mehrfachauswahl per Rahmen oder Shift, `Ctrl+C`/`Ctrl+V`/`Ctrl+D`, `Ctrl+Z`/`Ctrl+Y`, `Entf`, Pfeiltasten.
 - **Einfügen** legt das Diagramm als Vektorgrafik auf die Seite (scharf beim Zoomen und Drucken, sieht in Acrobat
   und Browsern gleich aus). Passt es nicht auf die Seite, wird es verkleinert. Das Modell wird mit in der PDF
   gespeichert: **Doppelklick** auf das Diagramm öffnet es später wieder im Editor; mit „Auswählen“ verschieben,
   an den Griffen skalieren, `Entf` löscht. Beim Einbrennen bleibt nur das Bild.
-- **draw.io-Dateien**: Knopf „draw.io …“ im Editor öffnet eine `.drawio`-Datei (auch komprimiert, `.drawio.svg`;
-  bei mehreren Seiten wählen) und setzt sie unter den vorhandenen Inhalt, oder speichert das Diagramm als `.drawio`.
+- **Gerade Linien**: Ein frei endender Verbinder rastet senkrecht bzw. waagerecht zum anderen Ende ein, wenn er
+  fast gerade gezogen wird (Shift = immer gerade), und an vorhandene freie Linienenden an – Ketten stoßen sauber an.
+- **draw.io-Dateien**: Knopf „draw.io …“ im Editor öffnet eine `.drawio`-Datei (auch komprimiert, `.drawio.svg`,
+  `.drawio.png` mit eingebettetem Diagramm, HTML-Export; bei mehreren Seiten wählen) und setzt sie unter den vorhandenen Inhalt, oder speichert das Diagramm als `.drawio`.
   Direkt im PDF: Palette › „PDF: draw.io-Datei einfügen …“ bzw. Rechtsklick auf ein Diagramm › „Als draw.io-Datei
   speichern …“. Übernommen werden Formen (unbekannte als Rechteck), UML-Klassen mit Attributen/Methoden, Andockpunkte,
   Pfeilspitzen, gestrichelt, Farben, Beschriftungen und Multiplizitäten; Wegpunkte, Bilder, Drehung und Schriftarten
-  nicht (fckNotes führt Linien selbst). Dateien mit DOCTYPE/ENTITY werden aus Sicherheitsgründen abgelehnt.
+  nicht (fckNotes führt Linien selbst). Dateien mit eigenen XML-Entity-Definitionen werden aus Sicherheitsgründen
+  abgelehnt (draw.io erzeugt solche nie).
 
 ![PDF bearbeiten: Markierung, Notiz, Text](docs/72-pdf-bearbeiten.png)
 
@@ -1312,6 +1331,7 @@ Alternativ per Docker: `docker run -d -p 8081:8010 erikvl87/languagetool` (dann 
 | Palette › PDF: draw.io-Datei einfügen / Diagramm als draw.io-Datei speichern | Austausch mit draw.io (diagrams.net) |
 | Ctrl+C / Ctrl+V / Ctrl+D / Entf (Diagramm-Editor) | Kopieren / Einfügen / Duplizieren / Löschen |
 | Alt beim Ziehen (Diagramm-Editor) | Ohne Raster platzieren |
+| Shift beim Ziehen eines Verbinders (Diagramm-Editor) | Freies Ende exakt senkrecht/waagerecht |
 | Palette › PDF: Werkzeug Schwärzen | Bereiche zum Schwärzen aufziehen (Esc beendet) |
 | Palette › PDF: Markierung / Alle Suchtreffer schwärzen | Text bzw. jedes Vorkommen des Suchbegriffs vormerken |
 | Palette › PDF: Schwärzen anwenden | Vorgemerktes endgültig schwärzen, prüfen, unter neuem Namen speichern |

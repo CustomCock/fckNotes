@@ -7,18 +7,24 @@ draw.io speichert `<mxfile>` mit einer oder mehreren Seiten (`<diagram>`); der S
 Übernommen wird, was das eigene Modell kennt: Formen werden auf die nächstliegende eigene Form abgebildet
 (unbekannte → Rechteck), UML-Klassen (swimlane + Zeilen) zu Klassen mit Abschnitten, Pfeilspitzen, gestrichelt,
 Farben, Beschriftungen und Multiplizitäten. Nicht übernommen: Wegpunkte (eigenes Routing), Bilder, Drehung,
-Schriftarten, Ebenen-Sichtbarkeit. Beim Lesen werden DOCTYPE/ENTITY abgelehnt und Größen begrenzt.
+Schriftarten, Ebenen-Sichtbarkeit.
+
+Sicherheit: Eine DOCTYPE-Zeile ohne eigene Definitionen (wie in SVG-Exporten) ist harmlos und wird entfernt; eigene
+DTD-Teile (`[...]`, ENTITY) werden abgelehnt – damit gibt es weder „Billion Laughs“ noch externe Entities (XXE).
+Externe DTDs lädt der Parser ohnehin nie. Größen sind begrenzt (Datei, entpackte Seiten, Elemente).
 """
 from __future__ import annotations
 
 import base64
 import html
+import json
 import re
 import xml.etree.ElementTree as ET
 import zlib
 from urllib.parse import quote, unquote
 
-from notex.core.diagram.model import PORTS, _SIDE, Connector, Diagram, End, Shape, new_id, nearest_port
+from notex.core.diagram.model import (CLASS_KINDS, CONTAINER_KINDS, PORTS, SHAPE_KINDS, _SIDE, Connector, Diagram,
+                                      FREE_PORT_KINDS, End, Shape, free_port_name, new_id, nearest_port)
 
 MAX_FILE = 20 * 1024 * 1024          # 20 MB Datei
 MAX_INFLATED = 50 * 1024 * 1024      # 50 MB entpackt je Seite
@@ -30,10 +36,14 @@ class DrawioError(ValueError):
 
 
 # ---- Lesen: Datei → Seiten ------------------------------------------------------------------------------------
+_PLAIN_DOCTYPE_RE = re.compile(r"<!DOCTYPE\s[^\[\]<>]*>", re.I)
+
+
 def _parse_xml(text: str) -> ET.Element:
+    text = _PLAIN_DOCTYPE_RE.sub("", text, count=1)            # <!DOCTYPE svg PUBLIC "…" "…"> – nur ein Verweis
     upper = text.upper()
     if "<!DOCTYPE" in upper or "<!ENTITY" in upper:
-        raise DrawioError("Datei enthält DOCTYPE/ENTITY – aus Sicherheitsgründen nicht gelesen")
+        raise DrawioError("Datei definiert eigene XML-Entities (ENTITY) – aus Sicherheitsgründen nicht gelesen")
     try:
         return ET.fromstring(text)
     except ET.ParseError as error:
@@ -53,6 +63,67 @@ def _inflate(data: str) -> str:
         if isinstance(error, DrawioError):
             raise
         raise DrawioError(f"Komprimierte Seite nicht lesbar ({error})") from error
+
+
+_PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
+_MXGRAPH_RE = re.compile(r"""data-mxgraph\s*=\s*(["'])(.*?)\1""", re.S)
+
+
+def _png_text(data: bytes) -> str:
+    """draw.io-PNG: Diagramm steckt im Text-Block „mxfile“ (tEXt/zTXt/iTXt, URL-kodiert)."""
+    pos = len(_PNG_SIGNATURE)
+    while pos + 8 <= len(data):
+        length = int.from_bytes(data[pos:pos + 4], "big")
+        kind = data[pos + 4:pos + 8]
+        body = data[pos + 8:pos + 8 + length]
+        pos += 12 + length
+        if kind not in (b"tEXt", b"zTXt", b"iTXt"):
+            if kind == b"IEND":
+                break
+            continue
+        keyword, _sep, rest = body.partition(b"\0")
+        if keyword != b"mxfile":
+            continue
+        try:
+            if kind == b"zTXt":
+                rest = _bounded_inflate(rest[1:], zlib.MAX_WBITS)
+            elif kind == b"iTXt":
+                compressed = rest[:1] == b"\x01"
+                rest = rest[2:].split(b"\0", 2)[-1]         # Sprache\0übersetztes Schlüsselwort\0Text
+                if compressed:
+                    rest = _bounded_inflate(rest, zlib.MAX_WBITS)
+            return unquote(rest.decode("utf-8" if kind == b"iTXt" else "latin-1"))
+        except (zlib.error, UnicodeDecodeError) as error:
+            raise DrawioError(f"PNG-Diagrammblock nicht lesbar ({error})") from error
+    raise DrawioError("PNG ohne eingebettetes draw.io-Diagramm (in draw.io beim PNG-Export "
+                      "„Kopie des Diagramms einbeziehen“ anhaken)")
+
+
+def _bounded_inflate(raw: bytes, wbits: int) -> bytes:
+    inflater = zlib.decompressobj(wbits)
+    out = inflater.decompress(raw, MAX_INFLATED)
+    if len(out) >= MAX_INFLATED or inflater.unconsumed_tail:
+        raise DrawioError("Diagramm zu groß")
+    return out
+
+
+def load(data: bytes) -> str:
+    """Dateiinhalt → draw.io-XML: .drawio/.xml, .drawio.svg, .drawio.png und draw.io-HTML-Export."""
+    if len(data) > MAX_FILE:
+        raise DrawioError("Datei zu groß")
+    if data.startswith(_PNG_SIGNATURE):
+        return _png_text(data)
+    text = data.decode("utf-8-sig", errors="replace")
+    if "<mxfile" not in text and "<mxGraphModel" not in text and "data-mxgraph" in text:
+        match = _MXGRAPH_RE.search(text)                     # HTML-Export: JSON mit dem XML im Attribut
+        try:
+            config = json.loads(html.unescape(match.group(2))) if match else {}
+        except ValueError:
+            config = {}
+        if not isinstance(config, dict) or not isinstance(config.get("xml"), str):
+            raise DrawioError("HTML-Export ohne lesbares Diagramm")
+        return config["xml"]
+    return text
 
 
 def deflate(xml_text: str) -> str:
@@ -144,20 +215,33 @@ def _number(value, default: float = 0.0) -> float:
     return number if number == number and abs(number) < 1e7 else default
 
 
+# draw.io-Formnamen → eigene Formen
+NATIVE_SHAPES = {
+    "umlActor": "actor", "umlLifeline": "lifeline", "umlFrame": "frame", "umlDestroy": "cross",
+    "umlBoundary": "boundary", "umlControl": "control", "umlEntity": "entity", "cube": "node",
+    "component": "component", "module": "component", "sumEllipse": "flowfinal", "collate": "timeevent",
+    "requiredInterface": "socket", "providedRequiredInterface": "lollipop", "lollipop": "lollipop",
+    "mxgraph.sysml.sendSigAct": "send", "mxgraph.sysml.accEvent": "receive", "endState": "endstate",
+    "doubleEllipse": "endstate", "startState": "circle", "note": "note", "note2": "note", "card": "note",
+    "folder": "package", "package": "package",
+}
+
+
 def _kind(style: dict[str, str], w: float, h: float) -> str:
+    tagged = style.get("fckNotesKind", "")
+    if tagged in SHAPE_KINDS:                                    # von fckNotes geschrieben: exakt zurück
+        return tagged
     shape = style.get("shape", "")
     if "swimlane" in style or shape == "swimlane":
-        return "class"
-    if shape == "umlActor":
-        return "actor"
-    if shape in ("endState", "doubleEllipse") or "endState" in style:
+        return "class" if style.get("childLayout") == "stackLayout" else "partition"
+    if shape in NATIVE_SHAPES:
+        return NATIVE_SHAPES[shape]
+    if "endState" in style:
         return "endstate"
-    if shape == "startState":
-        return "circle"
-    if shape in ("note", "note2", "card"):
-        return "note"
-    if shape in ("folder", "umlFrame", "package", "module", "component"):
-        return "package"
+    if shape == "line" or "line" in style:                       # dicker Balken = Gabelung/Vereinigung
+        return "fork" if _number(style.get("strokeWidth"), 1) >= 3 else "rect"
+    if style.get("perimeter") == "orthogonalPerimeter" and "umlLifeline" in style.get("targetShapes", ""):
+        return "activation"
     if shape in ("cylinder", "cylinder2", "cylinder3", "datastore", "dataStorage"):
         return "database"
     if shape in ("parallelogram", "manualInput", "trapezoid", "document", "dataIO"):
@@ -179,7 +263,7 @@ def _kind(style: dict[str, str], w: float, h: float) -> str:
 DRAWIO_ARROWS = {"classic": "arrow", "classicThin": "arrow", "block": "arrow", "blockThin": "arrow",
                  "open": "open", "openThin": "open", "openAsync": "open", "async": "open",
                  "diamond": "diamond", "diamondThin": "diamond", "oval": "circle", "circle": "circle",
-                 "dash": "none", "cross": "none", "none": "none", "": "none"}
+                 "dash": "none", "cross": "cross", "circlePlus": "containment", "none": "none", "": "none"}
 
 
 def _arrow(style: dict[str, str], which: str) -> str:
@@ -191,11 +275,16 @@ def _arrow(style: dict[str, str], which: str) -> str:
         return "triangle"
     if kind == "diamond" and fill:
         return "diamond_filled"
+    if kind == "circle" and fill and name == "oval":
+        return "dot"
     return kind
 
 
 def _port_for(shape: Shape, fx: float, fy: float) -> str:
-    name, _d = nearest_port(shape, shape.x + fx * shape.w, shape.y + fy * shape.h)
+    px, py = shape.x + fx * shape.w, shape.y + fy * shape.h
+    if shape.kind in FREE_PORT_KINDS:                      # Nachricht genau auf dieser Höhe
+        return free_port_name(shape, px, py)
+    name, _d = nearest_port(shape, px, py)
     return name
 
 
@@ -280,10 +369,15 @@ def to_diagram(model: ET.Element) -> Diagram:
         kind = _kind(style, w, h)
         if kind in ("rect", "rounded") and is_html and "<hr" in (attrs.get("value") or "").lower():
             kind = "class"                                     # UML-Klasse als ein HTML-Kasten
-        if kind == "class":
+        if kind in CLASS_KINDS:
             text = _class_text(cid, text, flat, order, consumed)
-            if int(_number(style.get("fontStyle"), 0)) & 2 and "{abstract}" not in text:
+            kind, text = _class_kind(kind, text, style)
+            if kind == "class" and int(_number(style.get("fontStyle"), 0)) & 2 and "{abstract}" not in text:
                 text = "{abstract}\n" + text
+        elif kind == "frame":
+            text = _frame_text(cid, text, flat, order, consumed)
+        elif kind in ("history", "deephistory") and text in ("H", "H*"):
+            text = ""                                          # Buchstabe zeichnet die Form selbst
         elif kind == "text" and parent is not None and parent.get("_style", {}).get("childLayout") == "stackLayout":
             continue                                           # Zeile einer Klasse ohne erkannte Klasse
         shape = Shape(new_id("s"), kind, x, y, w, h, text)
@@ -292,13 +386,16 @@ def to_diagram(model: ET.Element) -> Diagram:
         shape.text_color = _color(style.get("fontColor"), "#1a1a1a")
         if kind in ("circle", "endstate") and shape.fill in ("#ffffff", "none"):
             shape.fill = "#1a1a1a"
+        if kind == "fork":
+            shape.fill = shape.stroke if shape.fill in ("#ffffff", "none") else shape.fill
         if kind == "text":
             shape.fill = "none" if style.get("fillColor") in (None, "none", "default") else shape.fill
             shape.stroke = "none" if style.get("strokeColor") in (None, "none") else shape.stroke
         if style.get("fillColor") == "none" and kind not in ("text",):
             shape.fill = "none"
         shape.font_size = max(6.0, min(40.0, _number(style.get("fontSize"), 11.0) or 11.0))
-        shape.bold = bool(int(_number(style.get("fontStyle"), 0)) & 1) and kind != "class"
+        shape.bold = bool(int(_number(style.get("fontStyle"), 0)) & 1) and kind not in CLASS_KINDS + ("node",
+                                                                                                    "system")
         shape.dashed = style.get("dashed") == "1"
         shapes[cid] = shape
         diagram.shapes.append(shape)
@@ -362,6 +459,7 @@ def to_diagram(model: ET.Element) -> Diagram:
 
     if not diagram.shapes and not diagram.connectors:
         raise DrawioError("Auf dieser Seite ist nichts, was fckNotes zeichnen kann")
+    diagram.shapes.sort(key=lambda item: item.kind not in CONTAINER_KINDS)    # Rahmen nach hinten
     diagram.fit(margin=6)
     return diagram
 
@@ -387,6 +485,34 @@ def _class_text(cid: str, name: str, flat: dict, order: list[str], consumed: set
     else:
         parts = [name] + ["\n".join(lines) for lines in sections]
     return "\n--\n".join(parts)
+
+
+STEREOTYPE_KINDS = {"«interface»": "interface", "«enumeration»": "enum", "«enum»": "enum"}
+
+
+def _class_kind(kind: str, text: str, style: dict[str, str]) -> tuple[str, str]:
+    """Stereotyp-Zeile («interface» …) bestimmt die Art und fällt aus dem Text; unterstrichen = Objekt."""
+    lines = text.split("\n")
+    first = lines[0].strip()
+    if first in STEREOTYPE_KINDS:
+        return STEREOTYPE_KINDS[first], "\n".join(lines[1:])
+    if kind == "class" and int(_number(style.get("fontStyle"), 0)) & 4:
+        return "object", text
+    return kind, text
+
+
+def _frame_text(cid: str, label: str, flat: dict, order: list[str], consumed: set[str]) -> str:
+    """Rahmen/kombiniertes Fragment: Text-Kinder (von oben nach unten) sind die Bedingungen der Operanden."""
+    guards = []
+    for child in sorted((c for c in order if flat[c].get("parent") == cid and flat[c].get("vertex") == "1"),
+                        key=lambda c: _number(flat[c]["_geom"].get("y")) if flat[c]["_geom"] is not None else 0.0):
+        style = flat[child]["_style"]
+        if "line" in style or style.get("shape") == "line":
+            consumed.add(child)
+        elif "text" in style:
+            consumed.add(child)
+            guards.append(plain_text(flat[child].get("value"), style.get("html") == "1"))
+    return "\n--\n".join([label.split("\n--\n")[0]] + guards) if guards else label
 
 
 def read(text: str, page: int = 0) -> Diagram:
@@ -417,9 +543,37 @@ KIND_STYLES = {
     "database": "shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=12;",
     "parallelogram": "shape=parallelogram;perimeter=parallelogramPerimeter;whiteSpace=wrap;html=1;"
                      "fixedSize=1;",
+    "lollipop": "ellipse;html=1;verticalLabelPosition=bottom;verticalAlign=top;",
+    "socket": "shape=requiredInterface;html=1;verticalLabelPosition=bottom;verticalAlign=top;",
+    "port": "rounded=0;html=1;verticalLabelPosition=bottom;verticalAlign=top;",
+    "component": "shape=component;align=left;spacingLeft=36;whiteSpace=wrap;html=1;",
+    "node": "shape=cube;size=12;flipH=1;whiteSpace=wrap;html=1;verticalAlign=top;fontStyle=1;",
+    "artifact": "shape=note;size=12;whiteSpace=wrap;html=1;",
+    "fork": "shape=line;html=1;strokeWidth=6;",
+    "flowfinal": "shape=sumEllipse;perimeter=ellipsePerimeter;html=1;verticalLabelPosition=bottom;verticalAlign=top;",
+    "send": "shape=mxgraph.sysml.sendSigAct;whiteSpace=wrap;html=1;",
+    "receive": "shape=mxgraph.sysml.accEvent;flipH=1;whiteSpace=wrap;html=1;",
+    "timeevent": "shape=collate;html=1;verticalLabelPosition=bottom;verticalAlign=top;",
+    "partition": "swimlane;startSize=24;html=1;",
+    "state": "rounded=1;arcSize=20;whiteSpace=wrap;html=1;",
+    "history": "ellipse;html=1;",
+    "deephistory": "ellipse;html=1;",
+    "entrypoint": "ellipse;html=1;verticalLabelPosition=bottom;verticalAlign=top;",
+    "exitpoint": "shape=sumEllipse;perimeter=ellipsePerimeter;html=1;verticalLabelPosition=bottom;verticalAlign=top;",
+    "cross": "shape=umlDestroy;html=1;verticalLabelPosition=bottom;verticalAlign=top;",
+    "lifeline": "shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;html=1;container=1;collapsible=0;"
+                "recursiveResize=0;outlineConnect=0;size=34;",
+    "activation": "html=1;points=[];perimeter=orthogonalPerimeter;outlineConnect=0;targetShapes=umlLifeline;"
+                  "portConstraint=eastwest;",
+    "frame": "shape=umlFrame;whiteSpace=wrap;html=1;width=60;height=20;",
+    "system": "rounded=0;whiteSpace=wrap;html=1;verticalAlign=top;fontStyle=1;",
+    "boundary": "shape=umlBoundary;whiteSpace=wrap;html=1;verticalLabelPosition=bottom;verticalAlign=top;",
+    "control": "ellipse;shape=umlControl;whiteSpace=wrap;html=1;verticalLabelPosition=bottom;verticalAlign=top;",
+    "entity": "ellipse;shape=umlEntity;whiteSpace=wrap;html=1;verticalLabelPosition=bottom;verticalAlign=top;",
 }
 ARROW_STYLES = {"none": ("none", "1"), "arrow": ("classic", "1"), "open": ("open", "1"), "triangle": ("block", "0"),
-                "diamond": ("diamondThin", "0"), "diamond_filled": ("diamondThin", "1"), "circle": ("oval", "0")}
+                "diamond": ("diamondThin", "0"), "diamond_filled": ("diamondThin", "1"), "circle": ("oval", "0"),
+                "dot": ("oval", "1"), "cross": ("cross", "0"), "containment": ("circlePlus", "0")}
 
 
 def _html(text: str) -> str:
@@ -437,6 +591,10 @@ def _style_colors(shape: Shape) -> str:
 
 
 def _port_fraction(shape: Shape, port: str | None) -> tuple[float, float] | None:
+    point = shape.port(port) if port and shape.kind in FREE_PORT_KINDS else None
+    if point is not None:
+        return (round((point[0] - shape.x) / max(shape.w, 1e-9), 4),
+                round((point[1] - shape.y) / max(shape.h, 1e-9), 4))
     for name, fx, fy in PORTS.get(shape.kind, _SIDE):
         if name == port:
             return fx, fy
@@ -460,14 +618,24 @@ def write(diagram: Diagram, name: str = "Seite 1", compressed: bool = False) -> 
         return ET.SubElement(cell, "mxGeometry", attrs)
 
     for shape in diagram.shapes:
-        if shape.kind == "class":
+        if shape.kind in CLASS_KINDS:
             _write_class(root, shape, geometry)
             continue
-        cell = ET.SubElement(root, "mxCell", {"id": shape.id, "value": _html(shape.text),
+        value = _html(shape.text)
+        if shape.kind == "state":                               # Name <hr> innere Aktivitäten
+            sections = shape.class_sections()
+            value = "<hr>".join(_html(part.strip("\n")) for part in sections)
+        elif shape.kind == "frame":
+            value = _html(shape.class_sections()[0])
+        elif shape.kind in ("history", "deephistory") and not shape.text:
+            value = "H*" if shape.kind == "deephistory" else "H"
+        cell = ET.SubElement(root, "mxCell", {"id": shape.id, "value": value,
                                               "style": KIND_STYLES.get(shape.kind, KIND_STYLES["rect"]) +
-                                              _style_colors(shape),
+                                              _style_colors(shape) + f"fckNotesKind={shape.kind};",
                                               "vertex": "1", "parent": "1"})
         geometry(cell, shape.x, shape.y, shape.w, shape.h)
+        if shape.kind == "frame":
+            _write_frame_guards(root, shape, geometry)
 
     known = {s.id: s for s in diagram.shapes}
     for conn in diagram.connectors:
@@ -514,6 +682,26 @@ def write(diagram: Diagram, name: str = "Seite 1", compressed: bool = False) -> 
     return ET.tostring(mxfile, encoding="unicode", xml_declaration=False)
 
 
+def _write_frame_guards(root: ET.Element, shape: Shape, geometry) -> None:
+    """Operanden eines kombinierten Fragments als Text-Kinder und gestrichelte Trennlinien."""
+    guards = shape.class_sections()[1:]
+    if not guards:
+        return
+    label_h = shape.font_size * 1.2 + 6
+    band = (shape.h - label_h) / len(guards)
+    for i, guard in enumerate(guards):
+        top = label_h + i * band
+        if i:
+            line = ET.SubElement(root, "mxCell", {
+                "id": new_id("l"), "value": "", "vertex": "1", "parent": shape.id,
+                "style": "line;strokeWidth=1;dashed=1;fillColor=none;html=1;"})
+            geometry(line, 0, top - 4, shape.w, 8)
+        text = ET.SubElement(root, "mxCell", {
+            "id": new_id("g"), "value": _html(guard.strip()), "vertex": "1", "parent": shape.id,
+            "style": "text;html=1;align=left;verticalAlign=top;spacingLeft=4;"})
+        geometry(text, 0, top + 2, shape.w, shape.font_size * 1.2 + 6)
+
+
 def _write_class(root: ET.Element, shape: Shape, geometry) -> None:
     sections = shape.class_sections()
     name = sections[0].strip()
@@ -522,12 +710,18 @@ def _write_class(root: ET.Element, shape: Shape, geometry) -> None:
         name = name.replace("{abstract}", "", 1).strip()
     header = 26.0
     font_style = 3 if abstract else 1
+    if shape.kind == "object":
+        font_style = 4                                          # unterstrichen
+    elif shape.kind in ("interface", "enum"):
+        name = ("«interface»" if shape.kind == "interface" else "«enumeration»") + "\n" + name
+        header = 40.0
     cell = ET.SubElement(root, "mxCell", {
         "id": shape.id, "value": _html(name), "vertex": "1", "parent": "1",
         "style": f"swimlane;fontStyle={font_style};align=center;verticalAlign=top;childLayout=stackLayout;"
                  f"horizontal=1;startSize={header:g};horizontalStack=0;resizeParent=1;resizeParentMax=0;"
                  f"resizeLast=0;collapsible=1;marginBottom=0;whiteSpace=wrap;html=1;fillColor={shape.fill};"
-                 f"strokeColor={shape.stroke};fontColor={shape.text_color};fontSize={shape.font_size:g};"})
+                 f"strokeColor={shape.stroke};fontColor={shape.text_color};fontSize={shape.font_size:g};"
+                 f"fckNotesKind={shape.kind};"})
     rows = sections[1:]
     line_h = shape.font_size + 6
     blocks = [max(1, len([r for r in rows_text.split("\n") if r.strip()])) * line_h + 4 for rows_text in rows]

@@ -15,15 +15,62 @@ FORMAT = "fcknotes-diagram"
 VERSION = 1
 
 SHAPE_KINDS = ("rect", "rounded", "ellipse", "diamond", "circle", "endstate", "note", "text", "actor", "class",
-               "package", "database", "parallelogram")
-ARROWS = ("none", "arrow", "open", "triangle", "diamond", "diamond_filled", "circle")
+               "package", "database", "parallelogram",
+               # Klassen und Objekte
+               "interface", "enum", "object", "lollipop", "socket", "port",
+               # Komponenten und Verteilung
+               "component", "node", "artifact",
+               # Aktivität
+               "fork", "flowfinal", "send", "receive", "timeevent", "partition",
+               # Zustand
+               "state", "history", "deephistory", "entrypoint", "exitpoint", "cross",
+               # Sequenz
+               "lifeline", "activation",
+               # Rahmen und Use Case
+               "frame", "system",
+               # Robustheit (Stereotyp-Symbole)
+               "boundary", "control", "entity")
+ARROWS = ("none", "arrow", "open", "triangle", "diamond", "diamond_filled", "circle", "dot", "cross", "containment")
+CLASS_KINDS = ("class", "interface", "enum", "object")                  # Abschnitte mit „--“
+CONTAINER_KINDS = ("frame", "partition", "system", "lifeline")           # liegen hinten, unter den Verbindern
+LABEL_BELOW = ("actor", "lollipop", "socket", "timeevent", "entrypoint", "exitpoint", "boundary", "control",
+               "entity", "circle", "endstate", "flowfinal", "port", "cross")
+ROUND_KINDS = ("ellipse", "circle", "endstate", "flowfinal", "history", "deephistory", "entrypoint", "exitpoint",
+               "lollipop", "control", "entity")
 ROUTES = ("straight", "orthogonal")
 DEFAULT_SIZES = {"rect": (120, 60), "rounded": (120, 60), "ellipse": (130, 60), "diamond": (100, 70),
                  "circle": (20, 20), "endstate": (22, 22), "note": (120, 70), "text": (100, 24), "actor": (36, 70),
-                 "class": (150, 90), "package": (140, 90), "database": (80, 70), "parallelogram": (120, 60)}
+                 "class": (150, 90), "package": (140, 90), "database": (80, 70), "parallelogram": (120, 60),
+                 "interface": (150, 70), "enum": (130, 80), "object": (150, 60), "lollipop": (18, 18),
+                 "socket": (12, 22), "port": (12, 12), "component": (140, 70), "node": (150, 90),
+                 "artifact": (120, 60), "fork": (100, 6), "flowfinal": (22, 22), "send": (120, 44),
+                 "receive": (120, 44), "timeevent": (22, 28), "partition": (200, 260), "state": (130, 60),
+                 "history": (24, 24), "deephistory": (24, 24), "entrypoint": (16, 16), "exitpoint": (16, 16),
+                 "cross": (20, 20), "lifeline": (110, 260), "activation": (12, 70), "frame": (260, 170),
+                 "system": (260, 220), "boundary": (46, 34), "control": (34, 38), "entity": (34, 38)}
 LABELS = {"rect": "Rechteck", "rounded": "Abgerundet", "ellipse": "Ellipse / Use Case", "diamond": "Raute",
           "circle": "Startknoten", "endstate": "Endknoten", "note": "Notiz", "text": "Text", "actor": "Akteur",
-          "class": "UML-Klasse", "package": "Paket", "database": "Datenbank", "parallelogram": "Ein-/Ausgabe"}
+          "class": "UML-Klasse", "package": "Paket", "database": "Datenbank", "parallelogram": "Ein-/Ausgabe",
+          "interface": "Schnittstelle «interface»", "enum": "Aufzählung «enumeration»", "object": "Objekt (Instanz)",
+          "lollipop": "Bereitgestellte Schnittstelle (Lolli)", "socket": "Benötigte Schnittstelle (Buchse)",
+          "port": "Port", "component": "Komponente", "node": "Knoten (Verteilung)", "artifact": "Artefakt",
+          "fork": "Gabelung / Vereinigung (Balken)", "flowfinal": "Ablaufende", "send": "Signal senden",
+          "receive": "Ereignis empfangen", "timeevent": "Zeitereignis", "partition": "Aktivitätsbereich (Swimlane)",
+          "state": "Zustand", "history": "Historie (flach)", "deephistory": "Historie (tief)",
+          "entrypoint": "Eintrittspunkt", "exitpoint": "Austrittspunkt", "cross": "Terminierung / Zerstörung",
+          "lifeline": "Lebenslinie", "activation": "Aktivierung", "frame": "Rahmen / kombiniertes Fragment",
+          "system": "Systemgrenze", "boundary": "Boundary (Schnittstellenobjekt)", "control": "Control (Steuerung)",
+          "entity": "Entity (Datenobjekt)"}
+# Gruppen für die Formen-Leiste im Editor
+GROUPS = [
+    ("Allgemein", ("rect", "rounded", "ellipse", "diamond", "parallelogram", "note", "text", "database", "frame")),
+    ("Klassen & Objekte", ("class", "interface", "enum", "object", "package", "lollipop", "socket", "port")),
+    ("Komponenten & Verteilung", ("component", "node", "artifact")),
+    ("Use Case", ("actor", "system", "boundary", "control", "entity")),
+    ("Aktivität", ("circle", "endstate", "flowfinal", "fork", "send", "receive", "timeevent", "partition")),
+    ("Zustand", ("state", "history", "deephistory", "entrypoint", "exitpoint", "cross")),
+    ("Sequenz", ("lifeline", "activation")),
+]
 
 # Ports als (Name, Anteil x, Anteil y); Randformen bekommen je Seite drei Punkte, runde Formen acht.
 _SIDE = [(f"n{i}", f, 0.0) for i, f in ((1, 0.25), (2, 0.5), (3, 0.75))] + \
@@ -34,7 +81,22 @@ _ROUND = [("n2", 0.5, 0.0), ("e2", 1.0, 0.5), ("s2", 0.5, 1.0), ("w2", 0.0, 0.5)
          [(name, 0.5 + 0.5 * math.cos(a), 0.5 + 0.5 * math.sin(a))
           for name, a in (("se", math.pi / 4), ("sw", 3 * math.pi / 4), ("nw", 5 * math.pi / 4), ("ne", 7 * math.pi / 4))]
 _FOUR = [("n2", 0.5, 0.0), ("e2", 1.0, 0.5), ("s2", 0.5, 1.0), ("w2", 0.0, 0.5)]
-PORTS = {"ellipse": _ROUND, "circle": _ROUND, "endstate": _ROUND, "diamond": _FOUR, "actor": _FOUR}
+# Lebenslinie: Andockpunkte auf der gestrichelten Linie (Nachrichten zwischen gleich hohen Linien sind waagerecht)
+_LIFELINE = [("n2", 0.5, 0.0)] + [(f"l{i:02d}", 0.5, round(0.16 + i * 0.04, 2)) for i in range(21)]
+PORTS = {**{kind: _ROUND for kind in ROUND_KINDS}, "diamond": _FOUR, "actor": _FOUR, "cross": _FOUR,
+         "boundary": _FOUR, "socket": _FOUR, "timeevent": _FOUR, "lifeline": _LIFELINE}
+
+
+DEFAULT_TEXTS = {
+    "class": "Klasse\n--\n- attribut: Typ\n--\n+ methode(): void", "actor": "Akteur", "text": "Text",
+    "note": "Notiz", "package": "Paket", "database": "Datenbank",
+    "interface": "Schnittstelle\n--\n\n--\n+ methode(): void", "enum": "Farbe\n--\nROT\nGRUEN\nBLAU",
+    "object": "objekt : Klasse\n--\nattribut = Wert", "lollipop": "Schnittstelle", "socket": "Schnittstelle",
+    "component": "Komponente", "node": "Knoten", "artifact": "«artifact»\ndatei.jar", "send": "Signal senden",
+    "receive": "Ereignis", "timeevent": "nach 5 s", "partition": "Bereich", "state": "Zustand\n--\nentry / tuWas()",
+    "lifeline": "objekt : Klasse", "frame": "sd Ablauf", "system": "System", "boundary": "Oberfläche",
+    "control": "Steuerung", "entity": "Daten",
+}
 
 
 def new_id(prefix: str = "s") -> str:
@@ -74,6 +136,9 @@ class Shape:
         return [(name, self.x + fx * self.w, self.y + fy * self.h) for name, fx, fy in PORTS.get(self.kind, _SIDE)]
 
     def port(self, name: str) -> tuple[float, float] | None:
+        dynamic = free_port(self, name)
+        if dynamic is not None:
+            return dynamic
         for port, px, py in self.ports():
             if port == name:
                 return px, py
@@ -127,8 +192,19 @@ RELATIONS = {
     "Abhängigkeit": dict(start_arrow="none", end_arrow="open", dashed=True),
     "Aggregation": dict(start_arrow="diamond", end_arrow="none", dashed=False),
     "Komposition": dict(start_arrow="diamond_filled", end_arrow="none", dashed=False),
+    "Nicht navigierbar": dict(start_arrow="cross", end_arrow="open", dashed=False),
+    "Enthaltensein (Containment)": dict(start_arrow="containment", end_arrow="none", dashed=False),
+    "Include «include»": dict(start_arrow="none", end_arrow="open", dashed=True, label="«include»"),
+    "Extend «extend»": dict(start_arrow="none", end_arrow="open", dashed=True, label="«extend»"),
+    "Import «import»": dict(start_arrow="none", end_arrow="open", dashed=True, label="«import»"),
+    "Verwendung «use»": dict(start_arrow="none", end_arrow="open", dashed=True, label="«use»"),
+    "Steuerfluss / Übergang": dict(start_arrow="none", end_arrow="open", dashed=False),
+    "Nachricht (synchron)": dict(start_arrow="none", end_arrow="arrow", dashed=False),
     "Nachricht (asynchron)": dict(start_arrow="none", end_arrow="open", dashed=False),
     "Antwort": dict(start_arrow="none", end_arrow="open", dashed=True),
+    "Erzeugung «create»": dict(start_arrow="none", end_arrow="open", dashed=True, label="«create»"),
+    "Verlorene Nachricht": dict(start_arrow="none", end_arrow="dot", dashed=False),
+    "Gefundene Nachricht": dict(start_arrow="dot", end_arrow="arrow", dashed=False),
 }
 
 
@@ -151,17 +227,21 @@ class Diagram:
         if kind not in SHAPE_KINDS:
             raise ValueError(f"Unbekannte Form „{kind}“")
         dw, dh = DEFAULT_SIZES[kind]
-        default_text = {"class": "Klasse\n--\n- attribut: Typ\n--\n+ methode(): void", "actor": "Akteur",
-                        "text": "Text", "note": "Notiz", "package": "Paket", "database": "Datenbank"}.get(kind, "")
+        default_text = DEFAULT_TEXTS.get(kind, "")
         shape = Shape(new_id("s"), kind, x, y, w or dw, h or dh, default_text if text is None else text)
-        if kind in ("circle", "endstate"):
+        if kind in ("circle", "endstate", "fork"):
             shape.fill = "#1a1a1a"
         if kind == "note":
             shape.fill = "#fff6c2"
         if kind == "text":
             shape.stroke = "none"
             shape.fill = "none"
-        self.shapes.append(shape)
+        if kind in ("frame", "partition", "system"):
+            shape.fill = "none"
+        if kind in CONTAINER_KINDS:
+            self.shapes.insert(0, shape)                    # Rahmen/Bereiche/Lebenslinien liegen hinten
+        else:
+            self.shapes.append(shape)
         return shape
 
     def connect(self, source: End, target: End, relation: str = "Pfeil", **style) -> Connector:
@@ -182,7 +262,7 @@ class Diagram:
         xs, ys = [], []
         for s in self.shapes:
             xs += [s.x, s.x + s.w]
-            ys += [s.y, s.y + s.h + (14 if s.kind == "actor" else 0)]
+            ys += [s.y, s.y + s.h + (14 if s.kind in LABEL_BELOW and s.text else 0)]
         for c in self.connectors:
             for px, py in route(self, c):
                 xs.append(px)
@@ -243,13 +323,63 @@ def boundary_point(shape: Shape, toward: tuple[float, float]) -> tuple[float, fl
     if abs(dx) < 1e-9 and abs(dy) < 1e-9:
         return cx, cy - shape.h / 2
     hw, hh = shape.w / 2, shape.h / 2
-    if shape.kind in ("ellipse", "circle", "endstate"):
+    if shape.kind == "lifeline":                        # schwebend an der Lebenslinie: auf Höhe des Gegenstücks
+        head = lifeline_head(shape)
+        return cx, min(max(toward[1], shape.y + head), shape.y + shape.h)
+    if shape.kind == "activation":                      # Aktivierung: waagerecht von der Seite
+        return (shape.x if dx < 0 else shape.x + shape.w), min(max(toward[1], shape.y), shape.y + shape.h)
+    if shape.kind in ROUND_KINDS:
         t = 1.0 / math.sqrt((dx / hw) ** 2 + (dy / hh) ** 2)
     elif shape.kind == "diamond":
         t = 1.0 / (abs(dx) / hw + abs(dy) / hh)
     else:
         t = min(hw / abs(dx) if dx else math.inf, hh / abs(dy) if dy else math.inf)
     return cx + dx * t, cy + dy * t
+
+
+FREE_PORT_KINDS = ("lifeline", "activation")
+
+
+def free_port(shape: Shape, name: str | None) -> tuple[float, float] | None:
+    """Frei wählbare Andockhöhe an Lebenslinie/Aktivierung: „y0.35“ (Lebenslinie), „wy0.35“/„ey0.35“ (Aktivierung
+    links/rechts) – Anteil der Höhe. So docken Nachrichten genau dort an, wo man loslässt."""
+    if not name or shape.kind not in FREE_PORT_KINDS:
+        return None
+    side, _y, number = name.partition("y")
+    if not _y or side not in ("", "w", "e"):
+        return None
+    try:
+        frac = min(1.0, max(0.0, float(number)))
+    except ValueError:
+        return None
+    y = shape.y + frac * shape.h
+    if shape.kind == "lifeline":
+        return shape.x + shape.w / 2, max(y, shape.y + lifeline_head(shape))
+    return (shape.x if side != "e" else shape.x + shape.w), y
+
+
+def free_port_name(shape: Shape, x: float, y: float) -> str:
+    """Name der freien Andockhöhe für einen Punkt (Gegenstück zu `free_port`)."""
+    frac = min(1.0, max(0.0, (y - shape.y) / max(shape.h, 1.0)))
+    if shape.kind == "lifeline":
+        return f"y{frac:.4f}"
+    return ("e" if x > shape.x + shape.w / 2 else "w") + f"y{frac:.4f}"
+
+
+def level_message(diagram: Diagram, conn: Connector, tolerance: float) -> None:
+    """Nachricht zwischen Lebenslinien/Aktivierungen waagerecht ziehen, wenn sie fast waagerecht ist."""
+    source, target = diagram.shape(conn.source.shape), diagram.shape(conn.target.shape)
+    if source is None or target is None or target.kind not in FREE_PORT_KINDS:
+        return
+    start = end_point(diagram, conn.source, target.center)
+    finish = end_point(diagram, conn.target, start)
+    if abs(finish[1] - start[1]) <= tolerance and target.y <= start[1] <= target.y + target.h:
+        conn.target.port = free_port_name(target, finish[0], start[1])
+
+
+def lifeline_head(shape: Shape) -> float:
+    """Höhe des Kopfkastens einer Lebenslinie."""
+    return min(34.0, shape.h * 0.3)
 
 
 def _direction(shape: Shape | None, point: tuple[float, float]) -> tuple[float, float]:
@@ -281,6 +411,35 @@ def _anchor_guess(diagram: Diagram, end: End) -> tuple[float, float]:
     if end.port and shape.port(end.port) is not None:
         return shape.port(end.port)
     return shape.center
+
+
+def anchor(diagram: Diagram, end: End) -> tuple[float, float]:
+    """Bezugspunkt eines Endes: Andockpunkt, sonst Formmitte, sonst der freie Punkt."""
+    return _anchor_guess(diagram, end)
+
+
+def align_point(point: tuple[float, float], ref: tuple[float, float], tolerance: float,
+                constrain: bool = False) -> tuple[float, float]:
+    """Freien Punkt auf eine Linie mit `ref` ziehen: fast senkrecht/waagerecht → exakt (wie Hilfslinien in draw.io).
+    `constrain` (Shift) erzwingt die überwiegende Achse."""
+    x, y = point
+    dx, dy = abs(x - ref[0]), abs(y - ref[1])
+    if constrain:
+        return (ref[0], y) if dy >= dx else (x, ref[1])
+    if dx <= tolerance:
+        x = ref[0]
+    if dy <= tolerance:
+        y = ref[1]
+    return x, y
+
+
+def align_free_ends(diagram: Diagram, conn: Connector, tolerance: float, constrain: bool = False) -> None:
+    """Freie Enden eines Verbinders am anderen Ende ausrichten, damit „gerade gezogen“ auch exakt gerade ist."""
+    source, target = conn.source, conn.target
+    if target.shape is None:
+        target.x, target.y = align_point((target.x, target.y), anchor(diagram, source), tolerance, constrain)
+    elif source.shape is None:
+        source.x, source.y = align_point((source.x, source.y), anchor(diagram, target), tolerance, constrain)
 
 
 def orthogonal(p0, d0, p1, d1, stub: float = 14.0) -> list[tuple[float, float]]:
@@ -317,6 +476,14 @@ def _simplify(points: list[tuple[float, float]]) -> list[tuple[float, float]]:
     return out
 
 
+def _side_direction(shape: Shape | None, point, other) -> tuple[float, float]:
+    """Wie `_direction`; an Lebenslinien und Aktivierungen geht es immer waagerecht zum Gegenstück."""
+    if shape is not None and (shape.kind == "lifeline" and point[1] > shape.y + lifeline_head(shape) + 0.5 or
+                              shape.kind == "activation" and shape.y < point[1] < shape.y + shape.h):
+        return (1.0 if other[0] >= point[0] else -1.0), 0.0
+    return _direction(shape, point)
+
+
 def route(diagram: Diagram, conn: Connector) -> list[tuple[float, float]]:
     """Punkte des Verbinders vom Start- zum Endpunkt."""
     start = end_point(diagram, conn.source, _anchor_guess(diagram, conn.target))
@@ -324,8 +491,8 @@ def route(diagram: Diagram, conn: Connector) -> list[tuple[float, float]]:
     start = end_point(diagram, conn.source, finish)
     if conn.route != "orthogonal":
         return [start, finish]
-    d0 = _direction(diagram.shape(conn.source.shape), start)
-    d1 = _direction(diagram.shape(conn.target.shape), finish)
+    d0 = _side_direction(diagram.shape(conn.source.shape), start, finish)
+    d1 = _side_direction(diagram.shape(conn.target.shape), finish, start)
     return orthogonal(start, d0, finish, d1)
 
 

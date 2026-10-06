@@ -216,3 +216,114 @@ def test_too_wide_diagram_is_scaled_to_fit_and_scale_is_kept():
     again = pdfdiagram.update_diagram(small, 0, 0, d)
     assert pdfobjects.list_objects(again, 0)[0].rect[2] == pytest.approx(247)
     assert pdfdiagram.fit_scale(Diagram(100, 100), (0, 0), (595, 842)) == 1.0
+
+
+def test_align_free_ends_makes_nearly_straight_lines_exact():
+    from notex.core.diagram.model import align_free_ends, align_point
+    assert align_point((103, 40), (100, 200), 8) == (100, 40)
+    assert align_point((130, 195), (100, 200), 8) == (130, 200)
+    assert align_point((130, 40), (100, 200), 8) == (130, 40)              # weit weg: bleibt schräg
+    assert align_point((130, 40), (100, 200), 8, constrain=True) == (100, 40)
+    d = Diagram(300, 300)
+    box = d.add_shape("rounded", 50, 200, 120, 60)
+    up = d.connect(End(box.id, "n2"), End(None, None, 113, 50), "Pfeil", route="straight")
+    align_free_ends(d, up, 8)
+    assert (up.target.x, up.target.y) == (110, 50)                        # senkrecht über dem Andockpunkt
+    start = route(d, up)
+    assert start[0][0] == start[-1][0]
+    back = d.connect(End(None, None, 172, 52), End(box.id, "e2"), "Pfeil", route="straight")
+    align_free_ends(d, back, 8)
+    assert (back.source.x, back.source.y) == (170, 52)
+
+
+
+# ---- weitere UML-Symbole ------------------------------------------------------------------------------------
+def test_every_kind_has_size_label_group_and_draws():
+    from notex.core.diagram import model
+    grouped = [k for _g, kinds in model.GROUPS for k in kinds]
+    assert sorted(grouped) == sorted(model.SHAPE_KINDS) and len(grouped) == len(set(grouped))
+    for kind in model.SHAPE_KINDS:
+        d = Diagram(400, 400)
+        shape = d.add_shape(kind, 10, 10)
+        assert kind in model.DEFAULT_SIZES and kind in model.LABELS
+        prims = render.shape_primitives(shape)
+        assert prims, kind
+        assert shape.ports(), kind
+        content = dpdf.content(d)
+        assert content.startswith("q")
+
+
+def test_containers_lie_behind_connectors_and_shapes():
+    d = Diagram(400, 300)
+    a = d.add_shape("rect", 20, 40, 60, 30)
+    frame = d.add_shape("frame", 0, 0, 300, 200)
+    assert d.shapes[0] is frame                                             # beim Anlegen nach hinten
+    b = d.add_shape("rect", 200, 40, 60, 30)
+    d.connect(End(a.id, "e2"), End(b.id, "w2"), "Pfeil")
+    prims = render.primitives(d)
+    frame_rect = next(i for i, p in enumerate(prims) if p[0] == "rect" and p[3] == 300)
+    first_line = next(i for i, p in enumerate(prims) if p[0] == "path" and not p[2])
+    assert frame_rect < first_line
+
+
+def test_class_family_stereotypes_and_object_underline():
+    d = Diagram(400, 300)
+    iface = d.add_shape("interface", 0, 0)
+    texts = [p[3] for p in render.shape_primitives(iface) if p[0] == "text"]
+    assert texts[:2] == ["«interface»", "Schnittstelle"]
+    enum = d.add_shape("enum", 0, 0)
+    assert "«enumeration»" in [p[3] for p in render.shape_primitives(enum) if p[0] == "text"]
+    assert render.min_class_height(iface) > render.min_class_height(Shape("x", "class", 0, 0, 150, 70, iface.text))
+    obj = d.add_shape("object", 0, 0)
+    prims = render.shape_primitives(obj)
+    name = next(p for p in prims if p[0] == "text" and p[3] == "objekt : Klasse")
+    assert name[7] is False                                                 # nicht fett
+    assert any(p[0] == "path" and abs(p[1][0][1] - (name[2] + 1.5)) < 0.01 for p in prims)    # unterstrichen
+    assert "(\\253interface\\273) Tj" in dpdf.content(Diagram(400, 300, [iface], []))       # « » in WinAnsi
+
+
+def test_new_arrow_heads_and_relations():
+    from notex.core.diagram.model import RELATIONS
+    d = Diagram(300, 100)
+    for relation, expected in (("Nicht navigierbar", "cross"), ("Enthaltensein (Containment)", "containment"),
+                               ("Gefundene Nachricht", "dot")):
+        conn = d.connect(End(None, None, 10, 50), End(None, None, 250, 50), relation, route="straight")
+        assert conn.start_arrow == expected
+        assert len(render.connector_primitives(d, conn)) > 2
+    include = d.connect(End(None, None, 10, 80), End(None, None, 250, 80), "Include «include»")
+    assert include.label == "«include»" and include.dashed
+    assert RELATIONS["Verlorene Nachricht"]["end_arrow"] == "dot"
+
+
+def test_lifeline_messages_are_horizontal():
+    d = Diagram(400, 400)
+    a = d.add_shape("lifeline", 10, 10)
+    b = d.add_shape("lifeline", 200, 10)
+    msg = d.connect(End(a.id, "l05"), End(b.id, "l05"), "Nachricht (synchron)")
+    points = route(d, msg)
+    assert len(points) == 2 and points[0][1] == points[1][1]
+    floating = d.connect(End(a.id), End(None, None, 380, 150), "Pfeil", route="straight")
+    start = route(d, floating)[0]
+    assert start == (a.x + a.w / 2, 150)                                     # auf der Linie, auf gleicher Höhe
+    act = d.add_shape("activation", a.x + a.w / 2 - 6, 100)
+    reply = d.connect(End(act.id, "e2"), End(b.id, "l10"), "Antwort")
+    assert all(abs(p[1] - route(d, reply)[0][1]) < 30 for p in route(d, reply))
+
+
+def test_free_ports_on_lifelines_and_activations():
+    from notex.core.diagram.model import free_port, free_port_name, level_message
+    d = Diagram(400, 400)
+    a = d.add_shape("lifeline", 0, 0, 100, 300)
+    act = d.add_shape("activation", 244, 90, 12, 60)
+    assert free_port(a, "y0.5") == (50, 150) and a.port("y0.5") == (50, 150)
+    assert free_port(a, "y0") == (50, 34)                                    # nie im Kopfkasten
+    assert free_port(act, "ey0.5") == (256, 120) and free_port(act, "wy0.5") == (244, 120)
+    assert free_port(act, "e2") is None and free_port(a, "yabc") is None
+    assert free_port_name(act, 250.5, 105) == "ey0.2500"
+    msg = d.connect(End(a.id, "y0.4"), End(act.id, "wy0.55"), "Nachricht (synchron)", route="straight")
+    level_message(d, msg, 10)                                               # 120 vs. 123 → waagerecht
+    start, finish = route(d, msg)
+    assert start[1] == pytest.approx(finish[1]) == pytest.approx(120)
+    far = d.connect(End(a.id, "y0.2"), End(act.id, "wy0.9"), "Pfeil", route="straight")
+    level_message(d, far, 10)
+    assert far.target.port == "wy0.9"                                       # zu weit weg: bleibt

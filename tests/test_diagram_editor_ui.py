@@ -80,6 +80,52 @@ def test_drag_from_port_connects_to_other_port(canvas):
     assert conn.end_arrow == "arrow" and canvas.selection == [conn.id]
 
 
+def test_drag_up_to_free_point_is_exactly_vertical(canvas):
+    box = canvas.model.add_shape("rounded", 102, 200, 120, 60)              # Andockpunkt oben bei x = 162
+    canvas.update()
+    _hover(canvas, 162, 230)
+    _drag(canvas, (162, 200), (166, 60))                                    # leicht schief gezogen
+    conn = canvas.model.connectors[-1]
+    assert conn.source.shape == box.id and conn.target.shape is None
+    assert conn.target.x == pytest.approx(162)
+    points = route(canvas.model, conn)
+    assert all(abs(p[0] - 162) < 0.01 for p in points)
+
+
+def test_chained_lines_join_at_free_end(canvas):
+    box = canvas.model.add_shape("rounded", 102, 200, 120, 60)
+    target = canvas.model.add_shape("rect", 0, 30, 60, 60)                   # Andockpunkt rechts bei (60, 60)
+    canvas.update()
+    _hover(canvas, 162, 230)
+    _drag(canvas, (162, 200), (163, 62))                                    # hoch bis auf Höhe des Ziels
+    first = canvas.model.connectors[-1]
+    assert (first.target.x, first.target.y) == pytest.approx((162, 60))
+    canvas.set_tool("connect")
+    _drag(canvas, (164, 63), (60, 60))                                      # zweite Linie am Ende ansetzen
+    second = canvas.model.connectors[-1]
+    assert second.target.shape == target.id
+    assert (second.source.x, second.source.y) == pytest.approx((162, 60))   # stößt genau an
+    assert box.id != target.id
+
+
+def test_message_between_lifelines_docks_where_released_and_levels(canvas):
+    a = canvas.model.add_shape("lifeline", 20, 10, 100, 280)
+    b = canvas.model.add_shape("lifeline", 220, 10, 100, 280)
+    canvas.set_tool("connect")
+    _drag(canvas, (70, 123), (270, 128))                                    # leicht schräg losgelassen
+    msg = canvas.model.connectors[-1]
+    assert msg.source.shape == a.id and msg.target.shape == b.id
+    start, finish = route(canvas.model, msg)
+    assert start[1] == pytest.approx(finish[1]) and abs(start[1] - 123) < 6
+
+
+def test_shape_icons_follow_ink_color():
+    from notex.ui.diagram_paint import shape_icon
+    image = shape_icon("rect", 28, ink="#ff0000").pixmap(56, 56).toImage()
+    colors = {image.pixelColor(x, y).name() for x in range(56) for y in range(56) if image.pixelColor(x, y).alpha() > 200}
+    assert "#ff0000" in colors and "#ffffff" not in colors and "#1a1a1a" not in colors
+
+
 def test_connect_tool_snaps_to_nearest_port_and_free_end(canvas):
     a = canvas.model.add_shape("rect", 20, 20)
     b = canvas.model.add_shape("ellipse", 220, 160)

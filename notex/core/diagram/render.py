@@ -12,12 +12,14 @@ from __future__ import annotations
 
 import math
 
-from notex.core.diagram.model import Connector, Diagram, Shape, midpoint, route
+from notex.core.diagram.model import (CLASS_KINDS, CONTAINER_KINDS, Connector, Diagram, Shape, lifeline_head,
+                                      midpoint, route)
 
 ARROW_LEN = 10.0
 ARROW_HALF = 5.0
 DIAMOND_LEN = 15.0
 PAD = 5.0
+STEREOTYPES = {"interface": "«interface»", "enum": "«enumeration»"}
 
 
 def _metrics(bold: bool) -> dict[str, int]:
@@ -129,8 +131,10 @@ def shape_primitives(s: Shape) -> list:
         if s.text:
             _text_block(out, s.text, cx, y + h + 3, max(w * 3, 80.0), size, s.text_color, bold=s.bold)
         return out
-    elif s.kind == "class":
+    elif s.kind in CLASS_KINDS:
         return out + _class_primitives(s)
+    elif s.kind in UML_SHAPES:
+        return out + UML_SHAPES[s.kind](s)
     if centered_text and s.text:
         inner = w - 2 * PAD if s.kind not in ("diamond", "ellipse") else w * 0.72
         top = cy - _text_height(s.text, size, inner, s.bold) / 2
@@ -162,14 +166,22 @@ def _sections(s: Shape) -> list[str]:
     return sections
 
 
-def class_layout(s: Shape) -> list[tuple[float, float]]:
-    """(oben, unten) je Abschnitt einer UML-Klasse – Höhe aus dem Text, Rest bekommt der letzte Abschnitt."""
+def _section_heights(s: Shape) -> list[float]:
     sections = _sections(s)
     size = s.font_size
     heights = []
     for i, text in enumerate(sections):
-        lines = max(1, len(wrap(text, size, s.w - 2 * PAD, i == 0))) if text.strip() or i == 0 else 0
+        lines = max(1, len(wrap(text, size, s.w - 2 * PAD, i == 0 and s.kind != "object"))) \
+            if text.strip() or i == 0 else 0
+        if i == 0 and s.kind in STEREOTYPES:
+            lines += 1
         heights.append(max(size * 1.2 * lines + 2 * PAD - 2, 10.0 if i else size * 1.2 + 2 * PAD))
+    return heights
+
+
+def class_layout(s: Shape) -> list[tuple[float, float]]:
+    """(oben, unten) je Abschnitt einer UML-Klasse – Höhe aus dem Text, Rest bekommt der letzte Abschnitt."""
+    heights = _section_heights(s)
     out, top = [], s.y
     for i, height in enumerate(heights):
         bottom = s.y + s.h if i == len(heights) - 1 else min(s.y + s.h, top + height)
@@ -179,12 +191,7 @@ def class_layout(s: Shape) -> list[tuple[float, float]]:
 
 
 def min_class_height(s: Shape) -> float:
-    sections = _sections(s)
-    total = 0.0
-    for i, text in enumerate(sections):
-        lines = max(1, len(wrap(text, s.font_size, s.w - 2 * PAD, i == 0))) if text.strip() or i == 0 else 0
-        total += max(s.font_size * 1.2 * lines + 2 * PAD - 2, 10.0 if i else s.font_size * 1.2 + 2 * PAD)
-    return total
+    return sum(_section_heights(s))
 
 
 def _class_primitives(s: Shape) -> list:
@@ -193,12 +200,22 @@ def _class_primitives(s: Shape) -> list:
     for i, ((top, bottom), text) in enumerate(zip(class_layout(s), sections)):
         if i:
             out.append(("path", [(s.x, top), (s.x + s.w, top)], False, "none", s.stroke, 1.0, False))
+        if i == 0 and s.kind in STEREOTYPES:
+            out.append(("text", s.x + s.w / 2, top + PAD - 1 + s.font_size * 0.93, STEREOTYPES[s.kind],
+                        s.font_size, s.text_color, "middle", False, False))
+            top += s.font_size * 1.2
         if not text.strip():
             continue
         if i == 0:
             name, italic = class_name(text)
+            first = len(out)
             _text_block(out, name, s.x + s.w / 2, top + PAD - 1, s.w - 2 * PAD, s.font_size, s.text_color,
-                        bold=True, italic=italic)
+                        bold=s.kind != "object", italic=italic)
+            if s.kind == "object":                           # Objektname unterstrichen
+                for prim in out[first:]:
+                    half = text_width(prim[3], prim[4]) / 2
+                    out.append(("path", [(prim[1] - half, prim[2] + 1.5), (prim[1] + half, prim[2] + 1.5)], False,
+                                "none", s.text_color, 0.8, False))
         else:
             _text_block(out, text, s.x + s.w / 2, top + PAD - 2, s.w - 2 * PAD, s.font_size, s.text_color,
                         "start", left=s.x + PAD)
@@ -227,9 +244,17 @@ def _head(kind: str, tip, before, color: str, width: float) -> tuple[list, float
         fill = color if kind == "diamond_filled" else "#ffffff"
         return [("path", [tip, at(DIAMOND_LEN / 2, ARROW_HALF), at(DIAMOND_LEN), at(DIAMOND_LEN / 2, -ARROW_HALF)],
                  True, fill, color, width, False)], DIAMOND_LEN
-    if kind == "circle":
+    if kind in ("circle", "dot"):
         c = at(4.0)
-        return [("ellipse", c[0], c[1], 4.0, 4.0, "#ffffff", color, width, False)], 8.0
+        return [("ellipse", c[0], c[1], 4.0, 4.0, color if kind == "dot" else "#ffffff", color, width, False)], 8.0
+    if kind == "cross":                                     # nicht navigierbar: × kurz vor dem Ende
+        return [("path", [at(5, 4), at(13, -4)], False, "none", color, width, False),
+                ("path", [at(5, -4), at(13, 4)], False, "none", color, width, False)], 0.0
+    if kind == "containment":                               # Kreis mit Plus
+        c, r = at(6.0), 6.0
+        return [("ellipse", c[0], c[1], r, r, "#ffffff", color, width, False),
+                ("path", [at(0.0), at(12.0)], False, "none", color, width, False),
+                ("path", [at(6.0, r), at(6.0, -r)], False, "none", color, width, False)], 12.0
     return [], 0.0
 
 
@@ -282,8 +307,244 @@ def connector_primitives(diagram: Diagram, c: Connector) -> list:
 def primitives(diagram: Diagram) -> list:
     """Alles in Zeichenreihenfolge: erst Verbinder, dann Formen (Formen liegen über Linien)."""
     out: list = []
+    for s in diagram.shapes:                                # Rahmen, Bereiche, Lebenslinien ganz hinten
+        if s.kind in CONTAINER_KINDS:
+            out += shape_primitives(s)
     for c in diagram.connectors:
         out += connector_primitives(diagram, c)
     for s in diagram.shapes:
-        out += shape_primitives(s)
+        if s.kind not in CONTAINER_KINDS:
+            out += shape_primitives(s)
     return out
+
+
+# ---- weitere UML-Symbole ---------------------------------------------------------------------------------------
+def _below(out: list, s: Shape) -> list:
+    """Beschriftung unter kleinen Symbolen (Akteur-Stil)."""
+    if s.text:
+        _text_block(out, s.text, s.x + s.w / 2, s.y + s.h + 3, max(s.w * 4, 80.0), s.font_size, s.text_color,
+                    bold=s.bold)
+    return out
+
+
+def _centered(out: list, s: Shape, left: float, top: float, width: float, height: float) -> list:
+    if s.text:
+        inner = max(10.0, width - 2 * PAD)
+        y = top + height / 2 - _text_height(s.text, s.font_size, inner, s.bold) / 2
+        _text_block(out, s.text, left + width / 2, y, inner, s.font_size, s.text_color, bold=s.bold)
+    return out
+
+
+def _x_lines(cx: float, cy: float, r: float, color: str, width: float) -> list:
+    return [("path", [(cx - r, cy - r), (cx + r, cy + r)], False, "none", color, width, False),
+            ("path", [(cx - r, cy + r), (cx + r, cy - r)], False, "none", color, width, False)]
+
+
+def _lollipop(s: Shape) -> list:
+    r = min(s.w, s.h) / 2
+    return _below([("ellipse", s.x + s.w / 2, s.y + s.h / 2, r, r, s.fill, s.stroke, 1.2, s.dashed)], s)
+
+
+def _socket(s: Shape) -> list:
+    r = min(s.w, s.h / 2)                                  # „(“ – linker Rand liegt am Andockpunkt w2
+    arc = _arc(s.x + r, s.y + s.h / 2, r, r, 90, 270)
+    return _below([("path", arc, False, "none", s.stroke, 1.2, s.dashed)], s)
+
+
+def _port(s: Shape) -> list:
+    return _below([("rect", s.x, s.y, s.w, s.h, 0.0, s.fill, s.stroke, 1.2, s.dashed)], s)
+
+
+def _component(s: Shape) -> list:
+    out = [("rect", s.x, s.y, s.w, s.h, 0.0, s.fill, s.stroke, 1.2, s.dashed)]
+    ix, iy = s.x + s.w - 22, s.y + 6                        # Komponenten-Symbol oben rechts
+    out.append(("rect", ix, iy, 14, 16, 0.0, s.fill, s.stroke, 1.0, False))
+    for dy in (3, 9):
+        out.append(("rect", ix - 4, iy + dy, 8, 4, 0.0, s.fill, s.stroke, 1.0, False))
+    return _centered(out, s, s.x, s.y, s.w - 16, s.h)
+
+
+def _node(s: Shape) -> list:
+    d = min(12.0, s.w / 6, s.h / 6)
+    x, y, w, h = s.x, s.y, s.w, s.h
+    out = [("path", [(x, y + d), (x + d, y), (x + w, y), (x + w - d, y + d)], True, s.fill, s.stroke, 1.2, s.dashed),
+           ("path", [(x + w - d, y + d), (x + w, y), (x + w, y + h - d), (x + w - d, y + h)], True, s.fill,
+            s.stroke, 1.2, s.dashed),
+           ("rect", x, y + d, w - d, h - d, 0.0, s.fill, s.stroke, 1.2, s.dashed)]
+    if s.text:
+        _text_block(out, s.text, x + (w - d) / 2, y + d + PAD, w - d - 2 * PAD, s.font_size, s.text_color,
+                    bold=True)
+    return out
+
+
+def _artifact(s: Shape) -> list:
+    out = [("rect", s.x, s.y, s.w, s.h, 0.0, s.fill, s.stroke, 1.2, s.dashed)]
+    ix, iy, iw, ih, f = s.x + s.w - 18, s.y + 5, 11.0, 14.0, 4.0     # Dokument-Symbol oben rechts
+    out.append(("path", [(ix, iy), (ix + iw - f, iy), (ix + iw, iy + f), (ix + iw, iy + ih), (ix, iy + ih)], True,
+                s.fill, s.stroke, 0.9, False))
+    out.append(("path", [(ix + iw - f, iy), (ix + iw - f, iy + f), (ix + iw, iy + f)], False, "none", s.stroke, 0.9,
+                False))
+    return _centered(out, s, s.x, s.y, s.w - 14, s.h)
+
+
+def _fork(s: Shape) -> list:
+    return [("rect", s.x, s.y, s.w, s.h, 0.0, s.fill, s.fill if s.fill != "none" else s.stroke, 0.5, False)]
+
+
+def _flowfinal(s: Shape) -> list:
+    cx, cy = s.center
+    r = min(s.w, s.h) / 2
+    out = [("ellipse", cx, cy, r, r, "#ffffff" if s.fill == "none" else s.fill, s.stroke, 1.2, s.dashed)]
+    return _below(out + _x_lines(cx, cy, r * 0.707, s.stroke, 1.2), s)
+
+
+def _send(s: Shape) -> list:
+    tip = min(s.h / 2, s.w / 4)
+    x, y, w, h = s.x, s.y, s.w, s.h
+    out = [("path", [(x, y), (x + w - tip, y), (x + w, y + h / 2), (x + w - tip, y + h), (x, y + h)], True, s.fill,
+            s.stroke, 1.2, s.dashed)]
+    return _centered(out, s, x, y, w - tip, h)
+
+
+def _receive(s: Shape) -> list:
+    notch = min(s.h / 2, s.w / 4)
+    x, y, w, h = s.x, s.y, s.w, s.h
+    out = [("path", [(x, y), (x + w, y), (x + w, y + h), (x, y + h), (x + notch, y + h / 2)], True, s.fill,
+            s.stroke, 1.2, s.dashed)]
+    return _centered(out, s, x + notch, y, w - notch, h)
+
+
+def _timeevent(s: Shape) -> list:
+    x, y, w, h = s.x, s.y, s.w, s.h
+    return _below([("path", [(x, y), (x + w, y), (x, y + h), (x + w, y + h)], True, s.fill, s.stroke, 1.2,
+                    s.dashed)], s)
+
+
+def _header_height(s: Shape) -> float:
+    return s.font_size * 1.2 + 2 * PAD
+
+
+def _partition(s: Shape) -> list:
+    head = _header_height(s)
+    out = [("rect", s.x, s.y, s.w, s.h, 0.0, s.fill, s.stroke, 1.2, s.dashed),
+           ("path", [(s.x, s.y + head), (s.x + s.w, s.y + head)], False, "none", s.stroke, 1.2, False)]
+    if s.text:
+        _text_block(out, s.text.split("\n")[0], s.x + s.w / 2, s.y + PAD, s.w - 2 * PAD, s.font_size,
+                    s.text_color, bold=True)
+    return out
+
+
+def _state(s: Shape) -> list:
+    out = [("rect", s.x, s.y, s.w, s.h, min(12.0, s.h / 3, s.w / 3), s.fill, s.stroke, 1.2, s.dashed)]
+    sections = s.class_sections()
+    if len(sections) == 1:
+        return _centered(out, s, s.x, s.y, s.w, s.h)
+    name = sections[0]
+    bottom = _text_block(out, name, s.x + s.w / 2, s.y + PAD, s.w - 2 * PAD, s.font_size, s.text_color,
+                         bold=s.bold) + PAD - 2
+    out.append(("path", [(s.x, bottom), (s.x + s.w, bottom)], False, "none", s.stroke, 1.0, False))
+    rest = "\n".join(sections[1:]).strip("\n")
+    if rest:
+        _text_block(out, rest, s.x + s.w / 2, bottom + PAD - 2, s.w - 2 * PAD, s.font_size, s.text_color, "start",
+                    left=s.x + PAD)
+    return out
+
+
+def _history(s: Shape) -> list:
+    cx, cy = s.center
+    r = min(s.w, s.h) / 2
+    letter = "H*" if s.kind == "deephistory" else "H"
+    size = r * 1.05
+    out = [("ellipse", cx, cy, r, r, "#ffffff" if s.fill == "none" else s.fill, s.stroke, 1.2, s.dashed),
+           ("text", cx, cy + size * 0.36, letter, size, s.text_color, "middle", False, False)]
+    return _below(out, s)
+
+
+def _entrypoint(s: Shape) -> list:
+    cx, cy = s.center
+    r = min(s.w, s.h) / 2
+    out = [("ellipse", cx, cy, r, r, "#ffffff" if s.fill == "none" else s.fill, s.stroke, 1.2, s.dashed)]
+    if s.kind == "exitpoint":
+        out += _x_lines(cx, cy, r * 0.707, s.stroke, 1.2)
+    return _below(out, s)
+
+
+def _cross(s: Shape) -> list:
+    cx, cy = s.center
+    return _below(_x_lines(cx, cy, min(s.w, s.h) / 2, s.stroke, 1.6), s)
+
+
+def _lifeline(s: Shape) -> list:
+    head = lifeline_head(s)
+    cx = s.x + s.w / 2
+    out = [("path", [(cx, s.y + head), (cx, s.y + s.h)], False, "none", s.stroke, 1.0, True),
+           ("rect", s.x, s.y, s.w, head, 0.0, s.fill, s.stroke, 1.2, s.dashed)]
+    return _centered(out, s, s.x, s.y, s.w, head)
+
+
+def _activation(s: Shape) -> list:
+    return [("rect", s.x, s.y, s.w, s.h, 0.0, s.fill, s.stroke, 1.2, s.dashed)]
+
+
+def _frame(s: Shape) -> list:
+    sections = s.class_sections()
+    label = sections[0].strip() or " "
+    size = s.font_size
+    lw = min(s.w, text_width(label, size, True) + 2 * PAD + 8)
+    lh = min(s.h, size * 1.2 + 6)
+    x, y = s.x, s.y
+    out = [("rect", x, y, s.w, s.h, 0.0, s.fill, s.stroke, 1.2, s.dashed),
+           ("path", [(x, y), (x + lw, y), (x + lw, y + lh - 5), (x + lw - 6, y + lh), (x, y + lh)], True,
+            "#ffffff" if s.fill == "none" else s.fill, s.stroke, 1.0, False),
+           ("text", x + PAD, y + 3 + size * 0.93, label, size, s.text_color, "start", True, False)]
+    guards = sections[1:]
+    if guards:                                              # Operanden (alt/par …): gleich hohe Streifen
+        band = (s.h - lh) / len(guards)
+        for i, guard in enumerate(guards):
+            top = y + lh + i * band
+            if i:
+                out.append(("path", [(x, top), (x + s.w, top)], False, "none", s.stroke, 1.0, True))
+            if guard.strip():
+                _text_block(out, guard.strip(), x + s.w / 2, top + 3, s.w - 2 * PAD, size, s.text_color, "start",
+                            left=x + PAD)
+    return out
+
+
+def _system(s: Shape) -> list:
+    out = [("rect", s.x, s.y, s.w, s.h, 0.0, s.fill, s.stroke, 1.2, s.dashed)]
+    if s.text:
+        _text_block(out, s.text, s.x + s.w / 2, s.y + PAD, s.w - 2 * PAD, s.font_size, s.text_color, bold=True)
+    return out
+
+
+def _robustness(s: Shape) -> list:
+    fill = "#ffffff" if s.fill == "none" else s.fill
+    out: list = []
+    if s.kind == "boundary":                                # |—○
+        r = min(s.h / 2, (s.w - 10) / 2)
+        cx, cy = s.x + s.w - r, s.y + s.h / 2
+        out += [("path", [(s.x, cy - r), (s.x, cy + r)], False, "none", s.stroke, 1.2, False),
+                ("path", [(s.x, cy), (cx - r, cy)], False, "none", s.stroke, 1.2, False),
+                ("ellipse", cx, cy, r, r, fill, s.stroke, 1.2, s.dashed)]
+    elif s.kind == "control":                               # ○ mit Pfeil oben
+        r = min(s.w, s.h - 4) / 2
+        cx, cy = s.x + s.w / 2, s.y + s.h - r
+        top = cy - r
+        out += [("ellipse", cx, cy, r, r, fill, s.stroke, 1.2, s.dashed),
+                ("path", [(cx + 5, top - 4), (cx, top), (cx + 5, top + 4)], False, "none", s.stroke, 1.2, False)]
+    else:                                                   # entity: ○ mit Strich darunter
+        r = min(s.w, s.h - 4) / 2
+        cx, cy = s.x + s.w / 2, s.y + r
+        out += [("ellipse", cx, cy, r, r, fill, s.stroke, 1.2, s.dashed),
+                ("path", [(cx - r, s.y + s.h), (cx + r, s.y + s.h)], False, "none", s.stroke, 1.2, False)]
+    return _below(out, s)
+
+
+UML_SHAPES = {
+    "lollipop": _lollipop, "socket": _socket, "port": _port, "component": _component, "node": _node,
+    "artifact": _artifact, "fork": _fork, "flowfinal": _flowfinal, "send": _send, "receive": _receive,
+    "timeevent": _timeevent, "partition": _partition, "state": _state, "history": _history,
+    "deephistory": _history, "entrypoint": _entrypoint, "exitpoint": _entrypoint, "cross": _cross,
+    "lifeline": _lifeline, "activation": _activation, "frame": _frame, "system": _system,
+    "boundary": _robustness, "control": _robustness, "entity": _robustness,
+}
