@@ -105,8 +105,10 @@ def test_compressed_pages_svg_and_page_choice():
 
 def test_roundtrip_keeps_kinds_texts_arrows_ports_and_labels():
     d = Diagram(500, 400)
+    from notex.core.diagram.model import SHAPE_KINDS
     kinds = ["class", "rect", "rounded", "ellipse", "diamond", "circle", "endstate", "note", "text", "actor",
              "package", "database", "parallelogram"]
+    kinds += [k for k in SHAPE_KINDS if k not in kinds]                    # alle UML-Symbole
     shapes = [d.add_shape(k, 20 + (i % 4) * 120, 20 + (i // 4) * 110) for i, k in enumerate(kinds)]
     shapes[0].text = "{abstract}\nTier\n--\n- name: String\n- alter: int\n--\n+ laut(): void"
     shapes[1].text = "Zeile 1\nZeile <2> & 3"
@@ -114,7 +116,8 @@ def test_roundtrip_keeps_kinds_texts_arrows_ports_and_labels():
     shapes[1].fill = "#ffcc00"
     shapes[3].dashed = True
     d.add_shape("class", 20, 360, 120, 30, "NurName")                     # Klasse ohne Abschnitte bleibt so
-    arrows = ["arrow", "open", "triangle", "diamond", "diamond_filled", "circle", "none"]
+    arrows = ["arrow", "open", "triangle", "diamond", "diamond_filled", "circle", "none", "dot", "cross",
+              "containment"]
     for i, arrow in enumerate(arrows):
         d.connect(End(shapes[i].id, "e2"), End(shapes[i + 1].id, "w2"), "Linie", end_arrow=arrow,
                   start_arrow=arrows[-1 - i], dashed=i % 2 == 0, label=f"L{i}", start_label="1", end_label="*",
@@ -123,8 +126,8 @@ def test_roundtrip_keeps_kinds_texts_arrows_ports_and_labels():
     for compressed in (False, True):
         back = drawio.read(drawio.write(d, compressed=compressed))
         assert [(s.kind, s.text) for s in back.shapes] == [(s.kind, s.text) for s in d.shapes]
-        b = back.shapes[1]
-        assert b.bold and b.fill == "#ffcc00" and back.shapes[3].dashed
+        b = back.shapes[d.shapes.index(shapes[1])]                         # Rahmen liegen vorne in der Liste
+        assert b.bold and b.fill == "#ffcc00" and back.shapes[d.shapes.index(shapes[3])].dashed
         for old, new in zip(d.connectors, back.connectors):
             assert (new.start_arrow, new.end_arrow, new.dashed, new.route, new.label, new.start_label,
                     new.end_label) == (old.start_arrow, old.end_arrow, old.dashed, old.route, old.label,
@@ -217,3 +220,35 @@ def test_html_export_and_bom():
     with pytest.raises(drawio.DrawioError, match="HTML"):
         drawio.load(b'<html><div data-mxgraph="kaputt"></div></html>')
     assert drawio.load("\ufeff<mxfile/>".encode("utf-8")) == "<mxfile/>"
+
+
+def test_native_drawio_uml_shapes_and_stereotypes():
+    cells = [("a", "shape=umlLifeline;size=40;", "obj : K", 0, 0, 100, 300),
+             ("b", "shape=umlFrame;width=60;height=20;", "loop", 200, 0, 200, 120),
+             ("c", "shape=umlDestroy;", "", 0, 320, 20, 20),
+             ("d", "shape=cube;", "Server", 300, 200, 120, 80),
+             ("e", "shape=component;", "Dienst", 450, 200, 120, 60),
+             ("f", "shape=line;strokeWidth=6;", "", 450, 300, 100, 6),
+             ("g", "shape=sumEllipse;perimeter=ellipsePerimeter;", "", 600, 0, 20, 20),
+             ("h", "swimlane;startSize=24;", "Kunde", 650, 0, 160, 300),
+             ("i", "swimlane;childLayout=stackLayout;startSize=40;", "«interface»&lt;br&gt;Druckbar", 850, 0, 140, 60),
+             ("j", "ellipse;shape=umlControl;", "Ctrl", 850, 100, 30, 34),
+             ("k", "shape=collate;", "1 s", 900, 200, 20, 30)]
+    body = "".join(f'<mxCell id="{cid}" value="{value}" style="{style}html=1;" vertex="1" parent="1">'
+                   f'<mxGeometry x="{x}" y="{y}" width="{w}" height="{h}" as="geometry"/></mxCell>'
+                   for cid, style, value, x, y, w, h in cells)
+    body += ('<mxCell id="t" value="[i &lt; 3]" style="text;html=1;" vertex="1" parent="b">'
+             '<mxGeometry x="0" y="22" width="80" height="20" as="geometry"/></mxCell>'
+             '<mxCell id="m" value="tuWas()" style="endArrow=block;endFill=1;html=1;exitX=0.5;exitY=0.4;" edge="1" '
+             'parent="1" source="a" target="d"><mxGeometry relative="1" as="geometry"/></mxCell>')
+    d = drawio.read(f'<mxGraphModel><root><mxCell id="0"/><mxCell id="1" parent="0"/>{body}</root></mxGraphModel>')
+    kinds = {s.text.split("\n")[0]: s.kind for s in d.shapes}
+    assert kinds["obj : K"] == "lifeline" and kinds["Server"] == "node" and kinds["Dienst"] == "component"
+    assert kinds["Kunde"] == "partition" and kinds["Druckbar"] == "interface" and kinds["Ctrl"] == "control"
+    assert kinds["1 s"] == "timeevent"
+    frame = next(s for s in d.shapes if s.kind == "frame")
+    assert frame.text == "loop\n--\n[i < 3]"
+    assert {s.kind for s in d.shapes} >= {"cross", "fork", "flowfinal"}
+    assert [s.kind for s in d.shapes[:3]] == ["lifeline", "frame", "partition"]     # Rahmen hinten
+    message = d.connectors[0]
+    assert message.source.port == "y0.4000" and message.end_arrow == "arrow"     # genau auf Höhe 40 %

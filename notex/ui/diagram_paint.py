@@ -104,8 +104,10 @@ def shape_icon(kind: str, size: int = 28, ink: str | None = None) -> QIcon:
     w, h = DEFAULT_SIZES.get(kind, (60, 40))
     diagram = Diagram(w, h)
     shape = diagram.add_shape(kind, 0, 0, w, h, text="")
-    if kind == "class":
+    if kind in ("class", "interface"):
         shape.text = "\n--\n\n--\n"
+    if kind in ("enum", "object", "state"):
+        shape.text = "\n--\n"
     if kind == "text":
         w, h = 30, 30
         shape.w, shape.h = w, h

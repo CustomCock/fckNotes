@@ -108,6 +108,17 @@ def test_chained_lines_join_at_free_end(canvas):
     assert box.id != target.id
 
 
+def test_message_between_lifelines_docks_where_released_and_levels(canvas):
+    a = canvas.model.add_shape("lifeline", 20, 10, 100, 280)
+    b = canvas.model.add_shape("lifeline", 220, 10, 100, 280)
+    canvas.set_tool("connect")
+    _drag(canvas, (70, 123), (270, 128))                                    # leicht schräg losgelassen
+    msg = canvas.model.connectors[-1]
+    assert msg.source.shape == a.id and msg.target.shape == b.id
+    start, finish = route(canvas.model, msg)
+    assert start[1] == pytest.approx(finish[1]) and abs(start[1] - 123) < 6
+
+
 def test_shape_icons_follow_ink_color():
     from notex.ui.diagram_paint import shape_icon
     image = shape_icon("rect", 28, ink="#ff0000").pixmap(56, 56).toImage()

@@ -54,6 +54,14 @@ Alle nennenswerten Änderungen an fckNotes (bis 1.17.0: Notex). Format angelehnt
   Diagramm) und der HTML-Export werden gelesen. Eigene XML-Entity-Definitionen werden abgelehnt, Größe begrenzt.
 - Diagramm-Editor: frei endende Verbinder rasten senkrecht/waagerecht zum anderen Ende ein (Shift erzwingt es) und an
   vorhandene freie Linienenden an.
+- **Diagramm-Editor: alle gängigen UML-2.5-Symbole** – Schnittstelle, Aufzählung, Objekt, Lolli/Buchse, Port,
+  Komponente, Knoten, Artefakt, Systemgrenze, Boundary/Control/Entity, Ablaufende, Gabelung/Vereinigung, Signal
+  senden/empfangen, Zeitereignis, Swimlane, Zustand, Historie, Ein-/Austrittspunkt, Terminierung, Lebenslinie,
+  Aktivierung, Rahmen/kombiniertes Fragment (Operanden mit Bedingungen). Neue Beziehungen («include», «extend»,
+  «import», «use», «create», Enthaltensein ⊕, nicht navigierbar ×, synchrone/verlorene/gefundene Nachricht) und
+  Pfeilspitzen. Formen-Leiste nach Diagrammart gruppiert; neue Vorlagen für Zustands-, Komponenten-, Verteilungs- und
+  Objektdiagramm, Sequenz- und Use-Case-Vorlage mit Lebenslinien bzw. Systemgrenze. draw.io-Austausch kennt die
+  neuen Symbole (auch draw.io-eigene wie umlLifeline, umlFrame, cube, umlDestroy).
 
 ### Behoben
 - Diagramm-Editor: Senkrecht gezogene Linien wurden leicht schief, weil das freie Ende aufs Raster sprang, der
