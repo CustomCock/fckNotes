@@ -506,9 +506,21 @@ Der Stift schaltet eine zweite Leiste und die **Seitenleiste** (Miniaturen) ein.
 - Gespeichert werden normale PDF-Anmerkungen mit eigenem Erscheinungsbild: Acrobat, Browser und Vorschau-Programme
   zeigen sie genauso an. Gelöschte Anmerkungen bleiben nicht als Reste in der Datei.
 
+**Eingefügtes bearbeiten** – mit dem Werkzeug „Auswählen“ (Pfeil):
+
+- **Anklicken** wählt Text auf der Seite, Notizen, Unterschriften, Diagramme und Formularfelder aus (gestrichelter
+  Rahmen mit Griffen). **Ziehen** verschiebt, die **Griffe** ändern die Größe – Unterschriften, Diagramme und
+  Kästchen behalten dabei ihr Seitenverhältnis.
+- **Pfeiltasten** schieben um 1 pt (Shift: 10 pt), **Entf** löscht, **Esc** hebt die Auswahl auf.
+- **Doppelklick** bearbeitet: Text (inkl. Größe, Farbe, Rahmen), Notiz-/Kommentartext, Unterschrift ersetzen.
+  Rechtsklick auf ein Feld: ausfüllen, „Feld-Eigenschaften …“ (Name, mehrzeilig, Schriftgröße) oder löschen.
+- Markierungen hängen am Text: löschen oder kommentieren geht, verschieben nicht.
+
 **Formulare und Unterschrift**
 
-- **Ausfüllen**: Klemmbrett-Knopf (oder Palette › PDF: Formular ausfüllen) zeigt rechts alle Felder – Text,
+- **Direkt ausfüllen**: in ein Feld klicken und tippen – Enter übernimmt (mehrzeilig: Ctrl+Enter), Esc verwirft.
+  Kästchen und Optionsfelder schalten per Klick, Auswahllisten klappen auf. Ziehen am Feld verschiebt es stattdessen.
+- **Ausfüllen in der Liste**: Klemmbrett-Knopf (oder Palette › PDF: Formular ausfüllen) zeigt rechts alle Felder – Text,
   Kontrollkästchen, Optionsfelder, Auswahllisten. „Übernehmen“ schreibt alle Änderungen in einem Schritt; Klick auf
   einen Feldnamen springt zum Feld. Schreibgeschützte Felder bleiben gesperrt. Feldwerte sind jetzt auch in der
   Ansicht sichtbar (vorher zeigte fckNotes ausgefüllte Formulare leer).
@@ -1255,6 +1267,11 @@ Alternativ per Docker: `docker run -d -p 8081:8010 erikvl87/languagetool` (dann 
 | Palette › PDF: Werkzeug Textfeld / Kontrollkästchen anlegen | Neues Formularfeld aufziehen bzw. anklicken |
 | Palette › PDF: Unterschrift einsetzen | Zeichnen oder Bild wählen, dann auf der Seite platzieren |
 | Palette › PDF: Anmerkungen und Formular einbrennen | Alles fest in die Seiten übernehmen (vor dem Verschicken) |
+| Klick / Ziehen / Griffe (PDF, Werkzeug „Auswählen“) | Eingefügtes auswählen, verschieben, Größe ändern |
+| Pfeiltasten / Shift+Pfeil / Entf (PDF, Objekt gewählt) | 1 pt / 10 pt schieben, löschen |
+| Doppelklick (PDF, Objekt) | Bearbeiten: Text mit Stil, Notiz, Unterschrift ersetzen |
+| Klick in ein Formularfeld | Direkt auf der Seite ausfüllen (Enter / Ctrl+Enter übernimmt, Esc verwirft) |
+| Palette › PDF: Ausgewähltes bearbeiten / löschen | Wie Doppelklick bzw. Entf |
 | Palette › PDF: Werkzeug Schwärzen | Bereiche zum Schwärzen aufziehen (Esc beendet) |
 | Palette › PDF: Markierung / Alle Suchtreffer schwärzen | Text bzw. jedes Vorkommen des Suchbegriffs vormerken |
 | Palette › PDF: Schwärzen anwenden | Vorgemerktes endgültig schwärzen, prüfen, unter neuem Namen speichern |

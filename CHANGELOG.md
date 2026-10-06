@@ -28,6 +28,12 @@ Alle nennenswerten Änderungen an fckNotes (bis 1.17.0: Notex). Format angelehnt
   die betroffenen Seiten als Bild mit eingemalten Balken neu, entfernt deren Text, Schriften, Anmerkungen und
   Formularwerte, auf Wunsch Metadaten, Anhänge/Skripte und Lesezeichen, und prüft danach, ob die Wörter noch irgendwo
   stehen. Speichern nur unter neuem Namen.
+- **PDF: Eingefügtes anfassen** (Werkzeug „Auswählen“): Text auf der Seite, Notizen, Unterschriften und
+  Formularfelder anklicken, ziehen, an den Griffen in der Größe ändern (Unterschrift/Kästchen behalten das
+  Seitenverhältnis), Pfeiltasten schieben (Shift = 10 pt), `Entf` löscht, Doppelklick bearbeitet – Text samt
+  Größe, Farbe und Rahmen, Unterschrift ersetzen, Feld-Eigenschaften (Name, mehrzeilig, Schriftgröße).
+- **PDF-Formularfelder direkt auf der Seite ausfüllen**: Klick ins Feld öffnet die Eingabe genau dort (Enter bzw.
+  Ctrl+Enter übernimmt, Esc verwirft), Kästchen und Optionsfelder schalten per Klick, Auswahllisten klappen auf.
 
 ### Behoben
 - PDF bearbeiten: Nach Löschen von Seiten/Anmerkungen blieben verwaiste Objekte (z. B. alte Lesezeichen-Ketten) in

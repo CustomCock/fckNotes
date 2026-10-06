@@ -579,6 +579,19 @@ Kommentieren, Formulare + Unterschrift, Textfelder, echtes Schwärzen)
   mit 30 Seiten ohne Warten.
 - Block S abgeschlossen. Screenshots 72 (Bearbeiten) und 73 (Schwärzen) über `tools/screenshot.py`.
 
+### Block T: PDF – Eingefügtes bearbeiten, Felderkennung, Diagramme (06.10.2026, Besitzer)
+Wunsch: draw.io-artiges Zeichnen (UML mit Andockpunkten/Pfeilen) in PDFs, alles Eingefügte (auch Textfelder)
+wieder bearbeiten/entfernen, automatische Felderkennung (Name, Datum, Unterschrift, Klasse, Thema …) wie in Adobe.
+Plan: T1 Objekte bearbeiten + direkt ausfüllen → T2 Felderkennung → T3 Diagramm-Editor → T4 .drawio Import/Export.
+**Entscheidung:** draw.io selbst nicht einbetten (Browser-App, QtWebEngine ausgeschlossen) → eigener Editor.
+- **T1 – erledigt.** Kern `notex/core/pdfobjects.py` (`list_objects` inkl. Widgets, `hit` kleinstes zuerst,
+  `set_rect` je Art: FreeText neu umbrechen, Notiz nur verschieben, Stempel Rahmen, Felder AP neu, Markierungen
+  verweigert; `move_by`, `delete_object` (Feld = ganzes Feld), `fit_aspect`), `pdfannot.update_text` mit Stil,
+  `pdfforms.update_field` (Name/mehrzeilig/Größe), `_set_checkbox_appearance`. UI `notex/ui/pdf_objects.py`
+  (`ObjectController`: Griffe, Ziehen, Tasten, Cursor, Eingabe auf der Seite für Text/Auswahl, Klick für
+  Kästchen/Optionen; Eingabe wandert bei Scroll/Größenänderung mit), `FieldDialog`. Objekte nur im
+  Bearbeiten-Modus verschiebbar; Felder ausfüllen geht immer (schaltet Bearbeiten ein).
+
 ## Offen
 
 ### Block C – 1.3.0

@@ -396,12 +396,49 @@ def add_checkbox(data: bytes, page_index: int, rect_view: A.Rect, name: str, che
     widget[NameObject("/AS")] = state
     widget[NameObject("/DA")] = TextStringObject("/ZaDb 0 Tf 0 g")
     widget["/MK"][NameObject("/CA")] = TextStringObject("4")
+    _set_checkbox_appearance(writer, widget)
+    _register(writer, page_index, widget)
+    return A.finish(writer)
+
+
+def _set_checkbox_appearance(writer, widget, on_state: str = "Yes") -> None:
+    w, h, rotate = _widget_box(widget)
     matrix = _matrix(rotate)
     widget[NameObject("/AP")] = DictionaryObject({NameObject("/N"): DictionaryObject({
-        NameObject("/Yes"): A._form(writer, checkbox_appearance(side, side, True), [0, 0, side, side], None, matrix),
-        NameObject("/Off"): A._form(writer, checkbox_appearance(side, side, False), [0, 0, side, side], None, matrix),
+        NameObject("/" + on_state): A._form(writer, checkbox_appearance(w, h, True), [0, 0, w, h], None, matrix),
+        NameObject("/Off"): A._form(writer, checkbox_appearance(w, h, False), [0, 0, w, h], None, matrix),
     })})
-    _register(writer, page_index, widget)
+
+
+def update_field(data: bytes, name: str, new_name: str | None = None, multiline: bool | None = None,
+                 size: float | None = None) -> bytes:
+    """Feld-Eigenschaften ändern: Name, mehrzeilig, Schriftgröße (0 = passend). Erscheinungsbild wird neu gezeichnet."""
+    writer = A.open_writer(data)
+    widgets = _find_widgets(writer, name)
+    if not widgets:
+        raise PdfEditError(f"Feld „{name}“ gibt es nicht")
+    field_obj = _field_of(widgets[0][1])
+    kind = _kind(field_obj)
+    if new_name is not None and new_name.strip() != name.split(".")[-1]:
+        new_name = new_name.strip()
+        if not new_name or "." in new_name:
+            raise PdfEditError("Feldname darf nicht leer sein und keinen Punkt enthalten")
+        prefix = name.rsplit(".", 1)[0] + "." if "." in name else ""
+        if any(f.name == prefix + new_name for f in list_fields(data)):
+            raise PdfEditError(f"Ein Feld „{new_name}“ gibt es schon")
+        field_obj[NameObject("/T")] = TextStringObject(new_name)
+    if multiline is not None and kind == "text":
+        flags = int(field_obj.get("/Ff", 0) or 0)
+        field_obj[NameObject("/Ff")] = NumberObject(flags | FF_MULTILINE if multiline else flags & ~FF_MULTILINE)
+    if size is not None and kind in ("text", "choice"):
+        if not (size == 0 or 4 <= size <= 72):
+            raise PdfEditError("Schriftgröße 0 (passend) oder 4–72 pt")
+        for _page, widget in widgets:
+            widget[NameObject("/DA")] = TextStringObject(f"/Helv {A._num(size)} Tf 0 g")
+    if kind in ("text", "choice"):
+        value = _value_text(_inherited(field_obj, "/V"))
+        for _page, widget in widgets:
+            _set_text_appearance(writer, widget, field_obj, value)
     return A.finish(writer)
 
 

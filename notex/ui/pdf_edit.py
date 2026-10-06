@@ -296,6 +296,9 @@ class TextDialog(QDialog):
         for name, value in TEXT_COLORS:
             self.color.addItem(name, value)
         index = self.color.findData(color)
+        if index < 0 and color:                          # eigene Farbe (z. B. aus einem anderen Programm) behalten
+            self.color.addItem(f"Bisherige ({color})", color)
+            index = self.color.count() - 1
         self.color.setCurrentIndex(max(0, index))
         self.border = QCheckBox("Rahmen")
         self.border.setChecked(border)
@@ -624,3 +627,37 @@ def render_redacted(doc: QPdfDocument, index: int, boxes: list, dpi: int):
     raw = bytes(page.constBits())[: stride * h_px]
     rgb = raw if stride == w_px * 3 else b"".join(raw[y * stride: y * stride + w_px * 3] for y in range(h_px))
     return PageImage(w_pt, h_pt, w_px, h_px, rgb)
+
+
+class FieldDialog(QDialog):
+    """Eigenschaften eines Formularfelds: Name, mehrzeilig, Schriftgröße (0 = passt sich an)."""
+
+    def __init__(self, parent: QWidget, info) -> None:
+        super().__init__(parent)
+        from PySide6.QtWidgets import QCheckBox, QFormLayout
+        self.setWindowTitle(f"Feld „{info.name}“")
+        self.name = QLineEdit(info.name.split(".")[-1])
+        self.multiline = QCheckBox("Mehrzeilig (Umbruch)")
+        self.multiline.setChecked(info.multiline)
+        self.multiline.setEnabled(info.kind == "text")
+        self.size = QSpinBox()
+        self.size.setRange(0, 72)
+        self.size.setSpecialValueText("passend")
+        self.size.setSuffix(" pt")
+        self.size.setEnabled(info.kind in ("text", "choice"))
+        form = QFormLayout()
+        form.addRow("Name", self.name)
+        form.addRow("", self.multiline)
+        form.addRow("Schriftgröße", self.size)
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout = QVBoxLayout(self)
+        layout.addLayout(form)
+        layout.addWidget(buttons)
+        self._kind = info.kind
+
+    def values(self) -> tuple[str, bool | None, float | None]:
+        multiline = self.multiline.isChecked() if self._kind == "text" else None
+        size = float(self.size.value()) if self._kind in ("text", "choice") else None
+        return self.name.text().strip(), multiline, size
