@@ -1202,6 +1202,8 @@ class PdfPage(ViewerPage):
             elif info.kind == "stamp" and obj is not None and obj.kind in ("signature", "diagram"):
                 verb = "Unterschrift ersetzen …" if obj.kind == "signature" else "Diagramm bearbeiten …"
                 menu.addAction(verb, lambda: self.edit_object(obj))
+                if obj.kind == "diagram":
+                    menu.addAction("Diagramm als draw.io-Datei speichern …", lambda: self.export_drawio(obj))
             elif info.text_editable:
                 menu.addAction(f"{info.label}: Kommentar bearbeiten …", lambda: self.edit_annotation(page, info.index))
             menu.addAction(f"{info.label} löschen", lambda: self.delete_annotation(page, info.index))
@@ -1377,6 +1379,58 @@ class PdfPage(ViewerPage):
             return self.delete_object(obj)
         corner = (obj.rect[0] + offset[0], obj.rect[1] + offset[1])
         return self._run(pdfdiagram.update_diagram, obj.page, obj.index, diagram, corner, page=obj.page)
+
+    def import_drawio(self, path: str | None = None, page: int | None = None, file_page: int | None = None,
+                      edit: bool = True) -> bool:
+        """draw.io-Datei als Diagramm auf die (aktuelle) Seite setzen – vorher im Editor anpassbar."""
+        from PySide6.QtWidgets import QFileDialog
+        from notex.ui.diagram_editor import read_drawio_file
+        if self.edit_block_reason():
+            self.notice.emit(self.edit_block_reason())
+            return False
+        if path is None:
+            path, _ = QFileDialog.getOpenFileName(self, "draw.io-Datei einfügen", str(self.path.parent),
+                                                  "draw.io (*.drawio *.drawio.xml *.xml *.drawio.svg *.svg)")
+            if not path:
+                return False
+        diagram = read_drawio_file(self, path, file_page)
+        if diagram is None:
+            return False
+        page = self.canvas.current_page if page is None else page
+        top_left = (36.0, 36.0)
+        if not edit:
+            return self.insert_diagram(page, top_left, diagram)
+        from notex.ui.diagram_editor import DiagramEditor
+        image, scale = self.page_background(page)
+        editor = DiagramEditor(self, diagram, image, scale, top_left)
+        if editor.exec() != QDialog.DialogCode.Accepted:
+            return False
+        result, offset = editor.result_diagram()
+        return self.insert_diagram(page, (top_left[0] + offset[0], top_left[1] + offset[1]), result)
+
+    def export_drawio(self, obj=None, path: str | None = None) -> bool:
+        """Diagramm (ausgewählt oder `obj`) als .drawio speichern – zum Weiterbearbeiten in draw.io."""
+        from PySide6.QtWidgets import QFileDialog
+        from notex.ui.diagram_editor import write_drawio_file
+        obj = obj or self.objects.selected
+        if obj is None or obj.kind != "diagram":
+            self.notice.emit("Erst ein Diagramm anklicken (Werkzeug „Auswählen“)")
+            return False
+        try:
+            diagram = pdfdiagram.read_diagram(self.data, obj.page, obj.index)
+        except pdfpages.PdfEditError as error:
+            self.notice.emit(str(error))
+            return False
+        if path is None:
+            suggestion = self.path.parent / f"{self.path.stem}_diagramm.drawio"
+            path, _ = QFileDialog.getSaveFileName(self, "Diagramm als draw.io-Datei speichern", str(suggestion),
+                                                  "draw.io (*.drawio)")
+            if not path:
+                return False
+        if write_drawio_file(self, path, diagram):
+            self.notice.emit(f"Gespeichert: {Path(path).name}")
+            return True
+        return False
 
     def _region_diagram(self, page: int, box: tuple) -> None:
         x0, y0, x1, y1 = box

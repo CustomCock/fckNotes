@@ -14,15 +14,16 @@ from __future__ import annotations
 
 import copy
 import math
+from pathlib import Path
 
 from PySide6.QtCore import QPointF, QRectF, QSize, Qt, Signal
 from PySide6.QtGui import QColor, QImage, QKeySequence, QPainter, QPen
-from PySide6.QtWidgets import (QCheckBox, QColorDialog, QComboBox, QDialog, QDialogButtonBox,
-                               QFormLayout, QHBoxLayout, QLabel, QLineEdit, QMenu, QPlainTextEdit, QPushButton,
-                               QScrollArea, QSpinBox, QToolButton, QVBoxLayout, QWidget)
+from PySide6.QtWidgets import (QCheckBox, QColorDialog, QComboBox, QDialog, QDialogButtonBox, QFileDialog,
+                               QFormLayout, QHBoxLayout, QInputDialog, QLabel, QLineEdit, QMenu, QMessageBox,
+                               QPlainTextEdit, QPushButton, QScrollArea, QSpinBox, QToolButton, QVBoxLayout, QWidget)
 
 from notex.core.diagram import model as M
-from notex.core.diagram import render, templates
+from notex.core.diagram import drawio, render, templates
 from notex.theme.tokens import COLORS
 from notex.ui.diagram_paint import paint_primitives, shape_icon
 from notex.ui.widgets import IconButton
@@ -526,6 +527,21 @@ class DiagramCanvas(QWidget):
         self._changed()
         return ids
 
+    def insert_part(self, part: M.Diagram) -> list[str]:
+        """Fremdes Diagramm (z. B. aus draw.io) unter den vorhandenen Inhalt setzen und auswählen."""
+        box, own = part.bounds(), self.model.bounds()
+        if box is None:
+            return []
+        part.translate(10.0 - box[0], ((own[3] + 20) if own else 10.0) - box[1])
+        ids = self.paste(part.to_json(), offset=0.0)
+        content = self.model.bounds()
+        if content is not None:
+            self.model.width = max(self.model.width, content[2] + 10)
+            self.model.height = max(self.model.height, content[3] + 10)
+            self._resize_widget()
+            self._changed()
+        return ids
+
     def bring_to_front(self, front: bool = True) -> None:
         shapes = self.selected_shapes()
         if not shapes:
@@ -718,6 +734,37 @@ class ConnectorDialog(QDialog):
         return self.label.text().strip(), self.start.text().strip(), self.end.text().strip()
 
 
+# ---- draw.io-Dateien -------------------------------------------------------------------------------------
+def read_drawio_file(parent, path: str, page: int | None = None) -> M.Diagram | None:
+    """draw.io-Datei lesen; Fehler als Meldung, mehrere Seiten per Auswahl. None = abgebrochen/Fehler."""
+    try:
+        file = Path(path)
+        if file.stat().st_size > drawio.MAX_FILE:
+            raise drawio.DrawioError("Datei zu groß")
+        text = file.read_text(encoding="utf-8", errors="replace")
+        names = drawio.page_names(text)
+        if page is None:
+            page = 0
+            if len(names) > 1:
+                chosen, ok = QInputDialog.getItem(parent, "draw.io-Seite", "Welche Seite?", names, 0, False)
+                if not ok:
+                    return None
+                page = names.index(chosen)
+        return drawio.read(text, page)
+    except (OSError, drawio.DrawioError) as error:
+        QMessageBox.warning(parent, "draw.io", f"Datei nicht lesbar: {error}")
+        return None
+
+
+def write_drawio_file(parent, path: str, diagram: M.Diagram) -> bool:
+    try:
+        Path(path).write_text(drawio.write(diagram, Path(path).stem), encoding="utf-8")
+    except OSError as error:
+        QMessageBox.warning(parent, "draw.io", f"Speichern fehlgeschlagen: {error}")
+        return False
+    return True
+
+
 # ---- Editor-Fenster --------------------------------------------------------------------------------------
 class DiagramEditor(QDialog):
     """Fenster mit Formen-Leiste links, Eigenschaften oben, Fläche in der Mitte. Ergebnis: `result_diagram()`."""
@@ -800,6 +847,11 @@ class DiagramEditor(QDialog):
         more_menu.addAction("Duplizieren  Ctrl+D", self.canvas.duplicate)
         more_menu.addAction("Fläche an Inhalt anpassen", self.fit_area)
         more.setMenu(more_menu)
+        file_button = QPushButton("draw.io …")
+        file_menu = QMenu(file_button)
+        file_menu.addAction("draw.io-Datei öffnen (einfügen) …", lambda: self.import_drawio())
+        file_menu.addAction("Als draw.io-Datei speichern …", lambda: self.export_drawio())
+        file_button.setMenu(file_menu)
         undo = IconButton("undo-2", "Rückgängig  Ctrl+Z")
         undo.clicked.connect(self.canvas.undo)
         redo = IconButton("redo-2", "Wiederholen  Ctrl+Y")
@@ -826,7 +878,7 @@ class DiagramEditor(QDialog):
             top.addWidget(widget)
         top.addStretch(1)
         second = QHBoxLayout()
-        for widget in (fill, stroke, self.font_size, self.bold, template, more, undo, redo, delete, zoom_out,
+        for widget in (fill, stroke, self.font_size, self.bold, template, more, file_button, undo, redo, delete, zoom_out,
                        zoom_in, self.snap, self.page_box, self.size_label):
             second.addWidget(widget)
         second.addStretch(1)
@@ -948,6 +1000,28 @@ class DiagramEditor(QDialog):
         else:
             self._set_shapes("stroke", color)
             self._set_conn("stroke", color)
+
+    # ---- draw.io -------------------------------------------------------------------------------------------
+    def import_drawio(self, path: str | None = None, page: int | None = None) -> list[str]:
+        """draw.io-Datei lesen (bei mehreren Seiten fragen) und in die Fläche einsetzen."""
+        if path is None:
+            path, _ = QFileDialog.getOpenFileName(self, "draw.io-Datei öffnen", str(Path.home()),
+                                                  "draw.io (*.drawio *.drawio.xml *.xml *.drawio.svg *.svg)")
+            if not path:
+                return []
+        part = read_drawio_file(self, path, page)
+        if part is None:
+            return []
+        return self.canvas.insert_part(part)
+
+    def export_drawio(self, path: str | None = None) -> bool:
+        """Ganze Fläche als .drawio speichern (draw.io öffnet sie direkt, auch app.diagrams.net)."""
+        if path is None:
+            path, _ = QFileDialog.getSaveFileName(self, "Als draw.io-Datei speichern",
+                                                  str(Path.home() / "diagramm.drawio"), "draw.io (*.drawio)")
+            if not path:
+                return False
+        return write_drawio_file(self, path, self.result_diagram()[0])
 
     def fit_area(self) -> None:
         self.canvas.checkpoint()

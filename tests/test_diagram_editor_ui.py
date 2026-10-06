@@ -276,3 +276,61 @@ def test_palette_and_moving_diagram(win, tab):
     assert moved.rect[:2] == pytest.approx((100, 220))
     assert pdfdiagram.read_diagram(tab.data, 0, moved.index).shapes[0].text == "Person"
     assert pdfobjects.list_objects(tab.data, 0)[0].kind == "diagram"
+
+
+# ---- draw.io ---------------------------------------------------------------------------------------------
+def test_editor_imports_and_exports_drawio(win, tmp_path):
+    from notex.core.diagram import drawio
+    source = tmp_path / "uml.drawio"
+    source.write_text(drawio.write(_uml()), encoding="utf-8")
+    editor = DiagramEditor(win, Diagram(200, 100))
+    editor.canvas.model.add_shape("rect", 10, 10, 60, 30, "schon da")
+    ids = editor.import_drawio(str(source))
+    assert len(ids) == 3 and set(editor.canvas.selection) == set(ids)
+    imported = [s for s in editor.canvas.model.shapes if s.id in ids]
+    assert {s.text for s in imported} == {"Person", "Schüler"}
+    assert min(s.y for s in imported) > 40                                  # unter den vorhandenen Inhalt
+    assert editor.canvas.model.height > 100
+    target = tmp_path / "raus.drawio"
+    assert editor.export_drawio(str(target))
+    back = drawio.read(target.read_text(encoding="utf-8"))
+    assert {s.text for s in back.shapes} == {"schon da", "Person", "Schüler"}
+    editor.close()
+
+
+def test_editor_import_error_shows_message(win, tmp_path, monkeypatch):
+    from PySide6.QtWidgets import QMessageBox
+    shown = []
+    monkeypatch.setattr(QMessageBox, "warning", lambda *a, **k: shown.append(a[2]))
+    bad = tmp_path / "kaputt.drawio"
+    bad.write_text("<html/>", encoding="utf-8")
+    editor = DiagramEditor(win, Diagram(200, 100))
+    assert editor.import_drawio(str(bad)) == []
+    assert shown and "mxfile" in shown[0]
+    editor.close()
+
+
+def test_pdf_import_and_export_drawio(win, tab, tmp_path, monkeypatch):
+    from notex.core.diagram import drawio
+    source = tmp_path / "uml.drawio"
+    source.write_text(drawio.write(_uml(), compressed=True), encoding="utf-8")
+    assert tab.import_drawio(str(source), page=0, edit=False)
+    obj = next(o for o in tab.objects.objects(0) if o.kind == "diagram")
+    assert obj.rect[:2] == pytest.approx((36, 36))
+    assert {s.text for s in pdfdiagram.read_diagram(tab.data, 0, obj.index).shapes} == {"Person", "Schüler"}
+    seen = {}
+
+    def fake_exec(editor):
+        seen["texts"] = {s.text for s in editor.canvas.model.shapes}
+        return QDialog.DialogCode.Accepted
+    monkeypatch.setattr(DiagramEditor, "exec", fake_exec)
+    assert tab.import_drawio(str(source), page=0)                            # mit Editor dazwischen
+    assert seen["texts"] == {"Person", "Schüler"}
+    assert len([o for o in tab.objects.objects(0) if o.kind == "diagram"]) == 2
+    target = tmp_path / "aus_pdf.drawio"
+    assert tab.export_drawio(obj, str(target))
+    assert len(drawio.read(target.read_text(encoding="utf-8")).connectors) == 1
+    tab.objects.select(None)
+    assert not tab.export_drawio(path=str(target))                          # nichts ausgewählt
+    assert win.registry.get("pdf:import_drawio") is not None
+    assert win.registry.get("pdf:export_drawio") is not None

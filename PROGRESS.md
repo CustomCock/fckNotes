@@ -609,6 +609,14 @@ Plan: T1 Objekte bearbeiten + direkt ausfüllen → T2 Felderkennung → T3 Diag
   `diagram_paint.py`; PdfPage `insert_diagram`/`edit_diagram`, Werkzeug „diagram“ (Bereich), Doppelklick öffnet.
   **Entscheidungen:** Modell im PDF statt Nebendatei (Datei bleibt eine Datei; andere Programme sehen nur den
   Stempel); Stempel statt Seiteninhalt (verschieb-/löschbar wie alles andere, Einbrennen macht es fest).
+- **T4 – erledigt.** Kern `notex/core/diagram/drawio.py`: `pages` (mxfile / mxGraphModel / .drawio.svg-`content`,
+  komprimierte Seiten Base64 → rohes Deflate → URL-dekodiert, Grenze 50 MB entpackt, DOCTYPE/ENTITY abgelehnt →
+  kein Entity-Angriff ohne neue Abhängigkeit wie defusedxml), `to_diagram` (Kinder relativ zum Elternteil,
+  Gruppen unsichtbar, swimlane+stackLayout bzw. HTML mit `<hr>` → Klasse, `exitX/entryX` → nächster Andockpunkt,
+  Kantenbeschriftungen bei x=-1/1 → Multiplizitäten), `write` (swimlane-Klassen, edgeStyle, Spitzen, optional
+  komprimiert). UI: Editor „draw.io …“ (`import_drawio` setzt unter den Inhalt, `export_drawio`), PdfPage
+  `import_drawio` (Editor dazwischen, oben links 36 pt) / `export_drawio`, Palette + Rechtsklick.
+  **Grenzen:** Wegpunkte, Bilder, Drehung, Schriftarten, Ebenen werden nicht übernommen (eigenes Routing).
 
 ## Offen
 
@@ -676,6 +684,10 @@ evtx (MIT, Rust-Wheels), dpkt (BSD). regex/PyYAML/cryptography wie bisher. Kein 
 rdap, scanner, logs, pcap. Standardmäßig an: variables, hex, ports, ioc.
 
 ## Nächster Schritt
+
+**Block T (PDF: Objekte, Felderkennung, Diagramme, draw.io) abgeschlossen** auf dem Arbeitsbranch – wartet auf
+Merge/Release durch den Besitzer (Vorschlag 1.18.0). Offen beim Besitzer: Ausprobieren mit echten Arbeitsblättern
+(Felderkennung) und eigenen draw.io-Dateien.
 
 **Plan R abgeschlossen und als 1.17.0 veröffentlicht.** Umbenennung = 1.17.1 (Arbeitsbranch, `__version__` =
 1.17.1) – wartet auf Merge nach `main` und Tag v1.17.1 durch den Besitzer. Offen beim Besitzer: manuelle Prüfung nach `docs/TESTPLAN-WINDOWS.md`.

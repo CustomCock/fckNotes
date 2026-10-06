@@ -47,6 +47,10 @@ Alle nennenswerten Änderungen an fckNotes (bis 1.17.0: Notex). Format angelehnt
   Attributen/Methoden, Vorlagen (Klassen-, Use-Case-, Aktivitäts-, Fluss-, Sequenzdiagramm), Raster, Kopieren,
   Rückgängig. Landet als Vektorgrafik im PDF (überall gleich sichtbar), passt sich der Seite an; das Modell wird
   mitgespeichert, Doppelklick bearbeitet das Diagramm später wieder.
+- **draw.io-Dateien importieren und exportieren** (Editor-Knopf „draw.io …“, Palette, Rechtsklick auf ein
+  Diagramm): `.drawio` (auch komprimiert und `.drawio.svg`, mehrere Seiten) wird zum bearbeitbaren Diagramm –
+  Formen, UML-Klassen (draw.io-Stapel und HTML-Variante), Andockpunkte, Pfeilspitzen, Farben, Beschriftungen und
+  Multiplizitäten; Export erzeugt eine Datei, die draw.io direkt öffnet. DOCTYPE/ENTITY werden abgelehnt, Größe begrenzt.
 
 ### Behoben
 - PDF bearbeiten: Nach Löschen von Seiten/Anmerkungen blieben verwaiste Objekte (z. B. alte Lesezeichen-Ketten) in

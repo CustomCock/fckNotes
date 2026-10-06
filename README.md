@@ -561,6 +561,12 @@ damit das Diagramm genau in den vorgesehenen Platz passt (außerhalb der Seite g
   und Browsern gleich aus). Passt es nicht auf die Seite, wird es verkleinert. Das Modell wird mit in der PDF
   gespeichert: **Doppelklick** auf das Diagramm öffnet es später wieder im Editor; mit „Auswählen“ verschieben,
   an den Griffen skalieren, `Entf` löscht. Beim Einbrennen bleibt nur das Bild.
+- **draw.io-Dateien**: Knopf „draw.io …“ im Editor öffnet eine `.drawio`-Datei (auch komprimiert, `.drawio.svg`;
+  bei mehreren Seiten wählen) und setzt sie unter den vorhandenen Inhalt, oder speichert das Diagramm als `.drawio`.
+  Direkt im PDF: Palette › „PDF: draw.io-Datei einfügen …“ bzw. Rechtsklick auf ein Diagramm › „Als draw.io-Datei
+  speichern …“. Übernommen werden Formen (unbekannte als Rechteck), UML-Klassen mit Attributen/Methoden, Andockpunkte,
+  Pfeilspitzen, gestrichelt, Farben, Beschriftungen und Multiplizitäten; Wegpunkte, Bilder, Drehung und Schriftarten
+  nicht (fckNotes führt Linien selbst). Dateien mit DOCTYPE/ENTITY werden aus Sicherheitsgründen abgelehnt.
 
 ![PDF bearbeiten: Markierung, Notiz, Text](docs/72-pdf-bearbeiten.png)
 
@@ -1303,6 +1309,7 @@ Alternativ per Docker: `docker run -d -p 8081:8010 erikvl87/languagetool` (dann 
 | Palette › PDF: Formularfelder automatisch erkennen | Name, Datum, Klasse, Thema, Unterschrift … als Felder anlegen |
 | Palette › PDF: Diagramm zeichnen | Bereich aufziehen, Editor mit Formen, Andockpunkten und UML-Pfeilen |
 | Doppelklick (PDF, Diagramm) | Diagramm im Editor wieder bearbeiten |
+| Palette › PDF: draw.io-Datei einfügen / Diagramm als draw.io-Datei speichern | Austausch mit draw.io (diagrams.net) |
 | Ctrl+C / Ctrl+V / Ctrl+D / Entf (Diagramm-Editor) | Kopieren / Einfügen / Duplizieren / Löschen |
 | Alt beim Ziehen (Diagramm-Editor) | Ohne Raster platzieren |
 | Palette › PDF: Werkzeug Schwärzen | Bereiche zum Schwärzen aufziehen (Esc beendet) |
