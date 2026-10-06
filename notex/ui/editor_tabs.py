@@ -195,6 +195,7 @@ class EditorTabs(QTabWidget):
                 return None
             if kind == "pdf":
                 factory.backup_to_trash = bool(self.config.get("pdf_backup_trash", True))
+                factory.highlight_fields = bool(self.config.get("pdf_highlight_fields", True))
             try:
                 page = factory(path)
             except OSError as error:
@@ -987,6 +988,11 @@ class EditorTabs(QTabWidget):
         pdf_viewer = self.VIEWERS.get("pdf")
         if pdf_viewer is not None:
             pdf_viewer.backup_to_trash = bool(self.config.get("pdf_backup_trash", True))
+            pdf_viewer.highlight_fields = bool(self.config.get("pdf_highlight_fields", True))
+            for page in self.viewers():
+                if page.kind == "pdf":
+                    page.objects.highlight_fields = pdf_viewer.highlight_fields
+                    page.canvas.viewport().update()
         mermaid = bool(self.config.get("preview_mermaid", True))
         changed = mermaid != MarkdownPreview.mermaid_enabled
         MarkdownPreview.mermaid_enabled = mermaid

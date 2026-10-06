@@ -558,9 +558,18 @@ def delete_annotation(data: bytes, index: int, position: int) -> bytes:
     return finish(writer)
 
 
-def update_text(data: bytes, index: int, position: int, text: str) -> bytes:
-    """Text einer Anmerkung ändern: Notiz/Markierung → Kommentar (/Contents); eigener Text auf der Seite wird neu
-    gezeichnet (gleiche Position, Schriftgröße und Farbe)."""
+def freetext_style(annot) -> tuple[float, str, bool]:
+    """(Schriftgröße, Farbe, Rahmen) eines Textes auf der Seite."""
+    size, color = _parse_da(str(annot.get("/DA", "")))
+    bs = annot.get("/BS")
+    border = bool(bs and float(bs.get_object().get("/W", 0)) > 0)
+    return size, color, border
+
+
+def update_text(data: bytes, index: int, position: int, text: str, size: float | None = None,
+                color: str | None = None, border: bool | None = None) -> bytes:
+    """Text einer Anmerkung ändern: Notiz/Markierung → Kommentar (/Contents); Text auf der Seite wird neu
+    gezeichnet (gleiche Position; Größe/Farbe/Rahmen bleiben, wenn nicht angegeben)."""
     writer = open_writer(data)
     page = _page(writer, index)
     annots = _annots(page)
@@ -571,12 +580,15 @@ def update_text(data: bytes, index: int, position: int, text: str) -> bytes:
     if subtype == "/FreeText":
         if not text.strip():
             raise PdfEditError("Der Text ist leer")
-        size, color = _parse_da(str(annot.get("/DA", "")))
+        old_size, old_color, old_border = freetext_style(annot)
+        size = old_size if size is None else size
+        if not 4 <= size <= 144:
+            raise PdfEditError("Schriftgröße zwischen 4 und 144 pt")
+        color = old_color if color is None else color
+        border = old_border if border is None else border
         geom = geometry_of(page)
         x0, y0, x1, y1 = (float(v) for v in annot["/Rect"])
         view = geom.rect_to_view((min(x0, x1), min(y0, y1), max(x0, x1), max(y0, y1)))
-        bs = annot.get("/BS")
-        border = bool(bs and float(bs.get_object().get("/W", 0)) > 0)
         _add_text(writer, index, (view[0], view[1], view[2], view[1] + size * 1.2), text, size, color, border,
                   True, replace=position)
     else:

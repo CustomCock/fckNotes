@@ -16,10 +16,10 @@ from PySide6.QtCore import QBuffer, QByteArray, QIODevice, QModelIndex, QPointF,
 from PySide6.QtGui import QColor, QKeySequence, QPainter, QPen, QPolygonF, QShortcut
 from PySide6.QtPdf import (QPdfBookmarkModel, QPdfDocument, QPdfDocumentRenderOptions, QPdfPageRenderer,
                            QPdfSearchModel)
-from PySide6.QtWidgets import (QAbstractScrollArea, QApplication, QComboBox, QFrame, QHBoxLayout, QInputDialog,
+from PySide6.QtWidgets import (QAbstractScrollArea, QApplication, QComboBox, QDialog, QFrame, QHBoxLayout, QInputDialog,
                                QLabel, QLineEdit, QMenu, QPushButton, QSplitter, QTreeView, QVBoxLayout)
 
-from notex.core import pdfannot, pdfdoc, pdfforms, pdfpages, pdfredact
+from notex.core import pdfannot, pdfdetect, pdfdiagram, pdfdoc, pdfforms, pdfobjects, pdfpages, pdfredact
 from notex.core.pdfdoc import PageLayout
 from notex.theme.theme import style_menu
 from notex.theme.tokens import COLORS, SPACING
@@ -36,6 +36,7 @@ TOOLS = [
     ("field", "text-cursor-input", "Neues Textfeld (Formular): Bereich aufziehen"),
     ("checkbox", "square-check", "Neues Kontrollkästchen (Formular): klicken"),
     ("signature", "signature", "Unterschrift: zeichnen oder Bild wählen, dann Bereich aufziehen/klicken"),
+    ("diagram", "network", "Diagramm (UML, Fluss …): Bereich aufziehen, dann zeichnen – später per Doppelklick ändern"),
     ("redact", "redact", "Schwärzen: Bereiche aufziehen (endgültig erst mit „Schwärzen anwenden“)"),
 ]
 CACHE_IMAGES = 24
@@ -51,7 +52,7 @@ def _alpha(color: str, alpha: int) -> QColor:
     return result
 
 
-REGION_TOOLS = {"note", "text", "field", "checkbox", "signature", "redact"}   # Ziehen/Klicken legt einen Bereich fest
+REGION_TOOLS = {"note", "text", "field", "checkbox", "signature", "redact", "diagram"}   # Ziehen/Klicken legt einen Bereich fest
 MARKUP_TOOLS = {"highlight", "underline", "strikeout", "redact_text"}          # Textauswahl → sofort anwenden
 
 
@@ -91,7 +92,10 @@ class _PdfCanvas(QAbstractScrollArea):
         self.menu_hook = None                 # callable(menu, page, x_pt, y_pt) – ergänzt das Kontextmenü
         self.overlays: list[tuple[int, QRectF, str]] = []    # (Seite, Rechteck in Punkt, Art) z. B. Schwärz-Vorschau
         self._band: tuple[int, float, float, float, float] | None = None
+        self.object_handler = None            # ObjectController: Eingefügtes anfassen (Werkzeug „Auswählen“)
+        self._object_drag = False
         self.viewport().setCursor(Qt.CursorShape.IBeamCursor)
+        self.viewport().setMouseTracking(True)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.customContextMenuRequested.connect(self._context_menu)
@@ -142,6 +146,8 @@ class _PdfCanvas(QAbstractScrollArea):
             rect = self.layout_.pages[min(page, len(self.layout_.pages) - 1)]
             bar.setValue(int(rect.y + offset * rect.height))
         self.viewport().update()
+        if self.object_handler is not None:
+            self.object_handler.reposition_editor()            # Eingabe bleibt auf dem Feld
         self.zoom_changed.emit()
 
     def set_zoom(self, mode: str, zoom: float | None = None) -> None:
@@ -253,6 +259,9 @@ class _PdfCanvas(QAbstractScrollArea):
                 painter.drawRect(QRectF(target.x() + min(x0, x1) * scale, target.y() + min(y0, y1) * scale,
                                         abs(x1 - x0) * scale, abs(y1 - y0) * scale))
                 painter.setPen(Qt.PenStyle.NoPen)
+            if self.object_handler is not None:
+                self.object_handler.paint(painter, page.index, target, scale)
+                painter.setPen(Qt.PenStyle.NoPen)
             if self.selection is not None and self.selection_page == page.index:
                 painter.setBrush(QColor(COLORS.accent).lighter(130))
                 painter.setOpacity(0.35)
@@ -273,7 +282,30 @@ class _PdfCanvas(QAbstractScrollArea):
         self.viewport().setCursor(Qt.CursorShape.CrossCursor if tool in REGION_TOOLS else Qt.CursorShape.IBeamCursor)
         self.viewport().update()
 
+    def page_point(self, page: int, event) -> tuple[float, float]:
+        """Mausposition in Ansichts-Punkten relativ zu Seite `page` (auch außerhalb der Seite)."""
+        rect = self.layout_.pages[page]
+        x, y = self._doc_pos(event)
+        return (x - rect.x) / self.layout_.scale, (y - rect.y) / self.layout_.scale
+
+    def _object_hit(self, event):
+        hit = self.layout_.hit(*self._doc_pos(event))
+        handler = self.object_handler
+        if hit is None and handler is not None and handler.selected is not None:
+            page = handler.selected.page
+            return (page, *self.page_point(page, event))
+        return hit
+
     def mousePressEvent(self, event) -> None:
+        if (event.button() == Qt.MouseButton.LeftButton and self.layout_ is not None and self.tool == "select"
+                and self.object_handler is not None):
+            hit = self._object_hit(event)
+            if hit is not None and self.object_handler.press(*hit, event.position()):
+                self._object_drag = True
+                if self.selection is not None:
+                    self.selection = None
+                    self.selection_changed.emit()
+                return
         if event.button() == Qt.MouseButton.LeftButton and self.layout_ is not None and self.tool in REGION_TOOLS:
             hit = self.layout_.hit(*self._doc_pos(event))
             if hit is not None:
@@ -290,6 +322,16 @@ class _PdfCanvas(QAbstractScrollArea):
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event) -> None:
+        handler = self.object_handler
+        if self._object_drag and handler is not None and handler._press is not None:
+            page = handler._press[0]
+            handler.move(page, *self.page_point(page, event), event.position())
+            return
+        if (handler is not None and self.tool == "select" and self.layout_ is not None
+                and not event.buttons() & Qt.MouseButton.LeftButton):
+            hit = self._object_hit(event)
+            cursor = handler.cursor_for(*hit) if hit is not None else None
+            self.viewport().setCursor(cursor if cursor is not None else Qt.CursorShape.IBeamCursor)
         if self._band is not None and self.layout_ is not None:
             page, x0, y0, _x1, _y1 = self._band
             x1, y1 = self.layout_.clamp_hit(page, *self._doc_pos(event))
@@ -329,6 +371,13 @@ class _PdfCanvas(QAbstractScrollArea):
         return None
 
     def mouseReleaseEvent(self, event) -> None:
+        if self._object_drag:
+            self._object_drag = False
+            handler = self.object_handler
+            if handler is not None and handler._press is not None:
+                page = handler._press[0]
+                handler.release(page, *self.page_point(page, event))
+            return
         if self._band is not None:
             page, x0, y0, x1, y1 = self._band
             self._band = None
@@ -361,6 +410,8 @@ class _PdfCanvas(QAbstractScrollArea):
         hit = self.layout_.hit(*self._doc_pos(event))
         if hit is None:
             return
+        if self.tool == "select" and self.object_handler is not None and self.object_handler.double_click(*hit):
+            return
         page, x, y = hit
         selection = self._select(page, (x - 1, y), (x + 1, y))
         if selection is not None:
@@ -381,6 +432,8 @@ class _PdfCanvas(QAbstractScrollArea):
             self.viewport().update()
 
     def keyPressEvent(self, event) -> None:
+        if self.object_handler is not None and self.object_handler.key(event):
+            return
         if event.key() == Qt.Key.Key_Escape and (self._band is not None or self.tool != "select"):
             self._band = None
             self.tool_cancelled.emit()
@@ -418,6 +471,8 @@ class _PdfCanvas(QAbstractScrollArea):
         self.relayout()
 
     def scrollContentsBy(self, dx: int, dy: int) -> None:
+        if self.object_handler is not None:
+            self.object_handler.reposition_editor()            # Eingabe scrollt mit dem Feld mit
         self.viewport().update()
 
     def _context_menu(self, pos) -> None:
@@ -451,6 +506,7 @@ class PdfPage(ViewerPage):
     icon_name = "file-type"
     quote_requested = Signal(str)          # fertiges Markdown-Zitat
     backup_to_trash = True                 # Einstellung: vor dem ersten Überschreiben Original in den Papierkorb
+    highlight_fields = True                # Einstellung: Formularfelder in der Ansicht hinterlegen
 
     def __init__(self, path: Path) -> None:
         super().__init__(path)
@@ -476,6 +532,10 @@ class PdfPage(ViewerPage):
         self.canvas.markup_chosen.connect(self._on_markup)
         self.canvas.tool_cancelled.connect(lambda: self.set_tool("select"))
         self.canvas.menu_hook = self._extend_menu
+        from notex.ui.pdf_objects import ObjectController
+        self.objects = ObjectController(self)
+        self.objects.highlight_fields = self.highlight_fields
+        self.canvas.object_handler = self.objects
         self.tool_colors: dict[str, str] = {}      # Werkzeug → gewählte Farbe (sonst Standard)
 
         self.bookmarks = QPdfBookmarkModel(self)
@@ -642,6 +702,8 @@ class PdfPage(ViewerPage):
             old.deleteLater()
 
     def _after_load(self) -> None:
+        if hasattr(self, "objects"):
+            self.objects.invalidate()
         self.canvas.reset_document()
         self.outline_button.setEnabled(self.bookmarks.rowCount(QModelIndex()) > 0)
         self.page_count.setText(f"/ {self.doc.pageCount()}")
@@ -957,6 +1019,9 @@ class PdfPage(ViewerPage):
         self.form_button.setCheckable(True)
         self.form_button.toggled.connect(self.set_form_visible)
         self.tool_row.addWidget(self.form_button)
+        detect = IconButton("scan-text", "Formularfelder automatisch erkennen (Name, Datum, Unterschrift …)")
+        detect.clicked.connect(lambda: self.detect_fields())
+        self.tool_row.addWidget(detect)
         flatten = IconButton("check-check", "Anmerkungen und Formular fest einbrennen …")
         flatten.clicked.connect(lambda: self.flatten())
         self.tool_row.addWidget(flatten)
@@ -1122,21 +1187,335 @@ class PdfPage(ViewerPage):
                       and f.rect[1] - 2 <= y <= f.rect[3] + 2), None)
         if field is not None:
             menu.addSeparator()
-            menu.addAction(f"Feld „{field.name}“ ausfüllen …", lambda: (self.set_form_visible(True),
-                                                                        self.show_field(field)))
+            obj = self.objects.at(page, x, y)
+            if obj is not None and obj.kind == "field":
+                menu.addAction(f"Feld „{field.name}“ ausfüllen", lambda: self.objects.activate_field(obj))
+                menu.addAction("Feld-Eigenschaften …", lambda: self.field_properties(obj))
             menu.addAction(f"Feld „{field.name}“ löschen", lambda: self.remove_field(field.name))
             return
         info = pdfannot.hit(self.annotations(page), x, y)
         if info is not None:
             menu.addSeparator()
-            if info.text_editable:
-                verb = "Text bearbeiten …" if info.kind == "text" else "Kommentar bearbeiten …"
-                menu.addAction(f"{info.label}: {verb}", lambda: self.edit_annotation(page, info.index))
+            obj = next((o for o in self.objects.objects(page) if o.index == info.index), None)
+            if info.kind == "text" and obj is not None:
+                menu.addAction("Text: bearbeiten (Text, Größe, Farbe, Rahmen) …", lambda: self.edit_text_object(obj))
+            elif info.kind == "stamp" and obj is not None and obj.kind in ("signature", "diagram"):
+                verb = "Unterschrift ersetzen …" if obj.kind == "signature" else "Diagramm bearbeiten …"
+                menu.addAction(verb, lambda: self.edit_object(obj))
+                if obj.kind == "diagram":
+                    menu.addAction("Diagramm als draw.io-Datei speichern …", lambda: self.export_drawio(obj))
+            elif info.text_editable:
+                menu.addAction(f"{info.label}: Kommentar bearbeiten …", lambda: self.edit_annotation(page, info.index))
             menu.addAction(f"{info.label} löschen", lambda: self.delete_annotation(page, info.index))
         elif self.editing:
             menu.addSeparator()
             menu.addAction("Notiz hier …", lambda: self.add_note(page, x, y))
             menu.addAction("Text hier …", lambda: self.add_text(page, (x, y, x, y)))
+
+    # ---- Eingefügtes anfassen (Objekte) ------------------------------------------------------------------------
+    def set_object_rect(self, obj, rect: tuple) -> bool:
+        if not self._ensure_editing():
+            return False
+        return self._run(pdfobjects.set_rect, obj.page, obj.index, tuple(rect), page=obj.page)
+
+    def delete_object(self, obj) -> bool:
+        if not self._ensure_editing():
+            return False
+        return self._run(pdfobjects.delete_object, obj.page, obj.index, page=obj.page)
+
+    def delete_selected(self) -> bool:
+        obj = self.objects.selected
+        if obj is None:
+            self.notice.emit("Erst ein Objekt anklicken (Werkzeug „Auswählen“)")
+            return False
+        self.objects.select(None)
+        return self.delete_object(obj)
+
+    def edit_selected(self) -> bool:
+        obj = self.objects.selected
+        if obj is None:
+            self.notice.emit("Erst ein Objekt anklicken (Werkzeug „Auswählen“)")
+            return False
+        if obj.kind == "field":
+            self.objects.activate_field(obj)
+            return True
+        return self.edit_object(obj)
+
+    def edit_object(self, obj) -> bool:
+        """Doppelklick/„Bearbeiten …“: je nach Art Text mit Stil, Notiz/Kommentar, Unterschrift ersetzen, Feld."""
+        if obj.kind == "text":
+            return self.edit_text_object(obj)
+        if obj.kind == "signature":
+            return self.replace_signature(obj)
+        if obj.kind == "diagram" and hasattr(self, "edit_diagram"):
+            return self.edit_diagram(obj)
+        if obj.kind == "field":
+            return self.field_properties(obj)
+        return self.edit_annotation(obj.page, obj.index)
+
+    def edit_text_object(self, obj, text: str | None = None, size: float | None = None, color: str | None = None,
+                         border: bool | None = None) -> bool:
+        if text is None:
+            from PySide6.QtWidgets import QDialog
+            from notex.ui.pdf_edit import TextDialog
+            reader_annot = pdfannot.open_reader(self.data).pages[obj.page]["/Annots"][obj.index].get_object()
+            old_size, old_color, old_border = pdfannot.freetext_style(reader_annot)
+            dialog = TextDialog(self, "Text auf der Seite bearbeiten", obj.contents, with_style=True,
+                                size=old_size, color=old_color, border=old_border)
+            if dialog.exec() != QDialog.DialogCode.Accepted:
+                return False
+            text, size, color, border = dialog.values()
+        if not self._ensure_editing():
+            return False
+        return self._run(pdfannot.update_text, obj.page, obj.index, text, size, color, border, page=obj.page)
+
+    def replace_signature(self, obj, value=None) -> bool:
+        if value is None:
+            from PySide6.QtWidgets import QDialog
+            from notex.ui.pdf_edit import SignatureDialog
+            dialog = SignatureDialog(self, self.path.parent)
+            if dialog.exec() != QDialog.DialogCode.Accepted:
+                return False
+            value = dialog.result_value()
+        if not self._ensure_editing():
+            return False
+        page, rect = obj.page, obj.rect
+        if value[0] == "image":
+            from notex.ui.pdf_edit import image_to_bytes
+            image = value[1]
+            target = pdfforms.fit_rect(rect, image.width() / max(1, image.height()))
+            width, height, rgb, alpha = image_to_bytes(image)
+            return self._run(lambda d: pdfforms.add_image(pdfannot.delete_annotation(d, page, obj.index), page,
+                                                          target, width, height, rgb, alpha), page=page)
+        _kind, strokes, aspect = value
+        target = pdfforms.fit_rect(rect, aspect)
+        return self._run(lambda d: pdfforms.add_strokes(pdfannot.delete_annotation(d, page, obj.index), page,
+                                                        target, strokes), page=page)
+
+    def field_properties(self, obj, new_name: str | None = None, multiline: bool | None = None,
+                         size: float | None = None) -> bool:
+        info = next((f for f in self.fields if f.name == obj.field), None)
+        if info is None:
+            return False
+        if new_name is None and multiline is None and size is None:
+            from PySide6.QtWidgets import QDialog
+            from notex.ui.pdf_edit import FieldDialog
+            dialog = FieldDialog(self, info)
+            if dialog.exec() != QDialog.DialogCode.Accepted:
+                return False
+            new_name, multiline, size = dialog.values()
+        if not self._ensure_editing():
+            return False
+        return self._run(pdfforms.update_field, info.name, new_name, multiline, size, page=obj.page)
+
+    # ---- Diagramme ---------------------------------------------------------------------------------------------
+    def page_background(self, page: int, without: int | None = None, scale: float = 2.0):
+        """Seite als Bild (für den Hintergrund im Diagramm-Editor) – optional ohne die Anmerkung `without`."""
+        from PySide6.QtCore import QSize
+        from PySide6.QtGui import QColor, QImage, QPainter
+        from PySide6.QtPdf import QPdfDocumentRenderOptions
+        data = self.data
+        try:
+            if without is not None:
+                data = pdfannot.delete_annotation(data, page, without)
+            raw = self._display_bytes(data)
+        except pdfpages.PdfEditError:
+            raw = self.data
+        doc = QPdfDocument()
+        buffer = QBuffer()
+        buffer.setData(QByteArray(raw))
+        buffer.open(QIODevice.OpenModeFlag.ReadOnly)
+        doc.load(buffer)
+        size = doc.pagePointSize(page)
+        options = QPdfDocumentRenderOptions()
+        options.setRenderFlags(QPdfDocumentRenderOptions.RenderFlag.Annotations)
+        rendered = doc.render(page, QSize(round(size.width() * scale), round(size.height() * scale)), options)
+        image = QImage(rendered.size(), QImage.Format.Format_RGB32)
+        image.fill(QColor("#ffffff"))
+        painter = QPainter(image)
+        painter.drawImage(0, 0, rendered)
+        painter.end()
+        doc.close()
+        buffer.close()
+        return image, scale
+
+    def insert_diagram(self, page: int, top_left: tuple[float, float], diagram=None, size=(320.0, 200.0)) -> bool:
+        """Diagramm-Editor für einen neuen Bereich öffnen (oder `diagram` direkt einfügen)."""
+        offset = (0.0, 0.0)
+        if diagram is None:
+            from notex.core.diagram.model import Diagram
+            from notex.ui.diagram_editor import DiagramEditor
+            image, scale = self.page_background(page)
+            editor = DiagramEditor(self, Diagram(*size), image, scale, top_left)
+            if editor.exec() != QDialog.DialogCode.Accepted:
+                return False
+            diagram, offset = editor.result_diagram()
+        if not diagram.shapes and not diagram.connectors:
+            self.notice.emit("Leeres Diagramm – nichts eingefügt")
+            return False
+        if not self._ensure_editing():
+            return False
+        corner = (top_left[0] + offset[0], top_left[1] + offset[1])
+        return self._run(pdfdiagram.add_diagram, page, corner, diagram, page=page)
+
+    def edit_diagram(self, obj, diagram=None) -> bool:
+        """Doppelklick auf ein Diagramm: Editor mit dem gespeicherten Modell; danach an derselben Stelle ersetzen."""
+        try:
+            current = pdfdiagram.read_diagram(self.data, obj.page, obj.index)
+        except pdfpages.PdfEditError as error:
+            self.notice.emit(str(error))
+            return False
+        offset = (0.0, 0.0)
+        if diagram is None:
+            from notex.ui.diagram_editor import DiagramEditor
+            image, scale = self.page_background(obj.page, without=obj.index)
+            editor = DiagramEditor(self, current, image, scale, (obj.rect[0], obj.rect[1]))
+            if editor.exec() != QDialog.DialogCode.Accepted:
+                return False
+            diagram, offset = editor.result_diagram()
+        if not self._ensure_editing():
+            return False
+        if not diagram.shapes and not diagram.connectors:
+            return self.delete_object(obj)
+        corner = (obj.rect[0] + offset[0], obj.rect[1] + offset[1])
+        return self._run(pdfdiagram.update_diagram, obj.page, obj.index, diagram, corner, page=obj.page)
+
+    def import_drawio(self, path: str | None = None, page: int | None = None, file_page: int | None = None,
+                      edit: bool = True) -> bool:
+        """draw.io-Datei als Diagramm auf die (aktuelle) Seite setzen – vorher im Editor anpassbar."""
+        from PySide6.QtWidgets import QFileDialog
+        from notex.ui.diagram_editor import read_drawio_file
+        if self.edit_block_reason():
+            self.notice.emit(self.edit_block_reason())
+            return False
+        if path is None:
+            path, _ = QFileDialog.getOpenFileName(self, "draw.io-Datei einfügen", str(self.path.parent),
+                                                  "draw.io (*.drawio *.drawio.xml *.xml *.drawio.svg *.svg)")
+            if not path:
+                return False
+        diagram = read_drawio_file(self, path, file_page)
+        if diagram is None:
+            return False
+        page = self.canvas.current_page if page is None else page
+        top_left = (36.0, 36.0)
+        if not edit:
+            return self.insert_diagram(page, top_left, diagram)
+        from notex.ui.diagram_editor import DiagramEditor
+        image, scale = self.page_background(page)
+        editor = DiagramEditor(self, diagram, image, scale, top_left)
+        if editor.exec() != QDialog.DialogCode.Accepted:
+            return False
+        result, offset = editor.result_diagram()
+        return self.insert_diagram(page, (top_left[0] + offset[0], top_left[1] + offset[1]), result)
+
+    def export_drawio(self, obj=None, path: str | None = None) -> bool:
+        """Diagramm (ausgewählt oder `obj`) als .drawio speichern – zum Weiterbearbeiten in draw.io."""
+        from PySide6.QtWidgets import QFileDialog
+        from notex.ui.diagram_editor import write_drawio_file
+        obj = obj or self.objects.selected
+        if obj is None or obj.kind != "diagram":
+            self.notice.emit("Erst ein Diagramm anklicken (Werkzeug „Auswählen“)")
+            return False
+        try:
+            diagram = pdfdiagram.read_diagram(self.data, obj.page, obj.index)
+        except pdfpages.PdfEditError as error:
+            self.notice.emit(str(error))
+            return False
+        if path is None:
+            suggestion = self.path.parent / f"{self.path.stem}_diagramm.drawio"
+            path, _ = QFileDialog.getSaveFileName(self, "Diagramm als draw.io-Datei speichern", str(suggestion),
+                                                  "draw.io (*.drawio)")
+            if not path:
+                return False
+        if write_drawio_file(self, path, diagram):
+            self.notice.emit(f"Gespeichert: {Path(path).name}")
+            return True
+        return False
+
+    def _region_diagram(self, page: int, box: tuple) -> None:
+        x0, y0, x1, y1 = box
+        size = (x1 - x0, y1 - y0) if x1 - x0 >= 60 and y1 - y0 >= 40 else (320.0, 200.0)
+        self.insert_diagram(page, (x0, y0), size=size)
+
+    # ---- Felderkennung -----------------------------------------------------------------------------------------
+    def page_words(self, page: int) -> list:
+        """Wörter der Seite mit Rahmen (PDFium) – Unterstrich-Folgen und Kästchen-Zeichen als eigene Wörter."""
+        out = []
+        text = self.doc.getAllText(page).text()
+        for match in pdfdetect.TOKEN_RE.finditer(text):
+            selection = self.doc.getSelectionAtIndex(page, match.start(), len(match.group()))
+            polygons = selection.bounds()
+            if not polygons:
+                continue
+            rect = polygons[0].boundingRect()
+            for polygon in polygons[1:]:
+                rect = rect.united(polygon.boundingRect())
+            out.append(pdfdetect.Word(match.group(), (rect.left(), rect.top(), rect.right(), rect.bottom())))
+        return out
+
+    def detect_fields(self, pages: list[int] | None = None, apply: bool = True) -> list:
+        """Formularfelder erkennen und (apply) in einem Rückgängig-Schritt anlegen."""
+        if self.edit_block_reason():
+            self.notice.emit(self.edit_block_reason())
+            return []
+        pages = list(range(min(self.doc.pageCount(), 50))) if pages is None else pages
+        found = []
+        for page in pages:
+            existing = [o.rect for o in self.objects.objects(page) if o.kind in ("field", "text", "signature",
+                                                                                  "diagram", "stamp")]
+            size = self.doc.pagePointSize(page)
+            try:
+                graphics = pdfdetect.page_graphics(self.data, page)
+            except pdfpages.PdfEditError:
+                graphics = pdfdetect.Graphics()
+            found += pdfdetect.detect(self.page_words(page), graphics, (size.width(), size.height()), existing, page)
+        pdfdetect.unique_against(found, {f.name for f in self.fields})
+        if not apply:
+            return found
+        if not found:
+            self.notice.emit("Keine Formularfelder erkannt – Felder lassen sich mit „Textfeld“ selbst aufziehen")
+            return []
+        if not self._ensure_editing():
+            return []
+        specs = [{"page": s.page, "rect": s.rect, "name": s.name, "kind": s.kind, "multiline": s.multiline,
+                  "border": False} for s in found]
+        if not self._run(pdfforms.add_fields, specs, page=found[0].page):
+            return []
+        names = ", ".join(s.name for s in found[:6]) + (" …" if len(found) > 6 else "")
+        self.notice.emit(f"{len(found)} Feld(er) erkannt: {names} – reinklicken zum Ausfüllen")
+        self.canvas.overlays = [o for o in self.canvas.overlays if o[2] != "field"] + \
+            [(s.page, QRectF(s.rect[0], s.rect[1], s.rect[2] - s.rect[0], s.rect[3] - s.rect[1]), "field")
+             for s in found]
+        self.canvas.viewport().update()
+        QTimer.singleShot(2500, self._clear_field_overlay)
+        return found
+
+    def is_signature_placeholder(self, info) -> bool:
+        return getattr(info, "placeholder", "") == "signature"
+
+    def sign_placeholder(self, obj, value=None) -> bool:
+        """Klick in einen Unterschrifts-Platzhalter: Unterschrift zeichnen/wählen und genau dort einsetzen."""
+        if value is None:
+            from PySide6.QtWidgets import QDialog
+            from notex.ui.pdf_edit import SignatureDialog
+            dialog = SignatureDialog(self, self.path.parent)
+            if dialog.exec() != QDialog.DialogCode.Accepted:
+                return False
+            value = dialog.result_value()
+        if not self._ensure_editing():
+            return False
+        page, rect, name = obj.page, obj.rect, obj.field
+        if value[0] == "image":
+            from notex.ui.pdf_edit import image_to_bytes
+            image = value[1]
+            target = pdfforms.fit_rect(rect, image.width() / max(1, image.height()))
+            width, height, rgb, alpha = image_to_bytes(image)
+            return self._run(lambda d: pdfforms.add_image(pdfforms.remove_field(d, name), page, target, width,
+                                                          height, rgb, alpha), page=page)
+        _kind, strokes, aspect = value
+        target = pdfforms.fit_rect(rect, aspect)
+        return self._run(lambda d: pdfforms.add_strokes(pdfforms.remove_field(d, name), page, target, strokes),
+                         page=page)
 
     # ---- Formulare und Unterschrift ---------------------------------------------------------------------------
     def refresh_form(self) -> None:

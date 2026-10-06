@@ -28,6 +28,29 @@ Alle nennenswerten Änderungen an fckNotes (bis 1.17.0: Notex). Format angelehnt
   die betroffenen Seiten als Bild mit eingemalten Balken neu, entfernt deren Text, Schriften, Anmerkungen und
   Formularwerte, auf Wunsch Metadaten, Anhänge/Skripte und Lesezeichen, und prüft danach, ob die Wörter noch irgendwo
   stehen. Speichern nur unter neuem Namen.
+- **PDF: Eingefügtes anfassen** (Werkzeug „Auswählen“): Text auf der Seite, Notizen, Unterschriften und
+  Formularfelder anklicken, ziehen, an den Griffen in der Größe ändern (Unterschrift/Kästchen behalten das
+  Seitenverhältnis), Pfeiltasten schieben (Shift = 10 pt), `Entf` löscht, Doppelklick bearbeitet – Text samt
+  Größe, Farbe und Rahmen, Unterschrift ersetzen, Feld-Eigenschaften (Name, mehrzeilig, Schriftgröße).
+- **PDF-Formularfelder direkt auf der Seite ausfüllen**: Klick ins Feld öffnet die Eingabe genau dort (Enter bzw.
+  Ctrl+Enter übernimmt, Esc verwirft), Kästchen und Optionsfelder schalten per Klick, Auswahllisten klappen auf.
+- **PDF: Formularfelder automatisch erkennen** (Knopf mit Scan-Symbol / Palette): Beschriftungen wie Name, Vorname,
+  Datum, Klasse, Kurs, Thema, Fach, Lehrkraft, Ort, Unterschrift … (oder alles mit Doppelpunkt) werden mit der Linie,
+  den Unterstrichen, dem Kasten oder dem freien Platz daneben zu Feldern; Linien über „Unterschrift“ oder „Ort, Datum“
+  ebenso; Kästchen (gezeichnet oder ☐) werden Kontrollkästchen mit dem Text daneben als Namen. Ein Schritt
+  (Ctrl+Z), keine Doppelten. Ins Unterschriftsfeld klicken öffnet den Unterschrift-Dialog und setzt sie genau dort ein.
+- PDF-Formularfelder werden in der Ansicht zart hinterlegt (abschaltbar), damit man sieht, wo man reinklicken kann.
+- **PDF: Diagramme zeichnen** (Werkzeug „Diagramm“ / Palette): eigener Editor im Stil von draw.io mit der Seite im
+  Hintergrund – Formen (Rechteck, Raute, Ellipse, Akteur, UML-Klasse, Paket, Datenbank …) mit **Andockpunkten**,
+  Verbinder, die beim Verschieben mitwandern (rechtwinklig oder gerade), UML-Beziehungen (Vererbung, Realisierung,
+  Assoziation, Aggregation, Komposition, Abhängigkeit …) mit Beschriftung und Multiplizitäten, Klassen mit
+  Attributen/Methoden, Vorlagen (Klassen-, Use-Case-, Aktivitäts-, Fluss-, Sequenzdiagramm), Raster, Kopieren,
+  Rückgängig. Landet als Vektorgrafik im PDF (überall gleich sichtbar), passt sich der Seite an; das Modell wird
+  mitgespeichert, Doppelklick bearbeitet das Diagramm später wieder.
+- **draw.io-Dateien importieren und exportieren** (Editor-Knopf „draw.io …“, Palette, Rechtsklick auf ein
+  Diagramm): `.drawio` (auch komprimiert und `.drawio.svg`, mehrere Seiten) wird zum bearbeitbaren Diagramm –
+  Formen, UML-Klassen (draw.io-Stapel und HTML-Variante), Andockpunkte, Pfeilspitzen, Farben, Beschriftungen und
+  Multiplizitäten; Export erzeugt eine Datei, die draw.io direkt öffnet. DOCTYPE/ENTITY werden abgelehnt, Größe begrenzt.
 
 ### Behoben
 - PDF bearbeiten: Nach Löschen von Seiten/Anmerkungen blieben verwaiste Objekte (z. B. alte Lesezeichen-Ketten) in

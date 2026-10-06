@@ -579,6 +579,45 @@ Kommentieren, Formulare + Unterschrift, Textfelder, echtes Schwärzen)
   mit 30 Seiten ohne Warten.
 - Block S abgeschlossen. Screenshots 72 (Bearbeiten) und 73 (Schwärzen) über `tools/screenshot.py`.
 
+### Block T: PDF – Eingefügtes bearbeiten, Felderkennung, Diagramme (06.10.2026, Besitzer)
+Wunsch: draw.io-artiges Zeichnen (UML mit Andockpunkten/Pfeilen) in PDFs, alles Eingefügte (auch Textfelder)
+wieder bearbeiten/entfernen, automatische Felderkennung (Name, Datum, Unterschrift, Klasse, Thema …) wie in Adobe.
+Plan: T1 Objekte bearbeiten + direkt ausfüllen → T2 Felderkennung → T3 Diagramm-Editor → T4 .drawio Import/Export.
+**Entscheidung:** draw.io selbst nicht einbetten (Browser-App, QtWebEngine ausgeschlossen) → eigener Editor.
+- **T1 – erledigt.** Kern `notex/core/pdfobjects.py` (`list_objects` inkl. Widgets, `hit` kleinstes zuerst,
+  `set_rect` je Art: FreeText neu umbrechen, Notiz nur verschieben, Stempel Rahmen, Felder AP neu, Markierungen
+  verweigert; `move_by`, `delete_object` (Feld = ganzes Feld), `fit_aspect`), `pdfannot.update_text` mit Stil,
+  `pdfforms.update_field` (Name/mehrzeilig/Größe), `_set_checkbox_appearance`. UI `notex/ui/pdf_objects.py`
+  (`ObjectController`: Griffe, Ziehen, Tasten, Cursor, Eingabe auf der Seite für Text/Auswahl, Klick für
+  Kästchen/Optionen; Eingabe wandert bei Scroll/Größenänderung mit), `FieldDialog`. Objekte nur im
+  Bearbeiten-Modus verschiebbar; Felder ausfüllen geht immer (schaltet Bearbeiten ein).
+- **T2 – erledigt.** Kern `notex/core/pdfdetect.py`: `page_graphics` (Content-Stream mit cm/q/Q, eine Ebene
+  Form-XObjects: waagerechte Linien, dünne Rechtecke als Linien, Kästen, kleine Quadrate), `detect` (Zeilen bilden,
+  Beschriftung = Schlüsselwort-Liste (de/en, Mehrwort zuerst) oder „…:“; Reihenfolge Linie rechts → Kasten rechts →
+  Linie darüber (nur bekannte Begriffe/Unterschrift) → Leerraum ≥ 60 pt (nur erstes Wort der Zeile); Kästchen aus
+  Quadraten/☐ mit Zeilentext als Name; Überlappung mit vorhandenen Objekten/Vorschlägen verworfen; Namen
+  durchnummeriert). Wörter liefert die UI über PDFium (`TOKEN_RE` trennt „Name:___“). `pdfforms.add_fields` legt
+  alles in einem Writer an; Unterschrift als Textfeld mit `/fckNotesKind /Signature` (+ /TU) → Klick in fckNotes
+  ersetzt es durch die Unterschrift. Erkannte Felder ohne Rahmen; Ansicht hinterlegt Felder (`pdf_highlight_fields`).
+- **T3 – erledigt.** Kern `notex/core/diagram/`: `model.py` (Formen mit Andockpunkten als Bruchteile, Verbinder-
+  Enden Form+Punkt | Form ohne Punkt (Randpunkt Richtung Ziel) | frei, rechtwinkliges/gerades Routing, UML-
+  Beziehungen als Stil-Bündel, JSON `fcknotes-diagram`), `render.py` (eine Liste Grundelemente rect/ellipse/path/
+  text für PDF **und** QPainter, Textbreiten aus den Helvetica-Metriken → Text sitzt im Editor wie im PDF),
+  `pdf.py` (Content-Stream, Bezier-Ellipsen, /Helv /HeBo /HeOb /HeBO), `templates.py`. `notex/core/pdfdiagram.py`:
+  Stempel-Anmerkung mit eigenem AP + Modell (Flate) unter `/fckNotesDiagram`; `fit_scale` verkleinert auf die Seite,
+  `update_diagram` behält den vom Nutzer gezogenen Maßstab. UI `diagram_editor.py` (Canvas + Dialoge),
+  `diagram_paint.py`; PdfPage `insert_diagram`/`edit_diagram`, Werkzeug „diagram“ (Bereich), Doppelklick öffnet.
+  **Entscheidungen:** Modell im PDF statt Nebendatei (Datei bleibt eine Datei; andere Programme sehen nur den
+  Stempel); Stempel statt Seiteninhalt (verschieb-/löschbar wie alles andere, Einbrennen macht es fest).
+- **T4 – erledigt.** Kern `notex/core/diagram/drawio.py`: `pages` (mxfile / mxGraphModel / .drawio.svg-`content`,
+  komprimierte Seiten Base64 → rohes Deflate → URL-dekodiert, Grenze 50 MB entpackt, DOCTYPE/ENTITY abgelehnt →
+  kein Entity-Angriff ohne neue Abhängigkeit wie defusedxml), `to_diagram` (Kinder relativ zum Elternteil,
+  Gruppen unsichtbar, swimlane+stackLayout bzw. HTML mit `<hr>` → Klasse, `exitX/entryX` → nächster Andockpunkt,
+  Kantenbeschriftungen bei x=-1/1 → Multiplizitäten), `write` (swimlane-Klassen, edgeStyle, Spitzen, optional
+  komprimiert). UI: Editor „draw.io …“ (`import_drawio` setzt unter den Inhalt, `export_drawio`), PdfPage
+  `import_drawio` (Editor dazwischen, oben links 36 pt) / `export_drawio`, Palette + Rechtsklick.
+  **Grenzen:** Wegpunkte, Bilder, Drehung, Schriftarten, Ebenen werden nicht übernommen (eigenes Routing).
+
 ## Offen
 
 ### Block C – 1.3.0
@@ -645,6 +684,10 @@ evtx (MIT, Rust-Wheels), dpkt (BSD). regex/PyYAML/cryptography wie bisher. Kein 
 rdap, scanner, logs, pcap. Standardmäßig an: variables, hex, ports, ioc.
 
 ## Nächster Schritt
+
+**Block T (PDF: Objekte, Felderkennung, Diagramme, draw.io) abgeschlossen** auf dem Arbeitsbranch – wartet auf
+Merge/Release durch den Besitzer (Vorschlag 1.18.0). Offen beim Besitzer: Ausprobieren mit echten Arbeitsblättern
+(Felderkennung) und eigenen draw.io-Dateien.
 
 **Plan R abgeschlossen und als 1.17.0 veröffentlicht.** Umbenennung = 1.17.1 (Arbeitsbranch, `__version__` =
 1.17.1) – wartet auf Merge nach `main` und Tag v1.17.1 durch den Besitzer. Offen beim Besitzer: manuelle Prüfung nach `docs/TESTPLAN-WINDOWS.md`.

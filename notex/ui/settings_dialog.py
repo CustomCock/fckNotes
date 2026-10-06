@@ -438,6 +438,11 @@ class SettingsDialog(QDialog):
         pdf_backup.toggled.connect(lambda on: (self.config.__setitem__("pdf_backup_trash", on),
                                                self.window_.tabs.apply_preview_settings()))
         page.row("", pdf_backup)
+        pdf_fields = QCheckBox("Formularfelder in der Ansicht hervorheben (zum Reinklicken)")
+        pdf_fields.setChecked(bool(self.config.get("pdf_highlight_fields", True)))
+        pdf_fields.toggled.connect(lambda on: (self.config.__setitem__("pdf_highlight_fields", on),
+                                               self.window_.tabs.apply_preview_settings()))
+        page.row("", pdf_fields)
         page.note("Im PDF-Tab schaltet der Stift die Bearbeitung ein. Alle Änderungen passieren erst im Speicher "
                   "(Ctrl+Z/Ctrl+Y), Ctrl+S schreibt die Datei. Der Versionsverlauf gilt nur für Textdateien – "
                   "deshalb landet das alte PDF auf Wunsch einmal je Tab im Papierkorb.")

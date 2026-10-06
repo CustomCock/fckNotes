@@ -506,9 +506,27 @@ Der Stift schaltet eine zweite Leiste und die **Seitenleiste** (Miniaturen) ein.
 - Gespeichert werden normale PDF-Anmerkungen mit eigenem Erscheinungsbild: Acrobat, Browser und Vorschau-Programme
   zeigen sie genauso an. Gelöschte Anmerkungen bleiben nicht als Reste in der Datei.
 
+**Eingefügtes bearbeiten** – mit dem Werkzeug „Auswählen“ (Pfeil):
+
+- **Anklicken** wählt Text auf der Seite, Notizen, Unterschriften, Diagramme und Formularfelder aus (gestrichelter
+  Rahmen mit Griffen). **Ziehen** verschiebt, die **Griffe** ändern die Größe – Unterschriften, Diagramme und
+  Kästchen behalten dabei ihr Seitenverhältnis.
+- **Pfeiltasten** schieben um 1 pt (Shift: 10 pt), **Entf** löscht, **Esc** hebt die Auswahl auf.
+- **Doppelklick** bearbeitet: Text (inkl. Größe, Farbe, Rahmen), Notiz-/Kommentartext, Unterschrift ersetzen.
+  Rechtsklick auf ein Feld: ausfüllen, „Feld-Eigenschaften …“ (Name, mehrzeilig, Schriftgröße) oder löschen.
+- Markierungen hängen am Text: löschen oder kommentieren geht, verschieben nicht.
+
 **Formulare und Unterschrift**
 
-- **Ausfüllen**: Klemmbrett-Knopf (oder Palette › PDF: Formular ausfüllen) zeigt rechts alle Felder – Text,
+- **Direkt ausfüllen**: in ein Feld klicken und tippen – Enter übernimmt (mehrzeilig: Ctrl+Enter), Esc verwirft.
+  Kästchen und Optionsfelder schalten per Klick, Auswahllisten klappen auf. Ziehen am Feld verschiebt es stattdessen.
+- **Felder automatisch erkennen** (Scan-Knopf oder Palette › PDF: Formularfelder automatisch erkennen): fckNotes
+  sucht Beschriftungen wie *Name, Vorname, Datum, Klasse, Kurs, Thema, Fach, Lehrkraft, Ort, Unterschrift* (und alles
+  mit Doppelpunkt) und legt daneben ein Feld an – auf der Linie, den Unterstrichen, im Kasten oder im freien Platz.
+  Steht die Beschriftung unter einer Linie (*Unterschrift*, *Ort, Datum*), kommt das Feld auf die Linie; Kästchen
+  (gezeichnet oder ☐) werden Kontrollkästchen. Danach einfach reinklicken. Ein Klick ins Unterschriftsfeld öffnet den
+  Unterschrift-Dialog und setzt die Unterschrift genau dort ein. Falsch erkannt? Feld anklicken, Entf.
+- **Ausfüllen in der Liste**: Klemmbrett-Knopf (oder Palette › PDF: Formular ausfüllen) zeigt rechts alle Felder – Text,
   Kontrollkästchen, Optionsfelder, Auswahllisten. „Übernehmen“ schreibt alle Änderungen in einem Schritt; Klick auf
   einen Feldnamen springt zum Feld. Schreibgeschützte Felder bleiben gesperrt. Feldwerte sind jetzt auch in der
   Ansicht sichtbar (vorher zeigte fckNotes ausgefüllte Formulare leer).
@@ -521,6 +539,34 @@ Der Stift schaltet eine zweite Leiste und die **Seitenleiste** (Miniaturen) ein.
 - **Fest einbrennen** (Doppelhaken): Anmerkungen, Unterschriften und Formularfelder werden Teil der Seiten und sind
   danach nicht mehr änderbar – sinnvoll vor dem Verschicken.
 - XFA-Formulare (Adobe LiveCycle) werden beim Ändern auf normale Formularfelder zurückgeführt.
+
+**Diagramme zeichnen (UML, Fluss, Use Case …)** – Werkzeug „Diagramm“ (Netz-Symbol): Bereich auf der Seite
+aufziehen (oder klicken) – es öffnet sich ein Zeichen-Editor im Stil von draw.io, mit der Seite blass im Hintergrund,
+damit das Diagramm genau in den vorgesehenen Platz passt (außerhalb der Seite grau).
+
+- **Formen** links: Rechteck, abgerundet, Ellipse, Raute (Entscheidung), Start/Ende (Kreis), Notiz, Text, Akteur,
+  UML-Klasse, Paket, Datenbank, Parallelogramm (Ein-/Ausgabe). Klicken und auf die Fläche klicken oder aufziehen.
+- **Andockpunkte**: Fährt die Maus über eine Form, erscheinen blaue Kreuze. Von einem Kreuz aus ziehen = Verbinder,
+  der an diesem Punkt festhängt (auch Werkzeug „Verbinden“: von Form zu Form ziehen). Verschiebt man die Form,
+  wandern die Linien mit. Endpunkte einer gewählten Linie lassen sich auf einen anderen Punkt ziehen oder frei setzen.
+- **Beziehung** wählen (gilt für neue und markierte Linien): Linie, Pfeil, Assoziation, gerichtete Assoziation,
+  Vererbung, Realisierung, Abhängigkeit, Aggregation, Komposition, Nachricht, Antwort – oder Spitzen am Anfang/Ende,
+  gestrichelt und Verlauf (rechtwinklig/gerade) einzeln einstellen.
+- **Doppelklick** auf eine Form bearbeitet den Text, bei Klassen Name/abstrakt/Attribute/Methoden in eigenen
+  Feldern; auf eine Linie: Beschriftung und Multiplizitäten an beiden Enden (`1`, `*` …).
+- Füllung, Linienfarbe, Schriftgröße, fett; **Vorlage …** setzt ein fertiges Klassen-, Use-Case-, Aktivitäts-,
+  Fluss- oder Sequenzdiagramm ein, das danach frei bearbeitbar ist. Raster (5 pt, `Alt` beim Ziehen = ohne),
+  Mehrfachauswahl per Rahmen oder Shift, `Ctrl+C`/`Ctrl+V`/`Ctrl+D`, `Ctrl+Z`/`Ctrl+Y`, `Entf`, Pfeiltasten.
+- **Einfügen** legt das Diagramm als Vektorgrafik auf die Seite (scharf beim Zoomen und Drucken, sieht in Acrobat
+  und Browsern gleich aus). Passt es nicht auf die Seite, wird es verkleinert. Das Modell wird mit in der PDF
+  gespeichert: **Doppelklick** auf das Diagramm öffnet es später wieder im Editor; mit „Auswählen“ verschieben,
+  an den Griffen skalieren, `Entf` löscht. Beim Einbrennen bleibt nur das Bild.
+- **draw.io-Dateien**: Knopf „draw.io …“ im Editor öffnet eine `.drawio`-Datei (auch komprimiert, `.drawio.svg`;
+  bei mehreren Seiten wählen) und setzt sie unter den vorhandenen Inhalt, oder speichert das Diagramm als `.drawio`.
+  Direkt im PDF: Palette › „PDF: draw.io-Datei einfügen …“ bzw. Rechtsklick auf ein Diagramm › „Als draw.io-Datei
+  speichern …“. Übernommen werden Formen (unbekannte als Rechteck), UML-Klassen mit Attributen/Methoden, Andockpunkte,
+  Pfeilspitzen, gestrichelt, Farben, Beschriftungen und Multiplizitäten; Wegpunkte, Bilder, Drehung und Schriftarten
+  nicht (fckNotes führt Linien selbst). Dateien mit DOCTYPE/ENTITY werden aus Sicherheitsgründen abgelehnt.
 
 ![PDF bearbeiten: Markierung, Notiz, Text](docs/72-pdf-bearbeiten.png)
 
@@ -1255,6 +1301,17 @@ Alternativ per Docker: `docker run -d -p 8081:8010 erikvl87/languagetool` (dann 
 | Palette › PDF: Werkzeug Textfeld / Kontrollkästchen anlegen | Neues Formularfeld aufziehen bzw. anklicken |
 | Palette › PDF: Unterschrift einsetzen | Zeichnen oder Bild wählen, dann auf der Seite platzieren |
 | Palette › PDF: Anmerkungen und Formular einbrennen | Alles fest in die Seiten übernehmen (vor dem Verschicken) |
+| Klick / Ziehen / Griffe (PDF, Werkzeug „Auswählen“) | Eingefügtes auswählen, verschieben, Größe ändern |
+| Pfeiltasten / Shift+Pfeil / Entf (PDF, Objekt gewählt) | 1 pt / 10 pt schieben, löschen |
+| Doppelklick (PDF, Objekt) | Bearbeiten: Text mit Stil, Notiz, Unterschrift ersetzen |
+| Klick in ein Formularfeld | Direkt auf der Seite ausfüllen (Enter / Ctrl+Enter übernimmt, Esc verwirft) |
+| Palette › PDF: Ausgewähltes bearbeiten / löschen | Wie Doppelklick bzw. Entf |
+| Palette › PDF: Formularfelder automatisch erkennen | Name, Datum, Klasse, Thema, Unterschrift … als Felder anlegen |
+| Palette › PDF: Diagramm zeichnen | Bereich aufziehen, Editor mit Formen, Andockpunkten und UML-Pfeilen |
+| Doppelklick (PDF, Diagramm) | Diagramm im Editor wieder bearbeiten |
+| Palette › PDF: draw.io-Datei einfügen / Diagramm als draw.io-Datei speichern | Austausch mit draw.io (diagrams.net) |
+| Ctrl+C / Ctrl+V / Ctrl+D / Entf (Diagramm-Editor) | Kopieren / Einfügen / Duplizieren / Löschen |
+| Alt beim Ziehen (Diagramm-Editor) | Ohne Raster platzieren |
 | Palette › PDF: Werkzeug Schwärzen | Bereiche zum Schwärzen aufziehen (Esc beendet) |
 | Palette › PDF: Markierung / Alle Suchtreffer schwärzen | Text bzw. jedes Vorkommen des Suchbegriffs vormerken |
 | Palette › PDF: Schwärzen anwenden | Vorgemerktes endgültig schwärzen, prüfen, unter neuem Namen speichern |
