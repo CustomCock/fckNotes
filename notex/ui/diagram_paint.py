@@ -78,8 +78,28 @@ def paint_primitives(painter: QPainter, prims: list) -> None:
     painter.restore()
 
 
-def shape_icon(kind: str, size: int = 28) -> QIcon:
-    """Symbol einer Form – gezeichnet vom Diagramm-Renderer selbst."""
+def _recolor(prim: tuple, ink: str) -> tuple:
+    """Symbol-Farben ans Theme anpassen: Schwarz → `ink`, Weiß → durchsichtig (Umriss-Stil wie die übrigen Icons)."""
+    def swap(color):
+        if color == "#1a1a1a":
+            return ink
+        if color == "#ffffff":
+            return "none"
+        return color
+    kind = prim[0]
+    if kind == "rect":
+        return prim[:6] + (swap(prim[6]), swap(prim[7])) + prim[8:]
+    if kind == "ellipse":
+        return prim[:5] + (swap(prim[5]), swap(prim[6])) + prim[7:]
+    if kind == "path":
+        return prim[:3] + (swap(prim[3]), swap(prim[4])) + prim[5:]
+    if kind == "text":
+        return prim[:5] + (swap(prim[5]),) + prim[6:]
+    return prim
+
+
+def shape_icon(kind: str, size: int = 28, ink: str | None = None) -> QIcon:
+    """Symbol einer Form – gezeichnet vom Diagramm-Renderer selbst; `ink` = Linienfarbe (Theme-Textfarbe)."""
     from notex.core.diagram.model import DEFAULT_SIZES
     w, h = DEFAULT_SIZES.get(kind, (60, 40))
     diagram = Diagram(w, h)
@@ -95,6 +115,9 @@ def shape_icon(kind: str, size: int = 28) -> QIcon:
     if kind == "rounded":
         w, h = 120, 70                                      # deutlichere Rundung im Symbol
         shape.w, shape.h = w, h
+    if kind in ("circle", "endstate"):
+        shape.x = shape.y = (34 - shape.w) / 2              # Knoten klein lassen, sonst wirken sie wuchtig
+        w, h = 34, 34
     pixmap = QPixmap(size * 2, size * 2)
     pixmap.fill(Qt.GlobalColor.transparent)
     painter = QPainter(pixmap)
@@ -111,7 +134,7 @@ def shape_icon(kind: str, size: int = 28) -> QIcon:
             p = p[:7] + (max(p[7], line),) + p[8:]
         elif p[0] == "path":
             p = p[:5] + (max(p[5], line),) + p[6:]
-        prims.append(p)
+        prims.append(_recolor(p, ink) if ink else p)
     paint_primitives(painter, prims)
     painter.end()
     pixmap.setDevicePixelRatio(2.0)

@@ -7,12 +7,17 @@ draw.io speichert `<mxfile>` mit einer oder mehreren Seiten (`<diagram>`); der S
 Übernommen wird, was das eigene Modell kennt: Formen werden auf die nächstliegende eigene Form abgebildet
 (unbekannte → Rechteck), UML-Klassen (swimlane + Zeilen) zu Klassen mit Abschnitten, Pfeilspitzen, gestrichelt,
 Farben, Beschriftungen und Multiplizitäten. Nicht übernommen: Wegpunkte (eigenes Routing), Bilder, Drehung,
-Schriftarten, Ebenen-Sichtbarkeit. Beim Lesen werden DOCTYPE/ENTITY abgelehnt und Größen begrenzt.
+Schriftarten, Ebenen-Sichtbarkeit.
+
+Sicherheit: Eine DOCTYPE-Zeile ohne eigene Definitionen (wie in SVG-Exporten) ist harmlos und wird entfernt; eigene
+DTD-Teile (`[...]`, ENTITY) werden abgelehnt – damit gibt es weder „Billion Laughs“ noch externe Entities (XXE).
+Externe DTDs lädt der Parser ohnehin nie. Größen sind begrenzt (Datei, entpackte Seiten, Elemente).
 """
 from __future__ import annotations
 
 import base64
 import html
+import json
 import re
 import xml.etree.ElementTree as ET
 import zlib
@@ -30,10 +35,14 @@ class DrawioError(ValueError):
 
 
 # ---- Lesen: Datei → Seiten ------------------------------------------------------------------------------------
+_PLAIN_DOCTYPE_RE = re.compile(r"<!DOCTYPE\s[^\[\]<>]*>", re.I)
+
+
 def _parse_xml(text: str) -> ET.Element:
+    text = _PLAIN_DOCTYPE_RE.sub("", text, count=1)            # <!DOCTYPE svg PUBLIC "…" "…"> – nur ein Verweis
     upper = text.upper()
     if "<!DOCTYPE" in upper or "<!ENTITY" in upper:
-        raise DrawioError("Datei enthält DOCTYPE/ENTITY – aus Sicherheitsgründen nicht gelesen")
+        raise DrawioError("Datei definiert eigene XML-Entities (ENTITY) – aus Sicherheitsgründen nicht gelesen")
     try:
         return ET.fromstring(text)
     except ET.ParseError as error:
@@ -53,6 +62,67 @@ def _inflate(data: str) -> str:
         if isinstance(error, DrawioError):
             raise
         raise DrawioError(f"Komprimierte Seite nicht lesbar ({error})") from error
+
+
+_PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
+_MXGRAPH_RE = re.compile(r"""data-mxgraph\s*=\s*(["'])(.*?)\1""", re.S)
+
+
+def _png_text(data: bytes) -> str:
+    """draw.io-PNG: Diagramm steckt im Text-Block „mxfile“ (tEXt/zTXt/iTXt, URL-kodiert)."""
+    pos = len(_PNG_SIGNATURE)
+    while pos + 8 <= len(data):
+        length = int.from_bytes(data[pos:pos + 4], "big")
+        kind = data[pos + 4:pos + 8]
+        body = data[pos + 8:pos + 8 + length]
+        pos += 12 + length
+        if kind not in (b"tEXt", b"zTXt", b"iTXt"):
+            if kind == b"IEND":
+                break
+            continue
+        keyword, _sep, rest = body.partition(b"\0")
+        if keyword != b"mxfile":
+            continue
+        try:
+            if kind == b"zTXt":
+                rest = _bounded_inflate(rest[1:], zlib.MAX_WBITS)
+            elif kind == b"iTXt":
+                compressed = rest[:1] == b"\x01"
+                rest = rest[2:].split(b"\0", 2)[-1]         # Sprache\0übersetztes Schlüsselwort\0Text
+                if compressed:
+                    rest = _bounded_inflate(rest, zlib.MAX_WBITS)
+            return unquote(rest.decode("utf-8" if kind == b"iTXt" else "latin-1"))
+        except (zlib.error, UnicodeDecodeError) as error:
+            raise DrawioError(f"PNG-Diagrammblock nicht lesbar ({error})") from error
+    raise DrawioError("PNG ohne eingebettetes draw.io-Diagramm (in draw.io beim PNG-Export "
+                      "„Kopie des Diagramms einbeziehen“ anhaken)")
+
+
+def _bounded_inflate(raw: bytes, wbits: int) -> bytes:
+    inflater = zlib.decompressobj(wbits)
+    out = inflater.decompress(raw, MAX_INFLATED)
+    if len(out) >= MAX_INFLATED or inflater.unconsumed_tail:
+        raise DrawioError("Diagramm zu groß")
+    return out
+
+
+def load(data: bytes) -> str:
+    """Dateiinhalt → draw.io-XML: .drawio/.xml, .drawio.svg, .drawio.png und draw.io-HTML-Export."""
+    if len(data) > MAX_FILE:
+        raise DrawioError("Datei zu groß")
+    if data.startswith(_PNG_SIGNATURE):
+        return _png_text(data)
+    text = data.decode("utf-8-sig", errors="replace")
+    if "<mxfile" not in text and "<mxGraphModel" not in text and "data-mxgraph" in text:
+        match = _MXGRAPH_RE.search(text)                     # HTML-Export: JSON mit dem XML im Attribut
+        try:
+            config = json.loads(html.unescape(match.group(2))) if match else {}
+        except ValueError:
+            config = {}
+        if not isinstance(config, dict) or not isinstance(config.get("xml"), str):
+            raise DrawioError("HTML-Export ohne lesbares Diagramm")
+        return config["xml"]
+    return text
 
 
 def deflate(xml_text: str) -> str:

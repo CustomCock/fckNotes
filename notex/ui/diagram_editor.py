@@ -282,6 +282,9 @@ class DiagramCanvas(QWidget):
             if mode in ("connect", "endpoint"):
                 shape = self.shape_at(x, y)
                 self.hover = shape.id if shape is not None else None
+                if shape is None and self.port_at(x, y) is None:      # frei: gerade ausrichten wie beim Loslassen
+                    drag["now"] = M.align_point((_snap(x, snap), _snap(y, snap)), self._drag_anchor(drag),
+                                                self.tolerance(8), self._shift(event))
         elif mode == "move":
             dx, dy = x - drag["start"][0], y - drag["start"][1]
             if not drag["saved"]:
@@ -357,6 +360,9 @@ class DiagramCanvas(QWidget):
                 return
             self.checkpoint()
             conn = self.model.connect(source, target, self.relation, route=self.route_mode)
+            M.align_free_ends(self.model, conn, self.tolerance(8), self._shift(event))
+            self._join_free_end(conn.source, conn.id)
+            self._join_free_end(conn.target, conn.id)
             self.select([conn.id])
             self._changed()
         elif mode == "endpoint":
@@ -364,6 +370,12 @@ class DiagramCanvas(QWidget):
             if conn is not None:
                 self.checkpoint()
                 setattr(conn, drag["which"], self._end_at(x, y, exclude=None))
+                moved = getattr(conn, drag["which"])
+                if moved.shape is None:                           # nur das gezogene Ende ausrichten
+                    other = conn.target if drag["which"] == "source" else conn.source
+                    moved.x, moved.y = M.align_point((moved.x, moved.y), M.anchor(self.model, other),
+                                                     self.tolerance(8), self._shift(event))
+                    self._join_free_end(moved, conn.id)
                 self._changed()
         elif mode == "band":
             (x0, y0), (x1, y1) = drag["start"], drag["now"]
@@ -377,6 +389,31 @@ class DiagramCanvas(QWidget):
         elif drag.get("saved"):
             self._changed()
         self.update()
+
+    @staticmethod
+    def _shift(event) -> bool:
+        return bool(event.modifiers() & Qt.KeyboardModifier.ShiftModifier)
+
+    def _drag_anchor(self, drag: dict) -> tuple[float, float]:
+        """Gegenende beim Ziehen eines Verbinders (für die Ausrichtung)."""
+        if drag["mode"] == "connect":
+            return M.anchor(self.model, drag["source"])
+        conn = self.model.connector(drag["conn"])
+        return M.anchor(self.model, conn.target if drag["which"] == "source" else conn.source)
+
+    def _join_free_end(self, end: M.End, skip: str | None = None) -> None:
+        """Freies Ende auf ein vorhandenes freies Linienende einrasten (Linien-Ketten stoßen sauber aneinander)."""
+        if end.shape is not None:
+            return
+        tolerance = self.tolerance(8)
+        for conn in self.model.connectors:
+            if conn.id == skip:
+                continue
+            for other in (conn.source, conn.target):
+                if other.shape is None and other is not end and \
+                        math.dist((other.x, other.y), (end.x, end.y)) <= tolerance:
+                    end.x, end.y = other.x, other.y
+                    return
 
     def _end_at(self, x: float, y: float, exclude=None) -> M.End:
         port = self.port_at(x, y)
@@ -741,7 +778,7 @@ def read_drawio_file(parent, path: str, page: int | None = None) -> M.Diagram | 
         file = Path(path)
         if file.stat().st_size > drawio.MAX_FILE:
             raise drawio.DrawioError("Datei zu groß")
-        text = file.read_text(encoding="utf-8", errors="replace")
+        text = drawio.load(file.read_bytes())
         names = drawio.page_names(text)
         if page is None:
             page = 0
@@ -786,9 +823,10 @@ class DiagramEditor(QDialog):
         side = QVBoxLayout()
         side.setSpacing(4)
         self.shape_buttons: dict[str, QToolButton] = {}
+        ink = COLORS.text                                               # Theme-Textfarbe: hell und dunkel lesbar
         for kind in PALETTE_ORDER:
             button = QToolButton()
-            button.setIcon(shape_icon(kind))
+            button.setIcon(shape_icon(kind, ink=ink))
             button.setIconSize(QSize(28, 28))
             button.setToolTip(M.LABELS[kind] + " – klicken, dann auf die Fläche klicken oder aufziehen")
             button.setCheckable(True)
@@ -1006,7 +1044,7 @@ class DiagramEditor(QDialog):
         """draw.io-Datei lesen (bei mehreren Seiten fragen) und in die Fläche einsetzen."""
         if path is None:
             path, _ = QFileDialog.getOpenFileName(self, "draw.io-Datei öffnen", str(Path.home()),
-                                                  "draw.io (*.drawio *.drawio.xml *.xml *.drawio.svg *.svg)")
+                                                  "draw.io (*.drawio *.xml *.svg *.png *.html)")
             if not path:
                 return []
         part = read_drawio_file(self, path, page)

@@ -283,6 +283,35 @@ def _anchor_guess(diagram: Diagram, end: End) -> tuple[float, float]:
     return shape.center
 
 
+def anchor(diagram: Diagram, end: End) -> tuple[float, float]:
+    """Bezugspunkt eines Endes: Andockpunkt, sonst Formmitte, sonst der freie Punkt."""
+    return _anchor_guess(diagram, end)
+
+
+def align_point(point: tuple[float, float], ref: tuple[float, float], tolerance: float,
+                constrain: bool = False) -> tuple[float, float]:
+    """Freien Punkt auf eine Linie mit `ref` ziehen: fast senkrecht/waagerecht → exakt (wie Hilfslinien in draw.io).
+    `constrain` (Shift) erzwingt die überwiegende Achse."""
+    x, y = point
+    dx, dy = abs(x - ref[0]), abs(y - ref[1])
+    if constrain:
+        return (ref[0], y) if dy >= dx else (x, ref[1])
+    if dx <= tolerance:
+        x = ref[0]
+    if dy <= tolerance:
+        y = ref[1]
+    return x, y
+
+
+def align_free_ends(diagram: Diagram, conn: Connector, tolerance: float, constrain: bool = False) -> None:
+    """Freie Enden eines Verbinders am anderen Ende ausrichten, damit „gerade gezogen“ auch exakt gerade ist."""
+    source, target = conn.source, conn.target
+    if target.shape is None:
+        target.x, target.y = align_point((target.x, target.y), anchor(diagram, source), tolerance, constrain)
+    elif source.shape is None:
+        source.x, source.y = align_point((source.x, source.y), anchor(diagram, target), tolerance, constrain)
+
+
 def orthogonal(p0, d0, p1, d1, stub: float = 14.0) -> list[tuple[float, float]]:
     """Rechtwinkliger Weg von p0 (Austritt d0) nach p1 (Eintritt aus Richtung d1) – höchstens wenige Knicke."""
     s0 = (p0[0] + d0[0] * stub, p0[1] + d0[1] * stub) if d0 != (0.0, 0.0) else p0

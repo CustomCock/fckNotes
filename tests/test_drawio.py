@@ -140,7 +140,7 @@ def test_roundtrip_keeps_kinds_texts_arrows_ports_and_labels():
 
 
 def test_rejects_entities_garbage_and_bombs():
-    with pytest.raises(drawio.DrawioError, match="DOCTYPE"):
+    with pytest.raises(drawio.DrawioError, match="ENTITY"):
         drawio.pages('<?xml version="1.0"?><!DOCTYPE x [<!ENTITY a "aaaa">]><mxfile>&a;</mxfile>')
     with pytest.raises(drawio.DrawioError, match="XML"):
         drawio.pages("<mxfile><diagram>")
@@ -164,3 +164,56 @@ def test_style_and_text_helpers():
     assert drawio.plain_text("<b>x</b>", False) == "<b>x</b>"
     assert drawio._color("#ABC", "#000000") == "#aabbcc" and drawio._color("red", "#000000") == "#000000"
     assert drawio._color("none", "#000000") == "none"
+
+
+# ---- andere Exportformate von draw.io ------------------------------------------------------------------------
+def _small_file() -> str:
+    d = Diagram(200, 100)
+    a = d.add_shape("rect", 10, 10, 80, 40, "A")
+    b = d.add_shape("rect", 10, 100, 80, 40, "B")
+    d.connect(End(a.id, "s2"), End(b.id, "n2"), "Pfeil")
+    return drawio.write(d)
+
+
+def _png(chunks: list[tuple[bytes, bytes]]) -> bytes:
+    import struct
+    out = b"\x89PNG\r\n\x1a\n"
+    for kind, body in chunks + [(b"IEND", b"")]:
+        out += struct.pack(">I", len(body)) + kind + body + struct.pack(">I", zlib.crc32(kind + body))
+    return out
+
+
+def test_svg_export_with_plain_doctype_is_read():
+    from xml.sax.saxutils import quoteattr
+    svg = ('<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" '
+           '"http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">\n'
+           f'<svg xmlns="http://www.w3.org/2000/svg" version="1.1" content={quoteattr(_small_file())}><g/></svg>')
+    d = drawio.read(drawio.load(svg.encode("utf-8")))
+    assert {s.text for s in d.shapes} == {"A", "B"} and len(d.connectors) == 1
+
+
+def test_png_export_text_chunks():
+    from urllib.parse import quote
+    xml = quote(_small_file()).encode("ascii")
+    plain = _png([(b"IHDR", b"\0" * 13), (b"tEXt", b"Software\0draw.io"), (b"tEXt", b"mxfile\0" + xml)])
+    assert len(drawio.read(drawio.load(plain)).shapes) == 2
+    packed = _png([(b"IHDR", b"\0" * 13), (b"zTXt", b"mxfile\0\0" + zlib.compress(xml))])
+    assert len(drawio.read(drawio.load(packed)).shapes) == 2
+    international = _png([(b"iTXt", b"mxfile\0\x01\0\0\0" + zlib.compress(xml))])
+    assert len(drawio.read(drawio.load(international)).shapes) == 2
+    with pytest.raises(drawio.DrawioError, match="PNG ohne"):
+        drawio.load(_png([(b"IHDR", b"\0" * 13)]))
+    bomb = _png([(b"zTXt", b"mxfile\0\0" + zlib.compress(b"a" * (drawio.MAX_INFLATED + 10)))])
+    with pytest.raises(drawio.DrawioError, match="groß"):
+        drawio.load(bomb)
+
+
+def test_html_export_and_bom():
+    import html as html_mod
+    import json
+    config = html_mod.escape(json.dumps({"highlight": "#0000ff", "xml": _small_file()}), quote=True)
+    page = f'<!DOCTYPE html><html><body><div class="mxgraph" data-mxgraph="{config}"></div></body></html>'
+    assert len(drawio.read(drawio.load(page.encode("utf-8"))).shapes) == 2
+    with pytest.raises(drawio.DrawioError, match="HTML"):
+        drawio.load(b'<html><div data-mxgraph="kaputt"></div></html>')
+    assert drawio.load("\ufeff<mxfile/>".encode("utf-8")) == "<mxfile/>"

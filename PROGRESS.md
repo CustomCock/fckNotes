@@ -617,6 +617,12 @@ Plan: T1 Objekte bearbeiten + direkt ausfüllen → T2 Felderkennung → T3 Diag
   komprimiert). UI: Editor „draw.io …“ (`import_drawio` setzt unter den Inhalt, `export_drawio`), PdfPage
   `import_drawio` (Editor dazwischen, oben links 36 pt) / `export_drawio`, Palette + Rechtsklick.
   **Grenzen:** Wegpunkte, Bilder, Drehung, Schriftarten, Ebenen werden nicht übernommen (eigenes Routing).
+- **Nachbesserung nach Test durch Besitzer:** (1) freie Verbinder-Enden: `model.align_point`/`align_free_ends`
+  (Toleranz 8 px, Shift erzwingt Achse), Editor rastet zusätzlich an freie Enden anderer Linien ein; (2) Formen-
+  Symbole mit `ink=COLORS.text` (Schwarz → Textfarbe, Weiß → durchsichtig); (3) Import lehnte SVG-Exporte ab:
+  **Entscheidung:** DOCTYPE ohne internen Teil (`[...]`) entfernen statt ablehnen – ENTITY/interner DTD-Teil bleibt
+  gesperrt, expat lädt keine externen DTDs → kein XXE/Billion Laughs; „Bild einfügen“ als Ersatz daher unnötig.
+  Neu: `drawio.load(bytes)` für `.drawio.png` (tEXt/zTXt/iTXt „mxfile“) und HTML-Export (`data-mxgraph`).
 
 ## Offen
 

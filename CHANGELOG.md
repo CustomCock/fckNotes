@@ -50,9 +50,17 @@ Alle nennenswerten Änderungen an fckNotes (bis 1.17.0: Notex). Format angelehnt
 - **draw.io-Dateien importieren und exportieren** (Editor-Knopf „draw.io …“, Palette, Rechtsklick auf ein
   Diagramm): `.drawio` (auch komprimiert und `.drawio.svg`, mehrere Seiten) wird zum bearbeitbaren Diagramm –
   Formen, UML-Klassen (draw.io-Stapel und HTML-Variante), Andockpunkte, Pfeilspitzen, Farben, Beschriftungen und
-  Multiplizitäten; Export erzeugt eine Datei, die draw.io direkt öffnet. DOCTYPE/ENTITY werden abgelehnt, Größe begrenzt.
+  Multiplizitäten; Export erzeugt eine Datei, die draw.io direkt öffnet. Auch `.drawio.png` (eingebettetes
+  Diagramm) und der HTML-Export werden gelesen. Eigene XML-Entity-Definitionen werden abgelehnt, Größe begrenzt.
+- Diagramm-Editor: frei endende Verbinder rasten senkrecht/waagerecht zum anderen Ende ein (Shift erzwingt es) und an
+  vorhandene freie Linienenden an.
 
 ### Behoben
+- Diagramm-Editor: Senkrecht gezogene Linien wurden leicht schief, weil das freie Ende aufs Raster sprang, der
+  Andockpunkt aber nicht darauf lag.
+- Diagramm-Editor: Formen-Symbole links waren im dunklen Theme kaum sichtbar – sie folgen jetzt der Textfarbe.
+- draw.io-Import: SVG-Exporte von draw.io wurden wegen ihrer DOCTYPE-Zeile abgelehnt; harmlose DOCTYPE-Zeilen
+  ohne eigene Definitionen werden jetzt übersprungen.
 - PDF bearbeiten: Nach Löschen von Seiten/Anmerkungen blieben verwaiste Objekte (z. B. alte Lesezeichen-Ketten) in
   der Datei – jetzt wird nur geschrieben, was vom Dokument aus erreichbar ist.
 - PDF-Ansicht: Werte in Formularfeldern waren unsichtbar (PDFium zeichnet Felder in QtPdf nicht) – fckNotes zeigt

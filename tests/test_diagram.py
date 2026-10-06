@@ -216,3 +216,21 @@ def test_too_wide_diagram_is_scaled_to_fit_and_scale_is_kept():
     again = pdfdiagram.update_diagram(small, 0, 0, d)
     assert pdfobjects.list_objects(again, 0)[0].rect[2] == pytest.approx(247)
     assert pdfdiagram.fit_scale(Diagram(100, 100), (0, 0), (595, 842)) == 1.0
+
+
+def test_align_free_ends_makes_nearly_straight_lines_exact():
+    from notex.core.diagram.model import align_free_ends, align_point
+    assert align_point((103, 40), (100, 200), 8) == (100, 40)
+    assert align_point((130, 195), (100, 200), 8) == (130, 200)
+    assert align_point((130, 40), (100, 200), 8) == (130, 40)              # weit weg: bleibt schräg
+    assert align_point((130, 40), (100, 200), 8, constrain=True) == (100, 40)
+    d = Diagram(300, 300)
+    box = d.add_shape("rounded", 50, 200, 120, 60)
+    up = d.connect(End(box.id, "n2"), End(None, None, 113, 50), "Pfeil", route="straight")
+    align_free_ends(d, up, 8)
+    assert (up.target.x, up.target.y) == (110, 50)                        # senkrecht über dem Andockpunkt
+    start = route(d, up)
+    assert start[0][0] == start[-1][0]
+    back = d.connect(End(None, None, 172, 52), End(box.id, "e2"), "Pfeil", route="straight")
+    align_free_ends(d, back, 8)
+    assert (back.source.x, back.source.y) == (170, 52)
