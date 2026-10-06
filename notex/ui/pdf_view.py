@@ -16,10 +16,10 @@ from PySide6.QtCore import QBuffer, QByteArray, QIODevice, QModelIndex, QPointF,
 from PySide6.QtGui import QColor, QKeySequence, QPainter, QPen, QPolygonF, QShortcut
 from PySide6.QtPdf import (QPdfBookmarkModel, QPdfDocument, QPdfDocumentRenderOptions, QPdfPageRenderer,
                            QPdfSearchModel)
-from PySide6.QtWidgets import (QAbstractScrollArea, QApplication, QComboBox, QFrame, QHBoxLayout, QInputDialog,
+from PySide6.QtWidgets import (QAbstractScrollArea, QApplication, QComboBox, QDialog, QFrame, QHBoxLayout, QInputDialog,
                                QLabel, QLineEdit, QMenu, QPushButton, QSplitter, QTreeView, QVBoxLayout)
 
-from notex.core import pdfannot, pdfdetect, pdfdoc, pdfforms, pdfobjects, pdfpages, pdfredact
+from notex.core import pdfannot, pdfdetect, pdfdiagram, pdfdoc, pdfforms, pdfobjects, pdfpages, pdfredact
 from notex.core.pdfdoc import PageLayout
 from notex.theme.theme import style_menu
 from notex.theme.tokens import COLORS, SPACING
@@ -36,6 +36,7 @@ TOOLS = [
     ("field", "text-cursor-input", "Neues Textfeld (Formular): Bereich aufziehen"),
     ("checkbox", "square-check", "Neues Kontrollkästchen (Formular): klicken"),
     ("signature", "signature", "Unterschrift: zeichnen oder Bild wählen, dann Bereich aufziehen/klicken"),
+    ("diagram", "network", "Diagramm (UML, Fluss …): Bereich aufziehen, dann zeichnen – später per Doppelklick ändern"),
     ("redact", "redact", "Schwärzen: Bereiche aufziehen (endgültig erst mit „Schwärzen anwenden“)"),
 ]
 CACHE_IMAGES = 24
@@ -51,7 +52,7 @@ def _alpha(color: str, alpha: int) -> QColor:
     return result
 
 
-REGION_TOOLS = {"note", "text", "field", "checkbox", "signature", "redact"}   # Ziehen/Klicken legt einen Bereich fest
+REGION_TOOLS = {"note", "text", "field", "checkbox", "signature", "redact", "diagram"}   # Ziehen/Klicken legt einen Bereich fest
 MARKUP_TOOLS = {"highlight", "underline", "strikeout", "redact_text"}          # Textauswahl → sofort anwenden
 
 
@@ -1304,6 +1305,83 @@ class PdfPage(ViewerPage):
         if not self._ensure_editing():
             return False
         return self._run(pdfforms.update_field, info.name, new_name, multiline, size, page=obj.page)
+
+    # ---- Diagramme ---------------------------------------------------------------------------------------------
+    def page_background(self, page: int, without: int | None = None, scale: float = 2.0):
+        """Seite als Bild (für den Hintergrund im Diagramm-Editor) – optional ohne die Anmerkung `without`."""
+        from PySide6.QtCore import QSize
+        from PySide6.QtGui import QColor, QImage, QPainter
+        from PySide6.QtPdf import QPdfDocumentRenderOptions
+        data = self.data
+        try:
+            if without is not None:
+                data = pdfannot.delete_annotation(data, page, without)
+            raw = self._display_bytes(data)
+        except pdfpages.PdfEditError:
+            raw = self.data
+        doc = QPdfDocument()
+        buffer = QBuffer()
+        buffer.setData(QByteArray(raw))
+        buffer.open(QIODevice.OpenModeFlag.ReadOnly)
+        doc.load(buffer)
+        size = doc.pagePointSize(page)
+        options = QPdfDocumentRenderOptions()
+        options.setRenderFlags(QPdfDocumentRenderOptions.RenderFlag.Annotations)
+        rendered = doc.render(page, QSize(round(size.width() * scale), round(size.height() * scale)), options)
+        image = QImage(rendered.size(), QImage.Format.Format_RGB32)
+        image.fill(QColor("#ffffff"))
+        painter = QPainter(image)
+        painter.drawImage(0, 0, rendered)
+        painter.end()
+        doc.close()
+        buffer.close()
+        return image, scale
+
+    def insert_diagram(self, page: int, top_left: tuple[float, float], diagram=None, size=(320.0, 200.0)) -> bool:
+        """Diagramm-Editor für einen neuen Bereich öffnen (oder `diagram` direkt einfügen)."""
+        offset = (0.0, 0.0)
+        if diagram is None:
+            from notex.core.diagram.model import Diagram
+            from notex.ui.diagram_editor import DiagramEditor
+            image, scale = self.page_background(page)
+            editor = DiagramEditor(self, Diagram(*size), image, scale, top_left)
+            if editor.exec() != QDialog.DialogCode.Accepted:
+                return False
+            diagram, offset = editor.result_diagram()
+        if not diagram.shapes and not diagram.connectors:
+            self.notice.emit("Leeres Diagramm – nichts eingefügt")
+            return False
+        if not self._ensure_editing():
+            return False
+        corner = (top_left[0] + offset[0], top_left[1] + offset[1])
+        return self._run(pdfdiagram.add_diagram, page, corner, diagram, page=page)
+
+    def edit_diagram(self, obj, diagram=None) -> bool:
+        """Doppelklick auf ein Diagramm: Editor mit dem gespeicherten Modell; danach an derselben Stelle ersetzen."""
+        try:
+            current = pdfdiagram.read_diagram(self.data, obj.page, obj.index)
+        except pdfpages.PdfEditError as error:
+            self.notice.emit(str(error))
+            return False
+        offset = (0.0, 0.0)
+        if diagram is None:
+            from notex.ui.diagram_editor import DiagramEditor
+            image, scale = self.page_background(obj.page, without=obj.index)
+            editor = DiagramEditor(self, current, image, scale, (obj.rect[0], obj.rect[1]))
+            if editor.exec() != QDialog.DialogCode.Accepted:
+                return False
+            diagram, offset = editor.result_diagram()
+        if not self._ensure_editing():
+            return False
+        if not diagram.shapes and not diagram.connectors:
+            return self.delete_object(obj)
+        corner = (obj.rect[0] + offset[0], obj.rect[1] + offset[1])
+        return self._run(pdfdiagram.update_diagram, obj.page, obj.index, diagram, corner, page=obj.page)
+
+    def _region_diagram(self, page: int, box: tuple) -> None:
+        x0, y0, x1, y1 = box
+        size = (x1 - x0, y1 - y0) if x1 - x0 >= 60 and y1 - y0 >= 40 else (320.0, 200.0)
+        self.insert_diagram(page, (x0, y0), size=size)
 
     # ---- Felderkennung -----------------------------------------------------------------------------------------
     def page_words(self, page: int) -> list:

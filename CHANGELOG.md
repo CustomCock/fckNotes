@@ -40,6 +40,13 @@ Alle nennenswerten Änderungen an fckNotes (bis 1.17.0: Notex). Format angelehnt
   ebenso; Kästchen (gezeichnet oder ☐) werden Kontrollkästchen mit dem Text daneben als Namen. Ein Schritt
   (Ctrl+Z), keine Doppelten. Ins Unterschriftsfeld klicken öffnet den Unterschrift-Dialog und setzt sie genau dort ein.
 - PDF-Formularfelder werden in der Ansicht zart hinterlegt (abschaltbar), damit man sieht, wo man reinklicken kann.
+- **PDF: Diagramme zeichnen** (Werkzeug „Diagramm“ / Palette): eigener Editor im Stil von draw.io mit der Seite im
+  Hintergrund – Formen (Rechteck, Raute, Ellipse, Akteur, UML-Klasse, Paket, Datenbank …) mit **Andockpunkten**,
+  Verbinder, die beim Verschieben mitwandern (rechtwinklig oder gerade), UML-Beziehungen (Vererbung, Realisierung,
+  Assoziation, Aggregation, Komposition, Abhängigkeit …) mit Beschriftung und Multiplizitäten, Klassen mit
+  Attributen/Methoden, Vorlagen (Klassen-, Use-Case-, Aktivitäts-, Fluss-, Sequenzdiagramm), Raster, Kopieren,
+  Rückgängig. Landet als Vektorgrafik im PDF (überall gleich sichtbar), passt sich der Seite an; das Modell wird
+  mitgespeichert, Doppelklick bearbeitet das Diagramm später wieder.
 
 ### Behoben
 - PDF bearbeiten: Nach Löschen von Seiten/Anmerkungen blieben verwaiste Objekte (z. B. alte Lesezeichen-Ketten) in

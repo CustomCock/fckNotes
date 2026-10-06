@@ -3628,6 +3628,8 @@ class MainWindow(QMainWindow):
              "", "pdf unterschrift unterschreiben signatur signature zeichnen"),
             ("pdf:flatten", "PDF: Anmerkungen und Formular einbrennen …", lambda: self.pdf_command("flatten"), "",
              "pdf einbrennen flatten fixieren formular abschließen"),
+            ("pdf:tool_diagram", "PDF: Diagramm zeichnen (UML, Fluss …)", lambda: self.pdf_command("set_tool", "diagram"),
+             "", "pdf diagramm uml klassendiagramm zeichnen drawio draw.io flussdiagramm use case aktivität"),
             ("pdf:detect_fields", "PDF: Formularfelder automatisch erkennen", lambda: self.pdf_command("detect_fields"),
              "", "pdf formular felder erkennen automatisch name datum unterschrift klasse thema adobe"),
             ("pdf:edit_selected", "PDF: Ausgewähltes bearbeiten …", lambda: self.pdf_command("edit_selected"), "",

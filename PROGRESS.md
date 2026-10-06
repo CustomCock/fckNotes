@@ -599,6 +599,16 @@ Plan: T1 Objekte bearbeiten + direkt ausfüllen → T2 Felderkennung → T3 Diag
   durchnummeriert). Wörter liefert die UI über PDFium (`TOKEN_RE` trennt „Name:___“). `pdfforms.add_fields` legt
   alles in einem Writer an; Unterschrift als Textfeld mit `/fckNotesKind /Signature` (+ /TU) → Klick in fckNotes
   ersetzt es durch die Unterschrift. Erkannte Felder ohne Rahmen; Ansicht hinterlegt Felder (`pdf_highlight_fields`).
+- **T3 – erledigt.** Kern `notex/core/diagram/`: `model.py` (Formen mit Andockpunkten als Bruchteile, Verbinder-
+  Enden Form+Punkt | Form ohne Punkt (Randpunkt Richtung Ziel) | frei, rechtwinkliges/gerades Routing, UML-
+  Beziehungen als Stil-Bündel, JSON `fcknotes-diagram`), `render.py` (eine Liste Grundelemente rect/ellipse/path/
+  text für PDF **und** QPainter, Textbreiten aus den Helvetica-Metriken → Text sitzt im Editor wie im PDF),
+  `pdf.py` (Content-Stream, Bezier-Ellipsen, /Helv /HeBo /HeOb /HeBO), `templates.py`. `notex/core/pdfdiagram.py`:
+  Stempel-Anmerkung mit eigenem AP + Modell (Flate) unter `/fckNotesDiagram`; `fit_scale` verkleinert auf die Seite,
+  `update_diagram` behält den vom Nutzer gezogenen Maßstab. UI `diagram_editor.py` (Canvas + Dialoge),
+  `diagram_paint.py`; PdfPage `insert_diagram`/`edit_diagram`, Werkzeug „diagram“ (Bereich), Doppelklick öffnet.
+  **Entscheidungen:** Modell im PDF statt Nebendatei (Datei bleibt eine Datei; andere Programme sehen nur den
+  Stempel); Stempel statt Seiteninhalt (verschieb-/löschbar wie alles andere, Einbrennen macht es fest).
 
 ## Offen
 
