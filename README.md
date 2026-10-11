@@ -521,6 +521,15 @@ Der Stift schaltet eine zweite Leiste und die **Seitenleiste** (Miniaturen) ein.
 - **Anhänge** (Büroklammer oben im PDF-Tab, auch im Lesemodus): alle Anhänge des Dokuments und der Seiten mit Größe
   und Beschreibung; speichern, öffnen (erst nach Rückfrage mit Typ und Warnung), hinzufügen, entfernen. Programme,
   Skripte und Makro-Dokumente lassen sich nur speichern, nie öffnen.
+- **Zeichnen** (Bearbeiten-Leiste, Gruppe mit dem Stift): **Stift** für Freihand (Farbe, Stärke, Deckkraft,
+  Glättung), **Radierer** (entfernt immer ganze Striche), **Formen** – Rechteck, Ellipse, Linie, Pfeil, Polygon
+  (klicken, Doppelklick oder Enter beendet, Rücktaste nimmt den letzten Punkt zurück), Wolke – mit Rand, Füllung,
+  Deckkraft und Linienstil (durchgezogen, gestrichelt, gepunktet) über **Stil**. Alles sind echte PDF-Anmerkungen
+  mit eigenem Erscheinungsbild und lässt sich wie Eingefügtes verschieben, skalieren und löschen.
+- **Stempel**: Genehmigt, Entwurf, Vertraulich, Erledigt, Geprüft oder eigene aus Text oder Bild (liegen portabel in
+  `stamps/`), optional mit Datum und Namen (Einstellungen › Editor › PDF bearbeiten › „Name für Stempel“).
+  Klicken setzt den Stempel in Originalgröße, Aufziehen passt ihn ein.
+- Die Bearbeiten-Leiste bricht bei schmalem Fenster gruppenweise in eine zweite Zeile um.
 
 **Kommentieren** – Werkzeuge in der Bearbeiten-Leiste (`Esc` = zurück zu „Auswählen“), Farbe über die Palette:
 
@@ -1355,6 +1364,11 @@ Alternativ per Docker: `docker run -d -p 8081:8010 erikvl87/languagetool` (dann 
 | Palette › PDF: Werkzeug Link | Bereich aufziehen, Ziel wählen (Seite, Lesezeichen, Webadresse, PDF) |
 | Klick auf einen Link (PDF-Lesemodus) | Zu Seitenzielen springen (Webadressen werden nur angezeigt) |
 | Palette › PDF: Anhänge / Datei anhängen | Anhänge speichern, öffnen (mit Rückfrage), hinzufügen, entfernen |
+| Palette › PDF: Werkzeug Stift / Radierer | Freihand zeichnen bzw. ganze Striche entfernen |
+| Palette › PDF: Form Rechteck / Ellipse / Linie / Pfeil / Polygon / Wolke | Form zeichnen (Polygon: Klicks, Enter beendet) |
+| Enter / Rücktaste / Esc (Polygon zeichnen) | Polygon beenden / letzten Punkt entfernen / Punkte verwerfen |
+| Palette › PDF: Stil für Stift und Formen | Farbe, Stärke, Füllung, Deckkraft, Linienstil (auch fürs ausgewählte Objekt) |
+| Palette › PDF: Werkzeug Stempel / Eigenen Stempel anlegen | Stempel setzen (Klick = Originalgröße) bzw. aus Text/Bild anlegen |
 | Palette › PDF: Auswahl markieren / unterstreichen / durchstreichen | Anmerkung über dem markierten PDF-Text |
 | Palette › PDF: Werkzeug Notiz / Text | Notiz bzw. Text auf der Seite platzieren (Esc beendet das Werkzeug) |
 | Palette › PDF: Formular ausfüllen | Feldliste rechts, „Übernehmen“ schreibt alle Werte (Ctrl+Z-fähig) |

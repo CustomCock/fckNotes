@@ -90,6 +90,11 @@ def cache_dir() -> Path:
     return path
 
 
+def stamps_dir() -> Path:
+    """Eigene PDF-Stempel (stamps.json + Bilder), portabel neben der App."""
+    return app_root() / "stamps"
+
+
 def data_dir() -> Path:
     """data/ neben der App. Wird angelegt, falls es fehlt."""
     path = app_root() / "data"

@@ -197,6 +197,7 @@ class EditorTabs(QTabWidget):
                 factory.backup_to_trash = bool(self.config.get("pdf_backup_trash", True))
                 factory.highlight_fields = bool(self.config.get("pdf_highlight_fields", True))
                 factory.undo_budget_mb = int(self.config.get("pdf_undo_budget_mb", 512))
+                factory.author = str(self.config.get("pdf_author", "") or "")
             try:
                 page = factory(path)
             except OSError as error:
@@ -991,8 +992,10 @@ class EditorTabs(QTabWidget):
             pdf_viewer.backup_to_trash = bool(self.config.get("pdf_backup_trash", True))
             pdf_viewer.highlight_fields = bool(self.config.get("pdf_highlight_fields", True))
             pdf_viewer.undo_budget_mb = int(self.config.get("pdf_undo_budget_mb", 512))
+            pdf_viewer.author = str(self.config.get("pdf_author", "") or "")
             for page in self.viewers():
                 if page.kind == "pdf":
+                    page.author = pdf_viewer.author
                     page.objects.highlight_fields = pdf_viewer.highlight_fields
                     page.history.budget = pdf_viewer.undo_budget_mb * 1024 * 1024
                     page.canvas.viewport().update()

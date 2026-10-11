@@ -673,6 +673,17 @@ PDF/A wie vorgeschlagen, Noto statt Helvetica, Windows-Zertifikatsspeicher spät
   Audit-Register: neuer Ort `link`. UI `ui/pdf_links_ui.py` (LinkDialog, AttachmentsDialog nicht modal),
   Büroklammer im PDF-Tab, Werkzeug „Link“, 3 Palette-Einträge; geöffnete Anhänge landen in
   `cache/anhaenge/<zufall>/` (älter als ein Tag wird beim nächsten Öffnen gelöscht). Doku `docs/pdf/anhaenge-links.md`.
+- **V3 – erledigt.** Neu `pdfdraw.py` (Ink mit RDP-Vereinfachung + Catmull-Rom-Glättung, ein Strich je Anmerkung;
+  `erase_at` entfernt nur ganze Striche aus `/InkList`; Square/Circle/Line(+`/LE` OpenArrow)/Polygon, Wolke über
+  `/BE /S /C` mit eigenem Bogen-Pfad; `/BS` mit Strichelung, `/CA` + ExtGState; `transform` hält den Rand konstant,
+  `restyle`) und `pdfstamps.py` (5 Standardstempel, eigene Text/Bild-Stempel in `<App>/stamps/stamps.json`,
+  Datum/Name-Zeile, Noto Sans Bold eingebettet, Form-Matrix für gedrehte Seiten). **Entscheidung:** eigenes Modul
+  statt `pdfannot.py` (schon über 600 Zeilen). `pdfannot.valid_color` (rgb() schluckte ungültige Farben).
+  Objekte: ink/square/circle/line/polygon verschieb-/skalierbar, kommentierbar. Canvas: `PATH_TOOLS` (Stift,
+  Radierer, Linie, Pfeil, Polygon mit Klicks/Enter/Rücktaste/Esc), Vorschau. UI `ui/pdf_draw_ui.py`
+  (DrawStyleDialog, CustomStampDialog), Formen- und Stempel-Menü, Einstellung `pdf_author`, 11 Palette-Einträge.
+  **Fix nebenbei:** Bearbeiten-Leiste erzwang 1581 px (V2) bzw. 1766 px Fensterbreite → `widgets.FlowLayout`,
+  Gruppen brechen um (Mindestbreite jetzt ~420 px), Regressionstest. Doku `docs/pdf/zeichnen-stempel.md`.
 
 ## Offen
 
@@ -742,7 +753,7 @@ rdap, scanner, logs, pcap. Standardmäßig an: variables, hex, ports, ioc.
 ## Nächster Schritt
 
 **PDF-Ausbau (Blöcke V, W, X):** Roadmap `docs/ROADMAP-PDF.md`, vom Besitzer freigegeben („alles wie vorgeschlagen“).
-**V0–V2 erledigt** – nächster Block **V3 (Kommentieren I: Stift, Formen, Stempel)**. B- und C-Blöcke vor dem Start abstimmen.
+**V0–V3 erledigt** – nächster Block **V4 (Kommentieren II: Liste, Antworten, Status, Export, XFDF)**. B- und C-Blöcke vor dem Start abstimmen.
 
 **Block T (PDF: Objekte, Felderkennung, Diagramme, draw.io) abgeschlossen** auf dem Arbeitsbranch – wartet auf
 Merge/Release durch den Besitzer (Vorschlag 1.18.0). Offen beim Besitzer: Ausprobieren mit echten Arbeitsblättern

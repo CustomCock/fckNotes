@@ -101,8 +101,20 @@ Alle nennenswerten Änderungen an fckNotes (bis 1.17.0: Notex). Format angelehnt
     PDF; Rahmen sichtbar/unsichtbar; verschieben, Größe ändern, bearbeiten, löschen wie andere Objekte; im
     Lesemodus springen Seiten-Links, Webadressen und Dateien werden nie geöffnet.
   - Prüfung nach dem Schwärzen kennt den neuen Ablageort „Link-Ziele“ (Webadressen, Dateinamen).
+- **PDF-Ausbau, Block V3 (Kommentieren I: Stift, Formen, Stempel):**
+  - **Stift** (Farbe, Stärke, Deckkraft, Glättung) und **Radierer**, der immer ganze Striche entfernt.
+  - **Formen** als echte Anmerkungen: Rechteck, Ellipse, Linie, Pfeil, Polygon, Wolke – mit Rand, Füllung, Deckkraft
+    und Linienstil; eigenes Erscheinungsbild, damit Wolkenrand und Strichelung überall gleich aussehen. Verschieben
+    und Größe ändern rechnen die Geometrie um (Rand bleibt gleich dick), **Stil** gilt auf Wunsch fürs ausgewählte
+    Objekt.
+  - **Stempel**: Genehmigt, Entwurf, Vertraulich, Erledigt, Geprüft und eigene aus Text oder Bild (portabel in
+    `stamps/`), optional mit Datum und Namen; Einstellung „Name für Stempel“.
+  - Zeichnungen und Formen lassen sich kommentieren.
 
 ### Behoben
+- PDF bearbeiten: Die Bearbeiten-Leiste erzwang ein sehr breites Fenster (mit V2 1581 px, mit V3 1766 px) – sie
+  bricht jetzt gruppenweise in eine zweite Zeile um.
+- PDF: Ungültige Farbangaben wurden stillschweigend zu Schwarz – Stempel und Formen lehnen sie jetzt ab.
 - PDF bearbeiten: Seitenbeschriftungen (z. B. „i, ii, iii“ fürs Vorwort) gingen beim Umsortieren, Drehen, Löschen,
   Einfügen und Zusammenfügen verloren – sie bleiben jetzt erhalten und wandern mit ihren Seiten.
 - Diagramm-Editor: Senkrecht gezogene Linien wurden leicht schief, weil das freie Ende aufs Raster sprang, der

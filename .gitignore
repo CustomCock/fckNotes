@@ -16,6 +16,8 @@ dist/
 config.json
 data/
 history/
+/cache/
+/stamps/
 logs/
 templates/
 

@@ -50,3 +50,15 @@ Windows und Linux durchgehen.
 5. In fckNotes im Lesemodus: Seiten-Link springt, Webadresse öffnet **nichts** (nur Hinweis), Rechtsklick kopiert.
 6. Einen Link verschieben und vergrößern, speichern: im fremden Programm an der neuen Stelle klickbar.
 7. Linux ohne `xdg-open`: „Öffnen“ ist ausgegraut, Tooltip nennt das fehlende Paket.
+
+## V3 – Stift, Formen, Stempel
+1. Mit dem Stift schreiben (mit und ohne Glättung, Deckkraft 50 %), speichern. Im fremden Programm: gleiche Form,
+   halbdurchsichtig, als Anmerkung auswählbar/löschbar.
+2. Radierer über einen von zwei Strichen ziehen: genau dieser Strich verschwindet ganz.
+3. Je eine Form anlegen (Rechteck gestrichelt, Ellipse gepunktet, Pfeil, Polygon, Wolke gefüllt), speichern. Im
+   fremden Programm: Wolkenrand, Strichelung und Füllung wie in fckNotes.
+4. Eine Form vergrößern und verschieben, speichern: Strichstärke unverändert, Form an der neuen Stelle.
+5. Alle fünf Standardstempel setzen, einen mit Datum und Namen; einen eigenen Stempel aus Text und einen aus einem
+   PNG mit Transparenz anlegen und setzen. Im fremden Programm: Text in Noto Sans, Bild mit Transparenz.
+6. Auf einer gedrehten Seite einen Stempel setzen: steht aufrecht.
+7. Fenster auf etwa 1000 px Breite verkleinern: Die Bearbeiten-Leiste bricht in zwei Zeilen um, nichts ist abgeschnitten.

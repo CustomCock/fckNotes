@@ -452,6 +452,18 @@ class SettingsDialog(QDialog):
         undo_budget.valueChanged.connect(lambda v: (self.config.__setitem__("pdf_undo_budget_mb", v),
                                                     self.window_.tabs.apply_preview_settings()))
         page.row("Speicher für Rückgängig", undo_budget)
+        import getpass
+        try:
+            login = getpass.getuser()
+        except Exception:                               # noqa: BLE001
+            login = ""
+        author = QLineEdit(str(self.config.get("pdf_author", "") or ""))
+        author.setPlaceholderText(login or "Name")
+        author.setMaxLength(80)
+        author.setToolTip("Erscheint nur, wenn beim Stempel „Mit Namen“ gewählt ist. Leer = Anmeldename.")
+        author.textChanged.connect(lambda text: (self.config.__setitem__("pdf_author", text.strip()),
+                                                 self.window_.tabs.apply_preview_settings()))
+        page.row("Name für Stempel", author)
         page.note("Im PDF-Tab schaltet der Stift die Bearbeitung ein. Alle Änderungen passieren erst im Speicher "
                   "(Ctrl+Z/Ctrl+Y), Ctrl+S schreibt die Datei. Der Versionsverlauf gilt nur für Textdateien – "
                   "deshalb landet das alte PDF auf Wunsch einmal je Tab im Papierkorb.")

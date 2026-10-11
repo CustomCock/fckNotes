@@ -9,6 +9,7 @@ sofort geschlossen, damit sie umbenannt/verschoben werden kann. Bearbeitet wird 
 """
 from __future__ import annotations
 
+import math
 from collections import OrderedDict
 from pathlib import Path
 
@@ -17,11 +18,11 @@ from PySide6.QtGui import QColor, QKeySequence, QPainter, QPen, QPolygonF, QShor
 from PySide6.QtPdf import (QPdfBookmarkModel, QPdfDocument, QPdfDocumentRenderOptions, QPdfPageRenderer,
                            QPdfSearchModel)
 from PySide6.QtWidgets import (QAbstractScrollArea, QApplication, QComboBox, QDialog, QFrame, QHBoxLayout, QInputDialog,
-                               QLabel, QLineEdit, QMenu, QPushButton, QSplitter, QTreeView, QVBoxLayout)
+                               QLabel, QLineEdit, QMenu, QPushButton, QSplitter, QTreeView, QVBoxLayout, QWidget)
 
 from notex import APP_NAME
-from notex.core import (pdfannot, pdfattach, pdfdetect, pdfdiagram, pdfdoc, pdfforms, pdflinks, pdfobjects, pdfoutline,
-                        pdfpages, pdfredact)
+from notex.core import (pdfannot, pdfattach, pdfdetect, pdfdiagram, pdfdoc, pdfdraw, pdfforms, pdflinks, pdfobjects,
+                        pdfoutline, pdfpages, pdfredact, pdfstamps)
 from notex.core.pdfdoc import PageLayout
 from notex.theme.theme import style_menu
 from notex.theme.tokens import COLORS, SPACING
@@ -42,7 +43,14 @@ TOOLS = [
     ("redact", "redact", "Schwärzen: Bereiche aufziehen (endgültig erst mit „Schwärzen anwenden“)"),
     ("crop", "crop", "Zuschneiden: sichtbaren Bereich aufziehen (blendet nur aus, kein Schwärzen)"),
     ("link", "link", "Link: Bereich aufziehen, dann Ziel wählen (Seite, Lesezeichen, Webadresse, anderes PDF)"),
+    ("ink", "pen-line", "Stift: frei zeichnen (Farbe, Stärke, Deckkraft über „Stil“)"),
+    ("eraser", "eraser", "Radierer: über Freihand-Striche fahren – entfernt immer ganze Striche"),
+    ("shape", "shapes", "Formen: Rechteck, Ellipse, Linie, Pfeil, Polygon, Wolke"),
+    ("stamp", "stamp", "Stempel: Genehmigt, Entwurf, Vertraulich, Erledigt, Geprüft oder eigener"),
 ]
+SHAPE_LABELS = [("rect", "square", "Rechteck"), ("ellipse", "circle", "Ellipse"), ("line", "minus", "Linie"),
+                ("arrow", "move-up-right", "Pfeil"), ("polygon", "pentagon", "Polygon (Klicks, Doppelklick/Enter beendet)"),
+                ("cloud", "cloud", "Wolke")]
 CACHE_IMAGES = 24
 ZOOM_STEPS = [0.25, 0.33, 0.5, 0.67, 0.75, 0.9, 1.0, 1.1, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0, 4.0, 6.0, 8.0]
 IN_MEMORY_LIMIT = 256 * 1024 * 1024
@@ -74,7 +82,10 @@ def _alpha(color: str, alpha: int) -> QColor:
     return result
 
 
-REGION_TOOLS = {"note", "text", "field", "checkbox", "signature", "redact", "diagram", "crop", "link"}   # Ziehen/Klicken legt einen Bereich fest
+REGION_TOOLS = {"note", "text", "field", "checkbox", "signature", "redact", "diagram", "crop", "link", "rect",
+                "ellipse", "cloud", "stamp"}   # Ziehen/Klicken legt einen Bereich fest
+PATH_TOOLS = {"ink", "eraser", "line", "arrow", "polygon"}   # Ziehen zeichnet einen Pfad; Polygon: Klicks, Doppelklick
+SHAPE_TOOLS = ("rect", "ellipse", "line", "arrow", "polygon", "cloud")
 MARKUP_TOOLS = {"highlight", "underline", "strikeout", "redact_text"}          # Textauswahl → sofort anwenden
 
 
@@ -86,6 +97,7 @@ class _PdfCanvas(QAbstractScrollArea):
     region_chosen = Signal(int, QRectF)       # Seite, Bereich in Ansichts-Punkten (Klick = Breite/Höhe 0)
     markup_chosen = Signal()                  # Textauswahl im Markier-Werkzeug fertig
     tool_cancelled = Signal()                 # Esc: zurück zum Auswahl-Werkzeug
+    path_chosen = Signal(int, list)           # Seite, Punkte in Ansichts-Punkten (Stift, Radierer, Linie, Polygon)
 
     def __init__(self, document: QPdfDocument) -> None:
         super().__init__()
@@ -114,6 +126,10 @@ class _PdfCanvas(QAbstractScrollArea):
         self.menu_hook = None                 # callable(menu, page, x_pt, y_pt) – ergänzt das Kontextmenü
         self.overlays: list[tuple[int, QRectF, str]] = []    # (Seite, Rechteck in Punkt, Art) z. B. Schwärz-Vorschau
         self._band: tuple[int, float, float, float, float] | None = None
+        self._path: tuple[int, list] | None = None       # laufender Pfad (Seite, Punkte)
+        self._hover: tuple[float, float] | None = None    # Polygon: Mausposition für die Gummiband-Linie
+        self.path_color = "#d03030"
+        self.path_width = 2.0
         self.object_handler = None            # ObjectController: Eingefügtes anfassen (Werkzeug „Auswählen“)
         self._object_drag = False
         self.viewport().setCursor(Qt.CursorShape.IBeamCursor)
@@ -281,6 +297,8 @@ class _PdfCanvas(QAbstractScrollArea):
                 painter.drawRect(QRectF(target.x() + min(x0, x1) * scale, target.y() + min(y0, y1) * scale,
                                         abs(x1 - x0) * scale, abs(y1 - y0) * scale))
                 painter.setPen(Qt.PenStyle.NoPen)
+            if self._path is not None and self._path[0] == page.index:
+                self._paint_path(painter, target, scale)
             if self.object_handler is not None:
                 self.object_handler.paint(painter, page.index, target, scale)
                 painter.setPen(Qt.PenStyle.NoPen)
@@ -293,6 +311,40 @@ class _PdfCanvas(QAbstractScrollArea):
                 painter.setOpacity(1.0)
         painter.end()
 
+    def _paint_path(self, painter, target: QRectF, scale: float) -> None:
+        """Vorschau des laufenden Pfads: Stift in Stiftfarbe, Radierer grau und breit, Polygon mit Gummiband."""
+        _page, points = self._path
+        mapped = [QPointF(target.x() + x * scale, target.y() + y * scale) for x, y in points]
+        painter.save()
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        if self.tool == "eraser":
+            pen = QPen(QColor(120, 120, 120, 110), 8 * scale)
+        else:
+            pen = QPen(QColor(self.path_color), max(1.0, self.path_width * scale))
+        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+        painter.setPen(pen)
+        if len(mapped) == 1 and self.tool != "polygon":
+            painter.drawPoint(mapped[0])
+        else:
+            painter.drawPolyline(QPolygonF(mapped))
+        if self.tool == "polygon" and self._hover is not None and mapped:
+            hover = QPointF(target.x() + self._hover[0] * scale, target.y() + self._hover[1] * scale)
+            painter.setPen(QPen(QColor(self.path_color), 1, Qt.PenStyle.DashLine))
+            painter.drawLine(mapped[-1], hover)
+            if len(mapped) > 1:
+                painter.drawLine(hover, mapped[0])
+        painter.restore()
+
+    def finish_polygon(self) -> None:
+        if self._path is None:
+            return
+        page, points = self._path
+        self._path = self._hover = None
+        self.viewport().update()
+        self.path_chosen.emit(page, list(points))
+
     # ---- Auswahl ----------------------------------------------------------------------------------
     def _doc_pos(self, event) -> tuple[float, float]:
         return (event.position().x() + self.horizontalScrollBar().value(),
@@ -301,7 +353,9 @@ class _PdfCanvas(QAbstractScrollArea):
     def set_tool(self, tool: str) -> None:
         self.tool = tool
         self._band = None
-        self.viewport().setCursor(Qt.CursorShape.CrossCursor if tool in REGION_TOOLS else Qt.CursorShape.IBeamCursor)
+        self._path = self._hover = None
+        self.viewport().setCursor(Qt.CursorShape.CrossCursor if tool in REGION_TOOLS | PATH_TOOLS
+                                  else Qt.CursorShape.IBeamCursor)
         self.viewport().update()
 
     def page_point(self, page: int, event) -> tuple[float, float]:
@@ -328,6 +382,17 @@ class _PdfCanvas(QAbstractScrollArea):
                     self.selection = None
                     self.selection_changed.emit()
                 return
+        if event.button() == Qt.MouseButton.LeftButton and self.layout_ is not None and self.tool in PATH_TOOLS:
+            hit = self.layout_.hit(*self._doc_pos(event))
+            if hit is not None:
+                page, x, y = hit
+                if self.tool == "polygon" and self._path is not None and self._path[0] == page:
+                    self._path[1].append((x, y))
+                else:
+                    self._path = (page, [(x, y)])
+                self._hover = (x, y)
+                self.viewport().update()
+            return
         if event.button() == Qt.MouseButton.LeftButton and self.layout_ is not None and self.tool in REGION_TOOLS:
             hit = self.layout_.hit(*self._doc_pos(event))
             if hit is not None:
@@ -354,6 +419,18 @@ class _PdfCanvas(QAbstractScrollArea):
             hit = self._object_hit(event)
             cursor = handler.cursor_for(*hit) if hit is not None else None
             self.viewport().setCursor(cursor if cursor is not None else Qt.CursorShape.IBeamCursor)
+        if self._path is not None and self.layout_ is not None:
+            page, points = self._path
+            point = self.layout_.clamp_hit(page, *self._doc_pos(event))
+            if self.tool == "polygon":
+                self._hover = point
+            elif event.buttons() & Qt.MouseButton.LeftButton:
+                if self.tool in ("line", "arrow"):
+                    points[1:] = [point]
+                elif math.dist(point, points[-1]) >= 0.8 / max(self.layout_.scale, 0.01):
+                    points.append(point)
+            self.viewport().update()
+            return
         if self._band is not None and self.layout_ is not None:
             page, x0, y0, _x1, _y1 = self._band
             x1, y1 = self.layout_.clamp_hit(page, *self._doc_pos(event))
@@ -400,6 +477,14 @@ class _PdfCanvas(QAbstractScrollArea):
                 page = handler._press[0]
                 handler.release(page, *self.page_point(page, event))
             return
+        if self._path is not None and self.tool != "polygon":
+            page, points = self._path
+            self._path = None
+            self.viewport().update()
+            self.path_chosen.emit(page, list(points))
+            return
+        if self._path is not None:
+            return
         if self._band is not None:
             page, x0, y0, x1, y1 = self._band
             self._band = None
@@ -429,6 +514,9 @@ class _PdfCanvas(QAbstractScrollArea):
         """Doppelklick markiert die ganze Seite nicht – nur das Wort darunter über eine kleine Auswahl."""
         if self.layout_ is None:
             return
+        if self.tool == "polygon" and self._path is not None:
+            self.finish_polygon()
+            return
         hit = self.layout_.hit(*self._doc_pos(event))
         if hit is None:
             return
@@ -456,6 +544,20 @@ class _PdfCanvas(QAbstractScrollArea):
     def keyPressEvent(self, event) -> None:
         if self.object_handler is not None and self.object_handler.key(event):
             return
+        if self.tool == "polygon" and self._path is not None:
+            if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+                self.finish_polygon()
+                return
+            if event.key() == Qt.Key.Key_Backspace:
+                self._path[1].pop()
+                if not self._path[1]:
+                    self._path = None
+                self.viewport().update()
+                return
+            if event.key() == Qt.Key.Key_Escape:
+                self._path = self._hover = None
+                self.viewport().update()
+                return
         if event.key() == Qt.Key.Key_Escape and (self._band is not None or self.tool != "select"):
             self._band = None
             self.tool_cancelled.emit()
@@ -530,6 +632,7 @@ class PdfPage(ViewerPage):
     backup_to_trash = True                 # Einstellung: vor dem ersten Überschreiben Original in den Papierkorb
     highlight_fields = True                # Einstellung: Formularfelder in der Ansicht hinterlegen
     undo_budget_mb = 512                   # Einstellung: Speicher für Rückgängig-Schritte (Rest → cache/)
+    author = ""                            # Einstellung: Name für Stempel (leer = Anmeldename)
 
     def __init__(self, path: Path) -> None:
         super().__init__(path)
@@ -559,7 +662,13 @@ class PdfPage(ViewerPage):
         self.canvas.region_chosen.connect(self._on_region)
         self.canvas.markup_chosen.connect(self._on_markup)
         self.canvas.tool_cancelled.connect(lambda: self.set_tool("select"))
+        self.canvas.path_chosen.connect(self._on_path)
         self.canvas.menu_hook = self._extend_menu
+        self.ink_style = pdfdraw.Style("#2f6fdf", 2.0)
+        self.shape_style = pdfdraw.Style("#d03030", 2.0)
+        self.current_stamp = pdfstamps.BUILTIN[0]
+        self.stamp_with_date = False
+        self.stamp_with_user = False
         from notex.ui.pdf_objects import ObjectController
         self.objects = ObjectController(self)
         self.objects.highlight_fields = self.highlight_fields
@@ -1017,11 +1126,24 @@ class PdfPage(ViewerPage):
         return written
 
     def _build_edit_bar(self) -> QFrame:
+        """Bearbeiten-Leiste in Gruppen (Seiten, Kommentieren, Zeichnen, Formulare, Schwärzen, Datei); bei wenig Platz
+        bricht sie gruppenweise in eine zweite Zeile um, statt das Fenster breiter zu erzwingen."""
+        from notex.ui.widgets import FlowLayout
         bar_frame = QFrame()
         bar_frame.setObjectName("DataBar")
-        row = QHBoxLayout(bar_frame)
-        row.setContentsMargins(SPACING.md, 0, SPACING.md, SPACING.sm)
-        row.setSpacing(SPACING.sm)
+        flow = FlowLayout(bar_frame, SPACING.md)
+        flow.setContentsMargins(SPACING.md, 0, SPACING.md, SPACING.sm)
+
+        def group(*widgets) -> QHBoxLayout:
+            box = QWidget()
+            row = QHBoxLayout(box)
+            row.setContentsMargins(0, 0, 0, 0)
+            row.setSpacing(SPACING.sm)
+            for widget in widgets:
+                row.addWidget(widget)
+            flow.addWidget(box)
+            return row
+
         self.pages_button = IconButton("layout-grid", "Seitenleiste ein/aus")
         self.pages_button.setCheckable(True)
         self.pages_button.toggled.connect(lambda on: self.set_pages_visible(on) if on == self.strip.isHidden() else None)
@@ -1037,45 +1159,47 @@ class PdfPage(ViewerPage):
             ("crop", "Seiten zuschneiden (Ränder in mm, weiße Ränder erkennen) …", lambda: self.crop_pages()),
             ("hash", "Seitenbeschriftungen (i, ii, 1, 2, A-1 …) …", lambda: self.edit_page_labels()),
         ]
-        row.addWidget(self.pages_button)
         self.page_actions = []
         for name, tip, slot in buttons:
             button = IconButton(name, tip)
             button.clicked.connect(slot)
-            row.addWidget(button)
             self.page_actions.append(button)
-        self.tool_row = QHBoxLayout()               # Werkzeuge: Auswahl, Anmerkungen, Formulare, Schwärzen
-        self.tool_row.setSpacing(SPACING.sm)
-        row.addSpacing(SPACING.md)
-        row.addLayout(self.tool_row)
+        group(self.pages_button, *self.page_actions)
         self.tool_buttons: dict[str, IconButton] = {}
         for name, icon_name, tip in TOOLS:
             button = IconButton(icon_name, tip)
             button.setCheckable(True)
-            button.clicked.connect(lambda _c=False, n=name: self.set_tool(n))
-            self.tool_row.addWidget(button)
+            if name == "shape":
+                button.clicked.connect(lambda _c=False: self._shape_menu())
+            elif name == "stamp":
+                button.clicked.connect(lambda _c=False: self._stamp_menu())
+            else:
+                button.clicked.connect(lambda _c=False, n=name: self.set_tool(n))
             self.tool_buttons[name] = button
         self.tool_buttons["select"].setChecked(True)
+        t = self.tool_buttons
         self.color_button = IconButton("palette", "Farbe für Markieren/Unterstreichen/Durchstreichen/Notiz")
         self.color_button.clicked.connect(self._color_menu)
-        self.tool_row.addWidget(self.color_button)
+        self.style_button = IconButton("sliders-horizontal", "Stil für Stift und Formen: Farbe, Stärke, Füllung, "
+                                       "Deckkraft, Linienstil (auch für das ausgewählte Objekt)")
+        self.style_button.clicked.connect(lambda: self.edit_draw_style())
         self.form_button = IconButton("clipboard-list", "Formular ausfüllen (Feldliste) ein/aus")
         self.form_button.setCheckable(True)
         self.form_button.toggled.connect(self.set_form_visible)
-        self.tool_row.addWidget(self.form_button)
         detect = IconButton("scan-text", "Formularfelder automatisch erkennen (Name, Datum, Unterschrift …)")
         detect.clicked.connect(lambda: self.detect_fields())
-        self.tool_row.addWidget(detect)
         flatten = IconButton("check-check", "Anmerkungen und Formular fest einbrennen …")
         flatten.clicked.connect(lambda: self.flatten())
-        self.tool_row.addWidget(flatten)
         self.redact_apply = QPushButton("Schwärzen anwenden …")
         self.redact_apply.setObjectName("Danger")
         self.redact_apply.setToolTip("Vorgemerkte Bereiche endgültig schwärzen (Seiten werden als Bild neu erzeugt)")
         self.redact_apply.clicked.connect(lambda: self.apply_redactions())
         self.redact_apply.setVisible(False)
-        self.tool_row.addWidget(self.redact_apply)
-        row.addStretch(1)
+        group(t["select"], t["highlight"], t["underline"], t["strikeout"], t["note"], t["text"], self.color_button)
+        group(t["ink"], t["eraser"], t["shape"], t["stamp"], self.style_button, t["diagram"], t["link"])
+        group(t["field"], t["checkbox"], t["signature"], self.form_button, detect, flatten)
+        self.tool_row = group(t["redact"], t["crop"], self.redact_apply)
+        assert set(t) == {name for name, _i, _t in TOOLS}, "jedes Werkzeug gehört in eine Gruppe"
         self.undo_button = IconButton("undo-2", "Rückgängig  Ctrl+Z")
         self.undo_button.clicked.connect(self.undo)
         self.redo_button = IconButton("redo-2", "Wiederholen  Ctrl+Y")
@@ -1084,8 +1208,7 @@ class PdfPage(ViewerPage):
         self.save_button.clicked.connect(self.save)
         save_as = IconButton("file-down", "Speichern unter …  Ctrl+Shift+Alt+S")
         save_as.clicked.connect(lambda: self.save_as())
-        for widget in (self.undo_button, self.redo_button, self.save_button, save_as):
-            row.addWidget(widget)
+        group(self.undo_button, self.redo_button, self.save_button, save_as)
         return bar_frame
 
     # ---- Seitenwerkzeuge (Block V1) --------------------------------------------------------------------------
@@ -1287,6 +1410,201 @@ class PdfPage(ViewerPage):
         geom = pdfannot.page_geometry(self.data, page)
         x, y = geom.to_view(geom.box[0], float(top))
         self.canvas.go_to(page, QPointF(max(0.01, x), max(0.01, y)))
+
+    # ---- Zeichnen, Formen, Stempel (Block V3) -------------------------------------------------------------------
+    def _on_path(self, page: int, points: list) -> None:
+        tool = self.canvas.tool
+        if tool == "ink":
+            self.add_ink(page, [points])
+        elif tool == "eraser":
+            self.erase(page, points)
+        elif tool in ("line", "arrow", "polygon"):
+            if tool != "polygon" and len(points) < 2:
+                self.notice.emit("Für eine Linie ziehen (Maustaste gedrückt halten)")
+                return
+            self.add_shape(page, tool, points)
+
+    def _region_rect(self, page: int, box: tuple) -> None:
+        self._region_shape(page, "rect", box)
+
+    def _region_ellipse(self, page: int, box: tuple) -> None:
+        self._region_shape(page, "ellipse", box)
+
+    def _region_cloud(self, page: int, box: tuple) -> None:
+        self._region_shape(page, "cloud", box)
+
+    def _region_shape(self, page: int, kind: str, box: tuple) -> None:
+        x0, y0, x1, y1 = box
+        if abs(x1 - x0) < 2 or abs(y1 - y0) < 2:
+            self.notice.emit("Für eine Form einen Bereich aufziehen")
+            return
+        self.add_shape(page, kind, [(x0, y0), (x1, y1)])
+
+    def add_ink(self, page: int, strokes: list, style: pdfdraw.Style | None = None) -> bool:
+        if not self._ensure_editing():
+            return False
+        return self._run(pdfdraw.add_ink, page, strokes, style or self.ink_style, page=page)
+
+    def add_shape(self, page: int, kind: str, points: list, style: pdfdraw.Style | None = None) -> bool:
+        if not self._ensure_editing():
+            return False
+        return self._run(pdfdraw.add_shape, page, kind, points, style or self.shape_style, page=page)
+
+    def erase(self, page: int, points: list) -> int:
+        """Radierer: alle Freihand-Striche entfernen, die der Weg berührt – immer ganze Striche."""
+        if not self._ensure_editing() or self.edit_block_reason():
+            return 0
+        try:
+            result, removed = pdfdraw.erase_at(self.data, page, points, 4.0)
+        except pdfpages.PdfEditError as error:
+            self.notice.emit(str(error))
+            return 0
+        if not removed:
+            self.notice.emit("Hier ist kein Freihand-Strich")
+            return 0
+        self.apply(result, page)
+        self.notice.emit("1 Strich entfernt" if removed == 1 else f"{removed} Striche entfernt")
+        return removed
+
+    def _shape_menu(self) -> None:
+        menu = style_menu(QMenu(self))
+        from notex.theme.icons import icon
+        for key, icon_name, label in SHAPE_LABELS:
+            action = menu.addAction(icon(icon_name), label, lambda k=key: self.set_tool(k))
+            action.setCheckable(True)
+            action.setChecked(self.canvas.tool == key)
+        menu.addSeparator()
+        menu.addAction("Stil …", lambda: self.edit_draw_style())
+        button = self.tool_buttons["shape"]
+        self.set_tool(self.canvas.tool)                  # Knopf-Zustand wiederherstellen, bis gewählt ist
+        menu.exec(button.mapToGlobal(button.rect().bottomLeft()))
+
+    def edit_draw_style(self, style: pdfdraw.Style | None = None, pen: bool | None = None,
+                        apply_selected: bool | None = None) -> bool:
+        """Stil für Stift oder Formen; ist eine Zeichnung/Form ausgewählt, wird er auf Wunsch auch dort angewendet."""
+        selected = self.objects.selected
+        drawable = selected is not None and selected.kind in pdfdraw.DRAW_KINDS
+        if pen is None:
+            pen = self.canvas.tool in ("ink", "eraser") or (drawable and selected.kind == "ink")
+        if style is None:
+            from notex.ui.pdf_draw_ui import DrawStyleDialog
+            dialog = DrawStyleDialog(self, self.ink_style if pen else self.shape_style, pen, drawable)
+            if dialog.exec() != QDialog.DialogCode.Accepted:
+                return False
+            style = dialog.style()
+            apply_selected = dialog.apply_selected.isChecked()
+        if pen:
+            self.ink_style = style
+        else:
+            self.shape_style = style
+        self.set_tool(self.canvas.tool)
+        if drawable and apply_selected:
+            if not self._ensure_editing():
+                return False
+            return self._run(pdfdraw.restyle, selected.page, selected.index, style, page=selected.page)
+        return True
+
+    # Stempel
+    def stamp_user(self) -> str:
+        if self.author.strip():
+            return self.author.strip()
+        import getpass
+        try:
+            return getpass.getuser()
+        except Exception:                               # noqa: BLE001 – ohne Anmeldenamen: leer
+            return ""
+
+    def custom_stamps(self) -> list:
+        from notex.paths import stamps_dir
+        return pdfstamps.load_custom(stamps_dir())
+
+    def _stamp_menu(self) -> None:
+        menu = style_menu(QMenu(self))
+        for spec in [*pdfstamps.BUILTIN, *self.custom_stamps()]:
+            action = menu.addAction(spec.label + ("  (Bild)" if spec.image else ""),
+                                    lambda sp=spec: self.choose_stamp(sp))
+            action.setCheckable(True)
+            action.setChecked(spec.key == self.current_stamp.key and self.canvas.tool == "stamp")
+        menu.addSeparator()
+        date = menu.addAction("Mit Datum und Uhrzeit", lambda: setattr(self, "stamp_with_date", not self.stamp_with_date))
+        date.setCheckable(True)
+        date.setChecked(self.stamp_with_date)
+        user = menu.addAction(f"Mit Namen ({self.stamp_user() or 'leer'})",
+                              lambda: setattr(self, "stamp_with_user", not self.stamp_with_user))
+        user.setCheckable(True)
+        user.setChecked(self.stamp_with_user)
+        menu.addSeparator()
+        menu.addAction("Eigenen Stempel anlegen …", lambda: self.create_custom_stamp())
+        customs = self.custom_stamps()
+        if customs:
+            remove = menu.addMenu("Eigenen Stempel löschen")
+            for spec in customs:
+                remove.addAction(spec.label, lambda sp=spec: self.delete_custom_stamp(sp.key))
+        button = self.tool_buttons["stamp"]
+        self.set_tool(self.canvas.tool)
+        menu.exec(button.mapToGlobal(button.rect().bottomLeft()))
+
+    def choose_stamp(self, spec) -> None:
+        self.current_stamp = spec
+        self.set_tool("stamp")
+        self.notice.emit(f"Stempel „{spec.label}“: auf die Seite klicken oder Bereich aufziehen")
+
+    def create_custom_stamp(self, values: dict | None = None):
+        if values is None:
+            from notex.ui.pdf_draw_ui import CustomStampDialog
+            dialog = CustomStampDialog(self, self.path.parent)
+            if dialog.exec() != QDialog.DialogCode.Accepted:
+                return None
+            values = dialog.values()
+        from notex.paths import stamps_dir
+        try:
+            spec = pdfstamps.save_custom(stamps_dir(), **values)
+        except (pdfpages.PdfEditError, OSError) as error:
+            self.notice.emit(f"Stempel nicht angelegt: {error}")
+            return None
+        self.choose_stamp(spec)
+        return spec
+
+    def delete_custom_stamp(self, key: str, confirmed: bool | None = None) -> bool:
+        from notex.paths import stamps_dir
+        if confirmed is None:
+            from notex.ui import dialogs
+            confirmed = dialogs.confirm(self, "Stempel löschen?", "Diesen eigenen Stempel löschen?", yes="Löschen",
+                                        danger=True, informative="Schon gesetzte Stempel in PDFs bleiben.")
+        if not confirmed:
+            return False
+        try:
+            pdfstamps.delete_custom(stamps_dir(), key)
+        except (pdfpages.PdfEditError, OSError) as error:
+            self.notice.emit(str(error))
+            return False
+        if self.current_stamp.key == key:
+            self.current_stamp = pdfstamps.BUILTIN[0]
+        return True
+
+    def _region_stamp(self, page: int, box: tuple) -> None:
+        self.add_stamp(page, box)
+
+    def add_stamp(self, page: int, rect: tuple, spec=None) -> bool:
+        from dataclasses import replace
+        from datetime import datetime
+        spec = spec or self.current_stamp
+        spec = replace(spec, with_date=spec.with_date or self.stamp_with_date,
+                       with_user=spec.with_user or self.stamp_with_user)
+        image = None
+        if spec.image:
+            from PySide6.QtGui import QImage
+            from notex.paths import stamps_dir
+            from notex.ui.pdf_edit import image_to_bytes
+            picture = QImage(str(stamps_dir() / spec.image))
+            if picture.isNull():
+                self.notice.emit("Das Bild dieses Stempels fehlt oder ist kaputt")
+                return False
+            image = image_to_bytes(picture, 800)
+        if not self._ensure_editing():
+            return False
+        date = datetime.now().strftime("%d.%m.%Y %H:%M")
+        return self._run(pdfstamps.add_stamp, page, tuple(rect), spec, date, self.stamp_user(), image, page=page)
 
     # ---- Links (Block V2) ---------------------------------------------------------------------------------------
     def _region_link(self, page: int, box: tuple) -> None:
@@ -1495,10 +1813,16 @@ class PdfPage(ViewerPage):
 
     # ---- Anmerkungen ----------------------------------------------------------------------------------------
     def set_tool(self, tool: str) -> None:
-        if tool not in self.tool_buttons:
+        if tool not in self.tool_buttons and tool not in SHAPE_TOOLS:
             tool = "select"
         for name, button in self.tool_buttons.items():
-            button.setChecked(name == tool)
+            button.setChecked(name == tool or (name == "shape" and tool in SHAPE_TOOLS))
+        if tool in SHAPE_TOOLS:
+            icon_name = next(i for k, i, _l in SHAPE_LABELS if k == tool)
+            from notex.theme.icons import icon
+            self.tool_buttons["shape"].setIcon(icon(icon_name))
+        style = self.ink_style if tool == "ink" else self.shape_style
+        self.canvas.path_color, self.canvas.path_width = style.color, style.width
         self.canvas.set_tool(tool)
         self.status_changed.emit()
 

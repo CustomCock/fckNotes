@@ -36,7 +36,9 @@ KIND_NAMES = {"/Highlight": "highlight", "/Underline": "underline", "/StrikeOut"
               "/Stamp": "stamp", "/Line": "line", "/Polygon": "polygon", "/PolyLine": "polyline",
               "/Caret": "caret", "/FileAttachment": "attachment", "/Redact": "redact"}
 LABELS = {"highlight": "Markierung", "underline": "Unterstreichung", "strikeout": "Durchstreichung",
-          "note": "Notiz", "text": "Text", "stamp": "Stempel"}
+          "note": "Notiz", "text": "Text", "stamp": "Stempel", "ink": "Freihand", "square": "Rechteck",
+          "circle": "Ellipse", "line": "Linie", "polygon": "Polygon", "polyline": "Linienzug"}
+COMMENTABLE = {"ink", "square", "circle", "line", "polygon", "polyline", "stamp"}   # Kommentar (/Contents) möglich
 
 Rect = tuple[float, float, float, float]
 
@@ -170,6 +172,12 @@ def pdf_string(text: str) -> str:
         else:
             out.append(ch)
     return "(" + "".join(out) + ")"
+
+
+def valid_color(color) -> bool:
+    """„#rrggbb“ oder „#rgb“?"""
+    import re
+    return isinstance(color, str) and re.fullmatch(r"#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})", color) is not None
 
 
 def rgb(color: str) -> tuple[float, float, float]:
@@ -499,7 +507,7 @@ class AnnotInfo:
 
     @property
     def text_editable(self) -> bool:
-        return self.kind in ("note", "text") or self.kind in MARKUP_KINDS
+        return self.kind in ("note", "text") or self.kind in MARKUP_KINDS or self.kind in COMMENTABLE
 
 
 def _hex(color) -> str:

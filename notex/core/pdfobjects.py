@@ -15,12 +15,14 @@ from dataclasses import dataclass
 from pypdf.generic import DictionaryObject, NameObject
 
 from notex.core import pdfannot as A
+from notex.core import pdfdraw as D
 from notex.core import pdfforms as F
 from notex.core import pdflinks as L
 from notex.core.pdfpages import PdfEditError, open_reader
 
 DIAGRAM_KEY = "/fckNotesDiagram"
-MOVABLE = {"text", "note", "stamp", "signature", "diagram", "field", "link"}
+MOVABLE = {"text", "note", "stamp", "signature", "diagram", "field", "link", "ink", "square", "circle", "line",
+           "polygon", "polyline"}
 
 
 @dataclass(frozen=True)
@@ -64,8 +66,7 @@ def _kind_of(annot) -> str:
     return A.KIND_NAMES.get(subtype, subtype.lstrip("/").lower())
 
 
-LABELS = {"link": "Link", "text": "Text", "note": "Notiz", "stamp": "Stempel", "signature": "Unterschrift", "diagram": "Diagramm",
-          "highlight": "Markierung", "underline": "Unterstreichung", "strikeout": "Durchstreichung"}
+LABELS = {**A.LABELS, "link": "Link", "signature": "Unterschrift", "diagram": "Diagramm"}
 
 
 def list_objects(data: bytes, page_index: int) -> list[PdfObject]:
@@ -132,6 +133,10 @@ def set_rect(data: bytes, page_index: int, position: int, rect_view: A.Rect) -> 
     if kind == "link":
         L.set_link_rect(writer, page, annot, (x0, y0, x1, y1))
         return A.finish(writer)
+    if kind in D.DRAW_KINDS:
+        old = geom.rect_to_view(sorted_rect(annot["/Rect"]))
+        D.transform(writer, page, annot, old, (x0, y0, x1, y1))
+        return A.finish(writer)
     if kind == "text":
         size, color, border = A.freetext_style(annot)
         text = str(annot.get("/Contents", "") or "")
@@ -189,3 +194,8 @@ def fit_aspect(old: A.Rect, new: A.Rect, anchor: str = "") -> A.Rect:
     nx0 = x1 - w if left else x0
     ny0 = y1 - h if top else y0
     return nx0, ny0, nx0 + w, ny0 + h
+
+
+def sorted_rect(rect) -> A.Rect:
+    x0, y0, x1, y1 = (float(v) for v in rect)
+    return min(x0, x1), min(y0, y1), max(x0, x1), max(y0, y1)

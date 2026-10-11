@@ -1,9 +1,9 @@
 """Kleine, wiederverwendbare Bausteine: Chips, Tab-Buttons, Suchfeld."""
 from __future__ import annotations
 
-from PySide6.QtCore import QPointF, QEvent, QSize, Qt, Signal
+from PySide6.QtCore import QEvent, QPoint, QPointF, QRect, QSize, Qt, Signal
 from PySide6.QtGui import QColor, QPainter
-from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QLineEdit, QTabBar, QToolButton, QWidget
+from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QLayout, QLineEdit, QTabBar, QToolButton, QWidget
 
 from notex.theme.icons import icon, pixmap
 from notex.theme.tokens import COLORS, DURATION, LAYOUT, RADIUS, SPACING
@@ -329,3 +329,73 @@ class EditorTabBar(QTabBar):
     def tabSizeHint(self, index: int) -> QSize:
         size = super().tabSizeHint(index)
         return QSize(size.width() + SPACING.xs, LAYOUT.tab_height)
+
+
+class FlowLayout(QLayout):
+    """Ordnet Elemente nebeneinander an und bricht bei Platzmangel in die nächste Zeile um (wie Text).
+
+    Für Werkzeugleisten, die sonst die Mindestbreite des Fensters hochtreiben würden. Elemente sind hier ganze
+    Gruppen (je ein Widget mit eigener Zeile) – so bleiben zusammengehörige Knöpfe beisammen.
+    """
+
+    def __init__(self, parent: QWidget | None = None, spacing: int = 6) -> None:
+        super().__init__(parent)
+        self._items: list = []
+        self._spacing = spacing
+
+    def addItem(self, item) -> None:                       # noqa: N802 – Qt-API
+        self._items.append(item)
+
+    def count(self) -> int:
+        return len(self._items)
+
+    def itemAt(self, index: int):                          # noqa: N802
+        return self._items[index] if 0 <= index < len(self._items) else None
+
+    def takeAt(self, index: int):                          # noqa: N802
+        return self._items.pop(index) if 0 <= index < len(self._items) else None
+
+    def expandingDirections(self):                         # noqa: N802
+        return Qt.Orientation(0)
+
+    def hasHeightForWidth(self) -> bool:                   # noqa: N802
+        return True
+
+    def heightForWidth(self, width: int) -> int:           # noqa: N802
+        return self._arrange(QRect(0, 0, width, 0), apply=False)
+
+    def setGeometry(self, rect: QRect) -> None:            # noqa: N802
+        super().setGeometry(rect)
+        self._arrange(rect, apply=True)
+
+    def sizeHint(self) -> QSize:                           # noqa: N802
+        width = sum(i.sizeHint().width() for i in self._items if not i.isEmpty())
+        width += self._spacing * max(0, len(self._items) - 1)
+        height = max((i.sizeHint().height() for i in self._items), default=0)
+        m = self.contentsMargins()
+        return QSize(width + m.left() + m.right(), height + m.top() + m.bottom())
+
+    def minimumSize(self) -> QSize:                        # noqa: N802
+        size = QSize()
+        for item in self._items:
+            size = size.expandedTo(item.minimumSize())
+        m = self.contentsMargins()
+        return size + QSize(m.left() + m.right(), m.top() + m.bottom())
+
+    def _arrange(self, rect: QRect, apply: bool) -> int:
+        m = self.contentsMargins()
+        area = rect.adjusted(m.left(), m.top(), -m.right(), -m.bottom())
+        x, y, line = area.x(), area.y(), 0
+        for item in self._items:
+            if item.isEmpty():
+                continue
+            hint = item.sizeHint()
+            if x + hint.width() > area.right() + 1 and line > 0:
+                x = area.x()
+                y += line + self._spacing
+                line = 0
+            if apply:
+                item.setGeometry(QRect(QPoint(x, y), hint))
+            x += hint.width() + self._spacing
+            line = max(line, hint.height())
+        return y + line - rect.y() + m.bottom()
