@@ -503,6 +503,17 @@ Der Stift schaltet eine zweite Leiste und die **Seitenleiste** (Miniaturen) ein.
 - **PDFs zusammenfügen …** (Command Palette): Dateien wählen, Reihenfolge per Ziehen festlegen, speichern.
 - Gelöschte Seiten verschwinden **wirklich** aus der Datei (neu aufgebautes PDF, keine unsichtbaren Reste);
   Lesezeichen und Metadaten bleiben erhalten, Lesezeichen auf gelöschte Seiten fallen weg.
+- **Leere Seite** davor/dahinter (Rechtsklick in der Seitenleiste; Größe wie die Nachbarseite, A4 oder Letter) und
+  **Seiten ersetzen** (Seiten X–Y durch Seiten aus einem anderen PDF, ein Rückgängig-Schritt).
+- **Zuschneiden** (Knopf, Werkzeug „Zuschneiden“ zum Aufziehen oder Palette): Ränder in mm für die aktuelle Seite,
+  einen Bereich, gerade/ungerade oder alle Seiten; „Weiße Ränder erkennen“ schlägt sie vor. Setzt nur die
+  sichtbare Fläche (CropBox) – der abgeschnittene Inhalt bleibt in der Datei, **kein Schwärzen**.
+- **Seitenbeschriftungen** (Palette): Abschnitte mit Stil (1, i, I, a, A oder keiner), Präfix und Startwert, z. B.
+  „i–iv“ fürs Vorwort und „1 …“ danach. Bleiben beim Umsortieren, Drehen und Löschen erhalten.
+- **Lesezeichen bearbeiten** (Lesezeichen-Knopf im Bearbeiten-Modus): anlegen auf der aktuellen Seite und Position
+  (`Ctrl+Shift+B`), umbenennen (`F2`), löschen (`Entf`), per Ziehen verschieben und verschachteln, ein-/ausrücken.
+  **Aus Überschriften erzeugen** schlägt Lesezeichen aus großen Textzeilen vor (Vorschau, einzeln abwählbar).
+  Lesezeichen mit Webadresse behalten ihre Aktion unverändert.
 
 **Kommentieren** – Werkzeuge in der Bearbeiten-Leiste (`Esc` = zurück zu „Auswählen“), Farbe über die Palette:
 
@@ -1328,6 +1339,12 @@ Alternativ per Docker: `docker run -d -p 8081:8010 erikvl87/languagetool` (dann 
 | Ctrl+Z / Ctrl+Y / Ctrl+S (im PDF-Tab) | PDF-Änderung rückgängig / wiederholen / speichern |
 | Entf (Seitenleiste im PDF-Tab) | Gewählte Seiten löschen |
 | Palette › PDFs zusammenfügen | Mehrere PDFs in gewählter Reihenfolge zu einem neuen PDF |
+| Palette › PDF: Leere Seite einfügen / Seiten ersetzen | Leere Seite an Position; Seiten X–Y durch ein anderes PDF ersetzen |
+| Palette › PDF: Seiten zuschneiden / Werkzeug Zuschneiden | Ränder in mm oder Bereich aufziehen (nur CropBox, kein Schwärzen) |
+| Palette › PDF: Seitenbeschriftungen | Seitennummern-Abschnitte (i, ii … / 1, 2 … / Präfix) |
+| Ctrl+Shift+B (im PDF-Tab, Bearbeiten) | Lesezeichen auf aktueller Seite und Position anlegen |
+| F2 / Entf / Ziehen (Lesezeichen-Leiste) | Umbenennen / löschen / verschieben und verschachteln |
+| Palette › PDF: Lesezeichen bearbeiten / aus Überschriften | Lesezeichen-Leiste öffnen bzw. Vorschläge aus großen Zeilen |
 | Palette › PDF: Auswahl markieren / unterstreichen / durchstreichen | Anmerkung über dem markierten PDF-Text |
 | Palette › PDF: Werkzeug Notiz / Text | Notiz bzw. Text auf der Seite platzieren (Esc beendet das Werkzeug) |
 | Palette › PDF: Formular ausfüllen | Feldliste rechts, „Übernehmen“ schreibt alle Werte (Ctrl+Z-fähig) |

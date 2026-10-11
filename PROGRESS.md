@@ -654,6 +654,17 @@ PDF/A wie vorgeschlagen, Noto statt Helvetica, Windows-Zertifikatsspeicher spät
   `assert_valid_pdf` (pikepdf `check_pdf_syntax`), echtes `qpdf --check` wenn vorhanden (CI Linux), Netzwerk-Wächter
   (conftest, Socket gesperrt) + AST-Importprüfung. Build: pypdfium2/fontTools/Qt-Druck/Sprachausgabe im Bundle,
   `tools/make_appdir.py` + appimagetool im Release-Workflow. Größe Linux-tar.gz 104,2 → 113,7 MB.
+- **V1 – erledigt.** `pdfpages`: `insert_blank` (Nachbar/A4/Letter), `replace_pages`, `pages_for`
+  (aktuell/Bereich/gerade/ungerade/alle), `crop`/`reset_crop` (nur CropBox, mind. 10 pt, auf MediaBox begrenzt),
+  `detect_margins` (PDFium-Graustufen, Schwelle einstellbar), Seitenbeschriftungen (`LabelRange`, `read_labels`,
+  `set_labels`, `label_list`). **Fix:** `PdfWriter.append` verlor `/PageLabels` → `_carry_labels` in
+  rearrange/insert/merge (Bereiche wandern mit ihren Seiten). Neu `pdfoutline.py`: `read_outline` (Kreis-Schutz,
+  benannte Ziele, XYZ/FitH), `write_outline` (ganzer Baum, fremde Aktionen geklont, `PageMode /UseOutlines`),
+  `find_headings` (Schriftgröße je Zeichen über PDFium, Ebenen nach Größengruppen), `headings_to_outline`.
+  UI: `ui/pdf_pages_ui.py` (Dialoge leer/ersetzen/zuschneiden/Beschriftungen), `ui/pdf_outline.py`
+  (Lesezeichen-Leiste mit Ziehen, F2, Entf, Ein-/Ausrücken; Überschriften-Vorschau), Werkzeug „Zuschneiden“,
+  `Ctrl+Shift+B`, 8 Palette-Einträge. **Entscheidung:** Zuschneide-Dialog statt eigener Leiste; Lesezeichen-Editor
+  ersetzt im Bearbeiten-Modus die Nur-Lese-Leiste. Doku `docs/pdf/seiten-lesezeichen.md`.
 
 ## Offen
 
@@ -723,7 +734,7 @@ rdap, scanner, logs, pcap. Standardmäßig an: variables, hex, ports, ioc.
 ## Nächster Schritt
 
 **PDF-Ausbau (Blöcke V, W, X):** Roadmap `docs/ROADMAP-PDF.md`, vom Besitzer freigegeben („alles wie vorgeschlagen“).
-**V0 erledigt** – nächster Block **V1 (Seiten und Lesezeichen)**. B- und C-Blöcke vor dem Start abstimmen.
+**V0, V1 erledigt** – nächster Block **V2 (Anhänge und Links)**. B- und C-Blöcke vor dem Start abstimmen.
 
 **Block T (PDF: Objekte, Felderkennung, Diagramme, draw.io) abgeschlossen** auf dem Arbeitsbranch – wartet auf
 Merge/Release durch den Besitzer (Vorschlag 1.18.0). Offen beim Besitzer: Ausprobieren mit echten Arbeitsblättern

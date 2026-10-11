@@ -6,3 +6,5 @@ die Haupt-README im Abschnitt „PDF“.
 
 - [Grundlagen (V0)](grundlagen.md): eingebettete Schrift, Rückgängig-Speicher, Ausweichordner, Prüfung nach dem
   Schwärzen, AppImage.
+- [Seiten und Lesezeichen (V1)](seiten-lesezeichen.md): leere Seite, Seiten ersetzen, Zuschneiden,
+  Seitenbeschriftungen, Lesezeichen bearbeiten und aus Überschriften erzeugen.

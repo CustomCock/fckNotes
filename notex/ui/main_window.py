@@ -3649,6 +3649,23 @@ class MainWindow(QMainWindow):
              lambda: self.pdf_command("mark_search_results"), "", "pdf schwärzen suchtreffer alle namen redact dsgvo"),
             ("pdf:redact_apply", "PDF: Schwärzen anwenden …", lambda: self.pdf_command("apply_redactions"), "",
              "pdf schwärzen anwenden endgültig redact"),
+            ("pdf:insert_blank", "PDF: Leere Seite einfügen …", lambda: self.pdf_command("insert_blank"), "",
+             "pdf leere seite einfügen blank neue seite a4 letter"),
+            ("pdf:replace_pages", "PDF: Seiten ersetzen …", lambda: self.pdf_command("replace_pages"), "",
+             "pdf seiten ersetzen austauschen replace"),
+            ("pdf:crop", "PDF: Seiten zuschneiden …", lambda: self.pdf_command("crop_pages"), "",
+             "pdf zuschneiden crop ränder beschneiden cropbox weiße ränder"),
+            ("pdf:tool_crop", "PDF: Werkzeug Zuschneiden (Bereich aufziehen)", lambda: self.pdf_command("set_tool", "crop"),
+             "", "pdf zuschneiden crop bereich aufziehen"),
+            ("pdf:page_labels", "PDF: Seitenbeschriftungen …", lambda: self.pdf_command("edit_page_labels"), "",
+             "pdf seitenbeschriftung seitenzahlen römisch i ii präfix page labels nummerierung"),
+            ("pdf:bookmark_add", "PDF: Lesezeichen hier hinzufügen", lambda: self.pdf_command("add_bookmark"),
+             "Ctrl+Shift+B", "pdf lesezeichen bookmark hinzufügen outline"),
+            ("pdf:bookmarks_edit", "PDF: Lesezeichen bearbeiten", lambda: self.pdf_command("show_outline_editor"), "",
+             "pdf lesezeichen bearbeiten umbenennen verschieben verschachteln outline"),
+            ("pdf:bookmarks_headings", "PDF: Lesezeichen aus Überschriften …",
+             lambda: self.pdf_command("bookmarks_from_headings"), "",
+             "pdf lesezeichen überschriften automatisch inhaltsverzeichnis outline"),
         ]
         for key, title, callback, shortcut, keywords in pdf_cmds:
             self.registry.add(key, title, callback, category="PDF", shortcut=shortcut, keywords=keywords)

@@ -25,3 +25,16 @@ Windows und Linux durchgehen.
    (`python -c "import sys; sys.path[:0]=['tests','.']; import pdffixtures as F; open('anhang.pdf','wb').write(F.audit_doc('attachment','Zweite'))"`),
    in fckNotes ein Wort auf der Seite schwärzen und als Suchbegriff „Zweite“ vormerken – die Prüfung meldet den
    Anhang („„Zweite“ im Anhang „bericht.txt““).
+
+## V1 – Seiten und Lesezeichen
+1. `einfach.pdf`: hinter Seite 1 eine leere A4-Seite einfügen, Seite 2–3 durch eine Seite aus einem anderen PDF
+   ersetzen, speichern. Im fremden Programm: Seitenzahl und Reihenfolge stimmen, keine Fehlermeldung.
+2. Alle Seiten 20 mm zuschneiden, speichern. Im fremden Programm: Ränder ausgeblendet; Text im ausgeblendeten Rand
+   lässt sich dort per Suche weiterhin finden (Zuschneiden ist kein Schwärzen). „Zuschnitt aufheben“ zeigt alles.
+3. Einen Scan mit grauem Rand: „Weiße Ränder erkennen“ mit Schwelle 245 und 200 vergleichen.
+4. Seitenbeschriftungen „i, ii“ für Seite 1–2 und „1 …“ ab Seite 3 setzen, speichern. Acrobat/Okular/Firefox zeigen
+   „i“, „ii“, „1“ … in der Seitenanzeige. Danach eine Seite drehen und eine löschen: Beschriftungen bleiben passend.
+5. Lesezeichen anlegen (`Ctrl+Shift+B`), umbenennen, verschachteln, speichern: Der Baum erscheint im fremden
+   Programm gleich, ein Klick springt an die gespeicherte Position.
+6. Ein PDF mit großen Überschriften: „Aus Überschriften“ – Vorschau prüfen, einzelne abwählen, übernehmen.
+7. Große Datei (über 500 Seiten): Seite 300 durch ein anderes PDF ersetzen und rückgängig machen – flüssig.

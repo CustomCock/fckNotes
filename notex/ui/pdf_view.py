@@ -19,7 +19,7 @@ from PySide6.QtPdf import (QPdfBookmarkModel, QPdfDocument, QPdfDocumentRenderOp
 from PySide6.QtWidgets import (QAbstractScrollArea, QApplication, QComboBox, QDialog, QFrame, QHBoxLayout, QInputDialog,
                                QLabel, QLineEdit, QMenu, QPushButton, QSplitter, QTreeView, QVBoxLayout)
 
-from notex.core import pdfannot, pdfdetect, pdfdiagram, pdfdoc, pdfforms, pdfobjects, pdfpages, pdfredact
+from notex.core import pdfannot, pdfdetect, pdfdiagram, pdfdoc, pdfforms, pdfobjects, pdfoutline, pdfpages, pdfredact
 from notex.core.pdfdoc import PageLayout
 from notex.theme.theme import style_menu
 from notex.theme.tokens import COLORS, SPACING
@@ -38,6 +38,7 @@ TOOLS = [
     ("signature", "signature", "Unterschrift: zeichnen oder Bild wählen, dann Bereich aufziehen/klicken"),
     ("diagram", "network", "Diagramm (UML, Fluss …): Bereich aufziehen, dann zeichnen – später per Doppelklick ändern"),
     ("redact", "redact", "Schwärzen: Bereiche aufziehen (endgültig erst mit „Schwärzen anwenden“)"),
+    ("crop", "crop", "Zuschneiden: sichtbaren Bereich aufziehen (blendet nur aus, kein Schwärzen)"),
 ]
 CACHE_IMAGES = 24
 ZOOM_STEPS = [0.25, 0.33, 0.5, 0.67, 0.75, 0.9, 1.0, 1.1, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0, 4.0, 6.0, 8.0]
@@ -51,7 +52,7 @@ def _alpha(color: str, alpha: int) -> QColor:
     return result
 
 
-REGION_TOOLS = {"note", "text", "field", "checkbox", "signature", "redact", "diagram"}   # Ziehen/Klicken legt einen Bereich fest
+REGION_TOOLS = {"note", "text", "field", "checkbox", "signature", "redact", "diagram", "crop"}   # Ziehen/Klicken legt einen Bereich fest
 MARKUP_TOOLS = {"highlight", "underline", "strikeout", "redact_text"}          # Textauswahl → sofort anwenden
 
 
@@ -551,6 +552,13 @@ class PdfPage(ViewerPage):
         self.outline.setHeaderHidden(True)
         self.outline.clicked.connect(self._bookmark_clicked)
         self.outline.activated.connect(self._bookmark_clicked)
+        from notex.ui.pdf_outline import OutlineEditor
+        self.outline_editor = OutlineEditor()                # bearbeitbar im Bearbeiten-Modus (Block V1)
+        self.outline_editor.changed.connect(lambda items: self.set_outline(items))
+        self.outline_editor.jump.connect(self.go_to_pdf_point)
+        self.outline_editor.add_requested.connect(lambda: self.add_bookmark())
+        self.outline_editor.headings_requested.connect(lambda: self.bookmarks_from_headings())
+        self.outline_editor.setVisible(False)
 
         self.search = QPdfSearchModel(self)
         self.search.setDocument(self.doc)
@@ -564,7 +572,7 @@ class PdfPage(ViewerPage):
 
         outline_button = IconButton("bookmark", "Lesezeichen ein/aus")
         outline_button.setCheckable(True)
-        outline_button.toggled.connect(self.outline.setVisible)
+        outline_button.toggled.connect(self._show_outline_panel)
         self.outline_button = outline_button
         prev_page = IconButton("chevron-up", "Vorige Seite")
         prev_page.clicked.connect(lambda: self.canvas.go_to(self.canvas.current_page - 1))
@@ -633,11 +641,12 @@ class PdfPage(ViewerPage):
         self.splitter.setObjectName("PreviewSplitter")
         self.splitter.addWidget(self.strip)
         self.splitter.addWidget(self.outline)
+        self.splitter.addWidget(self.outline_editor)
         self.splitter.addWidget(self.canvas)
         self.splitter.addWidget(self.form_panel)
-        self.splitter.setStretchFactor(2, 1)
+        self.splitter.setStretchFactor(3, 1)
         self.splitter.setCollapsible(0, False)
-        self.splitter.setSizes([self.strip.width(), 220, 900, 280])
+        self.splitter.setSizes([self.strip.width(), 220, 240, 900, 280])
         self.outline.setVisible(False)
         frame = QFrame()
         frame.setObjectName("DataFrame")
@@ -652,7 +661,8 @@ class PdfPage(ViewerPage):
         layout.addWidget(frame)
         for sequence, slot in (("Ctrl+G", self._focus_page), ("F3", lambda: self.next_result(1)),
                                ("Shift+F3", lambda: self.next_result(-1)), ("Ctrl+Z", self.undo),
-                               ("Ctrl+Y", self.redo), ("Ctrl+Shift+Z", self.redo)):
+                               ("Ctrl+Y", self.redo), ("Ctrl+Shift+Z", self.redo),
+                               ("Ctrl+Shift+B", lambda: self.add_bookmark())):
             shortcut = QShortcut(QKeySequence(sequence), self)
             shortcut.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
             shortcut.activated.connect(slot)
@@ -710,7 +720,9 @@ class PdfPage(ViewerPage):
         if hasattr(self, "objects"):
             self.objects.invalidate()
         self.canvas.reset_document()
-        self.outline_button.setEnabled(self.bookmarks.rowCount(QModelIndex()) > 0)
+        self.outline_button.setEnabled(self.bookmarks.rowCount(QModelIndex()) > 0 or self.editing)
+        if not self.outline_editor.isHidden():
+            self._refresh_outline_editor()
         self.page_count.setText(f"/ {self.doc.pageCount()}")
         if not self.strip.isHidden():
             self.strip.rebuild()
@@ -751,6 +763,8 @@ class PdfPage(ViewerPage):
             self.edit_button.blockSignals(False)
         self.edit_bar.setVisible(on)
         self.set_pages_visible(on)
+        self.outline_button.setEnabled(self.bookmarks.rowCount(QModelIndex()) > 0 or on)
+        self._show_outline_panel(self.outline_button.isChecked())
         if not on:
             self.set_tool("select")
             self.set_form_visible(False)
@@ -993,6 +1007,10 @@ class PdfPage(ViewerPage):
             ("file-output", "Seite(n) als neues PDF herauslösen …", lambda: self.extract_pages()),
             ("file-plus", "PDF hinter der Seite einfügen …", lambda: self.insert_pdf()),
             ("scissors", "PDF aufteilen …", lambda: self.split_pdf()),
+            ("file", "Leere Seite einfügen …", lambda: self.insert_blank()),
+            ("replace", "Seiten durch Seiten aus einem anderen PDF ersetzen …", lambda: self.replace_pages()),
+            ("crop", "Seiten zuschneiden (Ränder in mm, weiße Ränder erkennen) …", lambda: self.crop_pages()),
+            ("hash", "Seitenbeschriftungen (i, ii, 1, 2, A-1 …) …", lambda: self.edit_page_labels()),
         ]
         row.addWidget(self.pages_button)
         self.page_actions = []
@@ -1044,6 +1062,206 @@ class PdfPage(ViewerPage):
         for widget in (self.undo_button, self.redo_button, self.save_button, save_as):
             row.addWidget(widget)
         return bar_frame
+
+    # ---- Seitenwerkzeuge (Block V1) --------------------------------------------------------------------------
+    def insert_blank(self, at: int | None = None, size: str | tuple | None = None) -> bool:
+        """Leere Seite vor Seite `at`; ohne Angaben fragt ein Dialog (Position, Größe)."""
+        if at is None or size is None:
+            from notex.ui.pdf_pages_ui import BlankPageDialog
+            dialog = BlankPageDialog(self, self.canvas.current_page, self.doc.pageCount())
+            if dialog.exec() != QDialog.DialogCode.Accepted:
+                return False
+            at, size = dialog.values()
+        if not self._ensure_editing():
+            return False
+        return self._run(pdfpages.insert_blank, at, size, page=at)
+
+    def replace_pages(self, first: int | None = None, last: int | None = None, source: Path | str | None = None,
+                      other_pages: list[int] | None = None) -> bool:
+        """Seiten first…last in einem Schritt durch Seiten aus einem anderen PDF ersetzen."""
+        if source is None:
+            from notex.ui.pdf_pages_ui import ReplaceDialog
+            pages = self.target_pages()
+            first = min(pages) if first is None else first
+            last = max(pages) if last is None else last
+            dialog = ReplaceDialog(self, self.doc.pageCount(), first, last, self.path.parent)
+            if dialog.exec() != QDialog.DialogCode.Accepted:
+                return False
+            first, last, source, other_pages = dialog.values()
+        try:
+            other = Path(source).read_bytes()
+        except OSError as error:
+            self.notice.emit(f"Nicht lesbar: {error}")
+            return False
+        if not self._ensure_editing():
+            return False
+        return self._run(pdfpages.replace_pages, first, last, other, other_pages, page=min(first, last))
+
+    def crop_pages(self, pages: list[int] | None = None, margins: tuple | None = None, reset: bool = False,
+                   rect_page: int | None = None, rect: tuple | None = None) -> bool:
+        """Zuschneiden (nur CropBox, kein Schwärzen). Ohne Ränder fragt ein Dialog – vorbelegt aus `rect`."""
+        if margins is None and not reset:
+            from notex.ui.pdf_pages_ui import CropDialog
+            start = (0.0, 0.0, 0.0, 0.0)
+            current = self.canvas.current_page if rect_page is None else rect_page
+            if rect is not None:
+                width, height = pdfannot.page_geometry(self.data, current).size
+                x0, y0, x1, y1 = rect
+                start = (min(x0, x1), min(y0, y1), width - max(x0, x1), height - max(y0, y1))
+            dialog = CropDialog(self, self.doc.pageCount(), current, start, detect=self.detect_margins)
+            if pages is not None and len(pages) > 1:
+                dialog.scope.setCurrentIndex(1)
+                dialog.range_field.setText(pdfpages.describe(pages).replace("–", "-"))
+            if dialog.exec() != QDialog.DialogCode.Accepted:
+                return False
+            pages, margins = dialog.values()
+            reset = margins is None
+        pages = pages if pages is not None else [self.canvas.current_page]
+        if not self._ensure_editing():
+            return False
+        if reset:
+            return self._run(pdfpages.reset_crop, pages, page=pages[0])
+        return self._run(lambda data, p, m: pdfpages.crop(data, p, margins=m), pages, tuple(margins), page=pages[0])
+
+    def detect_margins(self, page: int, threshold: int = 245):
+        return pdfpages.detect_margins(self.data, page, threshold)
+
+    def _region_crop(self, page: int, box: tuple) -> None:
+        x0, y0, x1, y1 = box
+        if abs(x1 - x0) < 10 or abs(y1 - y0) < 10:
+            self.crop_pages(rect_page=page)
+        else:
+            self.crop_pages(rect_page=page, rect=box)
+        self.set_tool("select")
+
+    def edit_page_labels(self, ranges: list | None = None) -> bool:
+        """Seitenbeschriftungen bearbeiten (Bereiche mit Stil, Präfix, Startwert); leere Liste entfernt sie."""
+        if ranges is None:
+            from notex.ui.pdf_pages_ui import LabelsDialog
+            try:
+                current = pdfpages.read_labels(self.data)
+            except pdfpages.PdfEditError as error:
+                self.notice.emit(str(error))
+                return False
+            dialog = LabelsDialog(self, self.doc.pageCount(), current)
+            if dialog.exec() != QDialog.DialogCode.Accepted:
+                return False
+            ranges = dialog.ranges()
+        if not self._ensure_editing():
+            return False
+        return self._run(pdfpages.set_labels, ranges)
+
+    # ---- Lesezeichen bearbeiten (Block V1) --------------------------------------------------------------------
+    def _show_outline_panel(self, on: bool) -> None:
+        editing = on and self.editing
+        self.outline.setVisible(on and not editing)
+        self.outline_editor.setVisible(editing)
+        if editing:
+            self._refresh_outline_editor()
+
+    def show_outline_editor(self) -> None:
+        self.outline_button.setChecked(True)
+        self._show_outline_panel(True)
+
+    def _refresh_outline_editor(self) -> None:
+        try:
+            self.outline_editor.set_items(pdfoutline.read_outline(self.data) if self.data is not None else [])
+        except pdfpages.PdfEditError as error:
+            self.notice.emit(str(error))
+
+    def outline_items(self) -> list:
+        return pdfoutline.read_outline(self.data) if self.data is not None else []
+
+    def set_outline(self, items: list) -> bool:
+        """Ganzen Lesezeichen-Baum schreiben (ein Rückgängig-Schritt)."""
+        if not self._ensure_editing():
+            return False
+        ok = self._run(pdfoutline.write_outline, items)
+        if not ok:
+            self._refresh_outline_editor()                 # Baum wieder auf den gespeicherten Stand
+        return ok
+
+    def current_pdf_top(self) -> tuple[int, float]:
+        """(Seite, y in PDF-Koordinaten) des oberen Fensterrands – dorthin springt ein neues Lesezeichen."""
+        page = self.canvas.current_page
+        layout = self.canvas.layout_
+        view_y = 0.0
+        if layout is not None and layout.pages:
+            rect = layout.pages[page]
+            view_y = max(0.0, (self.canvas.verticalScrollBar().value() - rect.y) / layout.scale)
+        geom = pdfannot.page_geometry(self.data, page)
+        return page, geom.to_pdf(0.0, view_y)[1]
+
+    def add_bookmark(self, title: str | None = None, page: int | None = None, top: float | None = None) -> bool:
+        """Lesezeichen auf die aktuelle Seite/Position (oder `page`/`top`) ans Ende; Titel = markierter Text."""
+        if self.data is None:
+            return False
+        if page is None:
+            page, top = self.current_pdf_top()
+        if title is None:
+            from PySide6.QtWidgets import QInputDialog
+            suggestion = " ".join(self.canvas.selected_text().split())[:80] or f"Seite {self.page_label(page)}"
+            title, ok = QInputDialog.getText(self, "Lesezeichen hinzufügen", "Titel:", text=suggestion)
+            if not ok or not title.strip():
+                return False
+        items = self.outline_items()
+        items.append(pdfoutline.Bookmark(title.strip(), page, top))
+        if self.set_outline(items):
+            self.outline_button.setChecked(True)
+            return True
+        return False
+
+    def bookmarks_from_headings(self, mode: str | None = None, choose=None) -> bool:
+        """Überschriften (größere Schrift) finden, in einer Vorschau abwählen lassen, dann ersetzen oder anhängen.
+        `choose` (Tests): Funktion headings → (Bookmarks, Modus) statt Dialog."""
+        if self.data is None:
+            return False
+        from notex.ui.tasks import run_task
+        data = self.data
+        result: dict = {}
+
+        def work(ctx):
+            return pdfoutline.find_headings(data, progress=lambda i, n: ctx.step(i, n, f"Seite {i + 1} von {n} …"))
+
+        def done(headings) -> None:
+            result["headings"] = headings
+            if not headings:
+                self.notice.emit("Keine Überschriften gefunden (alles in einer Schriftgröße?)")
+                return
+            existing = self.outline_items()
+            if choose is not None:
+                marks, how = choose(headings)
+            else:
+                from notex.ui.pdf_outline import HeadingsDialog
+                dialog = HeadingsDialog(self, headings, bool(existing))
+                if dialog.exec() != QDialog.DialogCode.Accepted:
+                    return
+                marks, how = dialog.chosen(), dialog.mode.currentData()
+            how = mode or how
+            if marks:
+                result["ok"] = self.set_outline((existing if how == "append" else []) + marks)
+                self.outline_button.setChecked(True)
+
+        worker = run_task(self, "Überschriften suchen …", work, on_done=done,
+                          on_error=lambda message: self.notice.emit(message), show_dialog=choose is None)
+        if choose is not None:                              # Tests: synchron abwarten
+            worker.wait()
+            from PySide6.QtCore import QCoreApplication
+            for _ in range(50):
+                QCoreApplication.processEvents()
+                if "headings" in result:
+                    break
+            return bool(result.get("ok"))
+        return True
+
+    def go_to_pdf_point(self, page: int, top) -> None:
+        """Zu Seite + y (PDF-Koordinaten) springen – für bearbeitbare Lesezeichen."""
+        if top is None or self.data is None:
+            self.canvas.go_to(page)
+            return
+        geom = pdfannot.page_geometry(self.data, page)
+        x, y = geom.to_view(geom.box[0], float(top))
+        self.canvas.go_to(page, QPointF(max(0.01, x), max(0.01, y)))
 
     # ---- Anmerkungen ----------------------------------------------------------------------------------------
     def set_tool(self, tool: str) -> None:
@@ -1790,6 +2008,11 @@ class PdfPage(ViewerPage):
         menu.addSeparator()
         menu.addAction(f"Als neues PDF herauslösen … ({label})", lambda: self.extract_pages(pages))
         menu.addAction("PDF dahinter einfügen …", lambda: self.insert_pdf(before=max(pages) + 1))
+        menu.addAction("Leere Seite davor", lambda: self.insert_blank(min(pages), "neighbor"))
+        menu.addAction("Leere Seite dahinter", lambda: self.insert_blank(max(pages) + 1, "neighbor"))
+        menu.addAction(f"Ersetzen durch PDF … ({label})", lambda: self.replace_pages(min(pages), max(pages)))
+        menu.addAction(f"Zuschneiden … ({label})", lambda: self.crop_pages(pages=pages))
+        menu.addAction("Seitenbeschriftungen …", lambda: self.edit_page_labels())
         menu.addSeparator()
         delete = menu.addAction(f"Löschen ({label})", lambda: self.delete_pages(pages))
         delete.setEnabled(len(pages) < self.doc.pageCount())

@@ -81,8 +81,21 @@ Alle nennenswerten Änderungen an fckNotes (bis 1.17.0: Notex). Format angelehnt
     PDF wird wie mit `qpdf --check` geprüft.
   - Neue Abhängigkeiten: pypdfium2 5.14.0 (Apache-2.0/BSD-3), fontTools 4.66.1 (MIT), Noto Sans (OFL); Linux-Paket
     +9,5 MB.
+- **PDF-Ausbau, Block V1 (Seiten und Lesezeichen):**
+  - **Leere Seite** davor/dahinter (Größe wie die Nachbarseite, A4 oder Letter) und **Seiten ersetzen** (Seiten
+    X–Y durch Seiten eines anderen PDFs, ein Rückgängig-Schritt).
+  - **Zuschneiden** per Dialog (Ränder in mm; aktuelle Seite, Bereich, gerade/ungerade, alle) oder Werkzeug zum
+    Aufziehen; „Weiße Ränder erkennen“ mit einstellbarer Schwelle; nur CropBox, deutlich als „kein Schwärzen“
+    gekennzeichnet; Zuschnitt aufheben.
+  - **Seitenbeschriftungen** (1, i, I, a, A oder nur Präfix, Präfix, Startwert) mit Vorschau.
+  - **Lesezeichen bearbeiten**: Leiste zum Anlegen auf Seite und Position (`Ctrl+Shift+B`), Umbenennen (`F2`),
+    Löschen, Verschieben und Verschachteln per Ziehen, Ein-/Ausrücken; **aus Überschriften erzeugen** mit Vorschau
+    (Schriftgröße über PDFium, bis drei Ebenen, ersetzen oder anhängen). Lesezeichen mit fremder Aktion (z. B.
+    Webadresse) bleiben unverändert.
 
 ### Behoben
+- PDF bearbeiten: Seitenbeschriftungen (z. B. „i, ii, iii“ fürs Vorwort) gingen beim Umsortieren, Drehen, Löschen,
+  Einfügen und Zusammenfügen verloren – sie bleiben jetzt erhalten und wandern mit ihren Seiten.
 - Diagramm-Editor: Senkrecht gezogene Linien wurden leicht schief, weil das freie Ende aufs Raster sprang, der
   Andockpunkt aber nicht darauf lag.
 - Diagramm-Editor: Formen-Symbole links waren im dunklen Theme kaum sichtbar – sie folgen jetzt der Textfarbe.
