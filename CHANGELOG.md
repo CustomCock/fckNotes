@@ -92,6 +92,15 @@ Alle nennenswerten Änderungen an fckNotes (bis 1.17.0: Notex). Format angelehnt
     Löschen, Verschieben und Verschachteln per Ziehen, Ein-/Ausrücken; **aus Überschriften erzeugen** mit Vorschau
     (Schriftgröße über PDFium, bis drei Ebenen, ersetzen oder anhängen). Lesezeichen mit fremder Aktion (z. B.
     Webadresse) bleiben unverändert.
+- **PDF-Ausbau, Block V2 (Anhänge und Links):**
+  - **Anhänge**: Liste aller Anhänge (Dokument und Seiten) mit Größe und Beschreibung; speichern, öffnen nur nach
+    Rückfrage mit Typ und Warnung, hinzufügen, entfernen (samt Inhalt). Programme, Skripte und Makro-Dokumente –
+    erkannt an Endung und Dateikopf – lassen sich nur speichern. Dateinamen aus dem PDF werden entschärft (keine
+    Ordnerteile, keine reservierten Namen).
+  - **Links**: Werkzeug zum Aufziehen mit Ziel Seite, Lesezeichen, Webadresse (nur http/https/mailto) oder anderes
+    PDF; Rahmen sichtbar/unsichtbar; verschieben, Größe ändern, bearbeiten, löschen wie andere Objekte; im
+    Lesemodus springen Seiten-Links, Webadressen und Dateien werden nie geöffnet.
+  - Prüfung nach dem Schwärzen kennt den neuen Ablageort „Link-Ziele“ (Webadressen, Dateinamen).
 
 ### Behoben
 - PDF bearbeiten: Seitenbeschriftungen (z. B. „i, ii, iii“ fürs Vorwort) gingen beim Umsortieren, Drehen, Löschen,

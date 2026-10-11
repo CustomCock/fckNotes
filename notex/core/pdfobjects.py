@@ -2,7 +2,7 @@
 
 Ein Objekt ist eine Anmerkung oder ein Formularfeld-Widget auf einer Seite, adressiert über seine Position im
 /Annots-Array der Seite. Markierungen (Markieren/Unterstreichen/Durchstreichen) hängen am Text: sie lassen sich
-löschen und kommentieren, aber nicht verschieben. Links und Popups sind keine Objekte.
+löschen und kommentieren, aber nicht verschieben. Links sind Objekte (verschieben, Größe, Ziel ändern); Popups nicht.
 
 Verschieben/Größe ändern zeichnet das Erscheinungsbild neu, wo eine Verzerrung stören würde (Text auf der Seite,
 Textfelder, Kontrollkästchen); Stempel (Unterschrift, Diagramm, Bild) werden einfach in den neuen Rahmen gesetzt –
@@ -16,10 +16,11 @@ from pypdf.generic import DictionaryObject, NameObject
 
 from notex.core import pdfannot as A
 from notex.core import pdfforms as F
+from notex.core import pdflinks as L
 from notex.core.pdfpages import PdfEditError, open_reader
 
 DIAGRAM_KEY = "/fckNotesDiagram"
-MOVABLE = {"text", "note", "stamp", "signature", "diagram", "field"}
+MOVABLE = {"text", "note", "stamp", "signature", "diagram", "field", "link"}
 
 
 @dataclass(frozen=True)
@@ -52,6 +53,8 @@ def _kind_of(annot) -> str:
     subtype = str(annot.get("/Subtype", ""))
     if subtype == "/Widget":
         return "field"
+    if subtype == "/Link":
+        return "link"
     if subtype == "/Stamp":
         if DIAGRAM_KEY in annot:
             return "diagram"
@@ -61,7 +64,7 @@ def _kind_of(annot) -> str:
     return A.KIND_NAMES.get(subtype, subtype.lstrip("/").lower())
 
 
-LABELS = {"text": "Text", "note": "Notiz", "stamp": "Stempel", "signature": "Unterschrift", "diagram": "Diagramm",
+LABELS = {"link": "Link", "text": "Text", "note": "Notiz", "stamp": "Stempel", "signature": "Unterschrift", "diagram": "Diagramm",
           "highlight": "Markierung", "underline": "Unterstreichung", "strikeout": "Durchstreichung"}
 
 
@@ -76,7 +79,7 @@ def list_objects(data: bytes, page_index: int) -> list[PdfObject]:
         try:
             annot = ref.get_object()
             subtype = str(annot.get("/Subtype", ""))
-            if subtype in ("/Link", "/Popup") or "/Rect" not in annot:
+            if subtype == "/Popup" or "/Rect" not in annot:
                 continue
             x0, y0, x1, y1 = (float(v) for v in annot["/Rect"])
         except Exception:                                  # noqa: BLE001 – kaputte Einträge überspringen
@@ -84,7 +87,11 @@ def list_objects(data: bytes, page_index: int) -> list[PdfObject]:
         rect = geom.rect_to_view((min(x0, x1), min(y0, y1), max(x0, x1), max(y0, y1)))
         kind = _kind_of(annot)
         ours = str(annot.get("/NM", "")).startswith(A.ID_PREFIX)
-        if kind == "field":
+        if kind == "link":
+            target = L._target_of(reader, annot)
+            out.append(PdfObject(page_index, position, "link", rect, f"Link → {target.describe()}",
+                                 target.describe(), ours))
+        elif kind == "field":
             field_obj = F._field_of(annot)
             name = F._qualified(field_obj)
             field_kind = F._kind(field_obj)
@@ -122,6 +129,9 @@ def set_rect(data: bytes, page_index: int, position: int, rect_view: A.Rect) -> 
     if kind not in MOVABLE:
         raise PdfEditError("Markierungen hängen am Text – löschen und neu markieren")
     geom = A.geometry_of(page)
+    if kind == "link":
+        L.set_link_rect(writer, page, annot, (x0, y0, x1, y1))
+        return A.finish(writer)
     if kind == "text":
         size, color, border = A.freetext_style(annot)
         text = str(annot.get("/Contents", "") or "")

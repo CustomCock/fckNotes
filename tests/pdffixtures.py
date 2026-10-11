@@ -52,6 +52,10 @@ def audit_doc(location: str, secret: str) -> bytes:
     if location == "annotation":
         from notex.core import pdfannot as A
         return A.add_note(make_pdf(["Neutraler Text"], outline=False, title=""), 0, 100, 100, secret)
+    if location == "link":
+        from notex.core import pdflinks as L
+        return L.add_link(make_pdf(["Neutraler Text"], outline=False, title=""), 0, (72, 72, 200, 90),
+                          L.LinkTarget("url", url=f"https://example.org/{secret}"))
     writer = _writer()
     root = writer._root_object
     if location == "form":

@@ -114,6 +114,8 @@ class ObjectController(QObject):
         start_page, sx, sy, obj, handle, start_pixel = self._press
         if self._ghost is None and (pixel - start_pixel).manhattanLength() < DRAG_START:
             return True
+        if obj.kind == "link" and not self.page.editing:
+            return True                        # Lesemodus: Links werden angeklickt, nicht gezogen
         if not obj.movable or not self.page._ensure_editing():
             return True
         dx, dy = x - sx, y - sy
@@ -141,6 +143,8 @@ class ObjectController(QObject):
             return True
         if obj.kind == "field":
             QTimer.singleShot(0, lambda o=obj: self.activate_field(o))
+        elif obj.kind == "link" and not self.page.editing:
+            QTimer.singleShot(0, lambda o=obj: self.page.follow_link(o))
         return True
 
     def double_click(self, page: int, x: float, y: float) -> bool:
@@ -184,6 +188,14 @@ class ObjectController(QObject):
                 if other.kind == "field":
                     painter.drawRect(view(other.rect))
             painter.restore()
+        if self.page.editing:                             # Links (oft unsichtbar) im Bearbeiten-Modus zeigen
+            painter.save()
+            painter.setPen(QPen(QColor(47, 111, 223, 150), 1, Qt.PenStyle.DotLine))
+            painter.setBrush(QColor(47, 111, 223, 22))
+            for other in self.objects(page_index):
+                if other.kind == "link":
+                    painter.drawRect(view(other.rect))
+            painter.restore()
         obj = self.selected
         if obj is None or obj.page != page_index:
             return
@@ -215,6 +227,8 @@ class ObjectController(QObject):
             return None
         if obj.kind == "field":
             return Qt.CursorShape.PointingHandCursor if obj.field_kind != "text" else Qt.CursorShape.IBeamCursor
+        if obj.kind == "link" and not self.page.editing:
+            return Qt.CursorShape.PointingHandCursor
         return Qt.CursorShape.SizeAllCursor if obj.movable and self.page.editing else Qt.CursorShape.ArrowCursor
 
     # ---- Formularfelder direkt ausfüllen ------------------------------------------------------------

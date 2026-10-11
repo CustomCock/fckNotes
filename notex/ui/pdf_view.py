@@ -19,7 +19,9 @@ from PySide6.QtPdf import (QPdfBookmarkModel, QPdfDocument, QPdfDocumentRenderOp
 from PySide6.QtWidgets import (QAbstractScrollArea, QApplication, QComboBox, QDialog, QFrame, QHBoxLayout, QInputDialog,
                                QLabel, QLineEdit, QMenu, QPushButton, QSplitter, QTreeView, QVBoxLayout)
 
-from notex.core import pdfannot, pdfdetect, pdfdiagram, pdfdoc, pdfforms, pdfobjects, pdfoutline, pdfpages, pdfredact
+from notex import APP_NAME
+from notex.core import (pdfannot, pdfattach, pdfdetect, pdfdiagram, pdfdoc, pdfforms, pdflinks, pdfobjects, pdfoutline,
+                        pdfpages, pdfredact)
 from notex.core.pdfdoc import PageLayout
 from notex.theme.theme import style_menu
 from notex.theme.tokens import COLORS, SPACING
@@ -39,11 +41,31 @@ TOOLS = [
     ("diagram", "network", "Diagramm (UML, Fluss …): Bereich aufziehen, dann zeichnen – später per Doppelklick ändern"),
     ("redact", "redact", "Schwärzen: Bereiche aufziehen (endgültig erst mit „Schwärzen anwenden“)"),
     ("crop", "crop", "Zuschneiden: sichtbaren Bereich aufziehen (blendet nur aus, kein Schwärzen)"),
+    ("link", "link", "Link: Bereich aufziehen, dann Ziel wählen (Seite, Lesezeichen, Webadresse, anderes PDF)"),
 ]
 CACHE_IMAGES = 24
 ZOOM_STEPS = [0.25, 0.33, 0.5, 0.67, 0.75, 0.9, 1.0, 1.1, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0, 4.0, 6.0, 8.0]
 IN_MEMORY_LIMIT = 256 * 1024 * 1024
 PAGE_WHITE = "#ffffff"      # PDF-Seiten sind immer weiß gestaltet – unabhängig vom Blatt-Theme
+
+
+def _attachment_temp_dir() -> Path:
+    """Frischer Ordner unter cache/anhaenge für einen geöffneten Anhang; Ordner älter als ein Tag werden entfernt."""
+    import shutil
+    import time
+    import uuid
+    from notex.paths import cache_dir
+    base = cache_dir() / "anhaenge"
+    base.mkdir(parents=True, exist_ok=True)
+    for old in base.iterdir():
+        try:
+            if old.is_dir() and time.time() - old.stat().st_mtime > 86400:
+                shutil.rmtree(old, ignore_errors=True)
+        except OSError:
+            continue
+    folder = base / uuid.uuid4().hex[:12]
+    folder.mkdir()
+    return folder
 
 
 def _alpha(color: str, alpha: int) -> QColor:
@@ -52,7 +74,7 @@ def _alpha(color: str, alpha: int) -> QColor:
     return result
 
 
-REGION_TOOLS = {"note", "text", "field", "checkbox", "signature", "redact", "diagram", "crop"}   # Ziehen/Klicken legt einen Bereich fest
+REGION_TOOLS = {"note", "text", "field", "checkbox", "signature", "redact", "diagram", "crop", "link"}   # Ziehen/Klicken legt einen Bereich fest
 MARKUP_TOOLS = {"highlight", "underline", "strikeout", "redact_text"}          # Textauswahl → sofort anwenden
 
 
@@ -602,6 +624,8 @@ class PdfPage(ViewerPage):
         next_hit.clicked.connect(lambda: self.next_result(1))
         self.hits_label = QLabel()
         self.hits_label.setObjectName("DataInfo")
+        self.attach_button = IconButton("paperclip", "Anhänge: speichern, öffnen, hinzufügen, entfernen")
+        self.attach_button.clicked.connect(lambda: self.show_attachments())
         self.quote_button = IconButton("quote", "Markierten Text als Zitat in die Notiz im anderen Teil einfügen")
         self.quote_button.clicked.connect(self.quote)
         self.quote_button.setEnabled(False)
@@ -635,7 +659,7 @@ class PdfPage(ViewerPage):
             bar.addWidget(widget)
         bar.addSpacing(SPACING.md)
         bar.addWidget(self.search_field, 1)
-        for widget in (prev_hit, next_hit, self.hits_label, self.quote_button, self.edit_button):
+        for widget in (prev_hit, next_hit, self.hits_label, self.attach_button, self.quote_button, self.edit_button):
             bar.addWidget(widget)
         self.splitter = QSplitter(Qt.Orientation.Horizontal)
         self.splitter.setObjectName("PreviewSplitter")
@@ -727,6 +751,7 @@ class PdfPage(ViewerPage):
         if not self.strip.isHidden():
             self.strip.rebuild()
         self.refresh_form()
+        self._refresh_attachments()
 
     # ---- Bearbeiten: Zustand, Rückgängig, Speichern -----------------------------------------------------------
     def edit_block_reason(self) -> str:
@@ -1263,6 +1288,211 @@ class PdfPage(ViewerPage):
         x, y = geom.to_view(geom.box[0], float(top))
         self.canvas.go_to(page, QPointF(max(0.01, x), max(0.01, y)))
 
+    # ---- Links (Block V2) ---------------------------------------------------------------------------------------
+    def _region_link(self, page: int, box: tuple) -> None:
+        x0, y0, x1, y1 = box
+        if abs(x1 - x0) < 4 or abs(y1 - y0) < 4:
+            self.notice.emit("Für einen Link einen Bereich aufziehen (z. B. über den Text, der klickbar sein soll)")
+            return
+        self.add_link(page, box)
+
+    def add_link(self, page: int, rect: tuple, target=None, border: bool | None = None) -> bool:
+        """Link über `rect` (Ansichts-Punkte); ohne Ziel fragt ein Dialog (Seite, Lesezeichen, Webadresse, PDF)."""
+        if target is None:
+            from notex.ui.pdf_links_ui import LinkDialog
+            dialog = LinkDialog(self, self.doc.pageCount(), self._outline_for_links(), current_page=page)
+            if dialog.exec() != QDialog.DialogCode.Accepted:
+                return False
+            target, border = dialog.values()
+        if not self._ensure_editing():
+            return False
+        return self._run(pdflinks.add_link, page, tuple(rect), target, bool(border), page=page)
+
+    def _outline_for_links(self) -> list:
+        try:
+            return pdfoutline.read_outline(self.data) if self.data else []
+        except Exception:                               # noqa: BLE001 – kaputte Lesezeichen: ohne Auswahl
+            return []
+
+    def link_target(self, obj):
+        link = self._link_of(obj)
+        return link.target if link is not None else None
+
+    def _link_of(self, obj):
+        try:
+            return next((link for link in pdflinks.list_links(self.data, obj.page) if link.index == obj.index), None)
+        except pdfpages.PdfEditError:
+            return None
+
+    def edit_link(self, obj, target=None, border: bool | None = None) -> bool:
+        """Ziel/Rahmen eines Links ändern. Ein fremdes Ziel bleibt, solange man keins wählt."""
+        link = self._link_of(obj)
+        if link is None:
+            return False
+        if target is None and border is None:
+            from notex.ui.pdf_links_ui import LinkDialog
+            known = link.target if link.target.kind != "other" else None
+            dialog = LinkDialog(self, self.doc.pageCount(), self._outline_for_links(), known, link.border, obj.page)
+            if dialog.exec() != QDialog.DialogCode.Accepted:
+                return False
+            target, border = dialog.values()
+        if not self._ensure_editing():
+            return False
+        return self._run(pdflinks.update_link, obj.page, obj.index, target, border, page=obj.page)
+
+    def follow_link(self, obj) -> None:
+        """Klick auf einen Link im Lesemodus: Seitenziele springen; Webadressen/Dateien nur anzeigen (nie öffnen)."""
+        target = self.link_target(obj)
+        if target is None or target.kind == "other":
+            self.notice.emit("Link mit einer anderen Aktion – wird aus Sicherheitsgründen nicht ausgeführt")
+        elif target.kind == "page":
+            self.go_to_pdf_point(target.page, target.top)
+        else:
+            what = "Webadresse" if target.kind == "url" else "Datei"
+            self.notice.emit(f"Link auf {what}: {target.describe()} – wird nicht geöffnet "
+                             "(Rechtsklick › Link-Ziel kopieren)")
+
+    def copy_link_target(self, target) -> None:
+        from PySide6.QtWidgets import QApplication
+        QApplication.clipboard().setText(target.url if target.kind == "url" else target.file)
+        self.notice.emit("Link-Ziel kopiert")
+
+    # ---- Anhänge (Block V2) -------------------------------------------------------------------------------------
+    def attachments(self) -> list:
+        try:
+            return pdfattach.list_attachments(self.data) if self.data else []
+        except Exception:                               # noqa: BLE001 – unlesbar: leere Liste statt Absturz
+            return []
+
+    def show_attachments(self):
+        """Anhänge-Liste (nicht modal). Speichern/Öffnen geht auch im Lesemodus."""
+        from notex.ui.pdf_links_ui import AttachmentsDialog
+        from notex.platform import external
+        dialog = getattr(self, "_attach_dialog", None)
+        if dialog is None:
+            dialog = AttachmentsDialog(self)
+            dialog.save_requested.connect(lambda key: self.save_attachment(key))
+            dialog.open_requested.connect(lambda key: self.open_attachment(key))
+            dialog.add_requested.connect(lambda: self.add_attachment())
+            dialog.remove_requested.connect(lambda key: self.remove_attachment(key))
+            availability = external.available()
+            dialog.can_open, dialog.open_hint = availability.ok, availability.hint
+            self._attach_dialog = dialog
+        self._refresh_attachments()
+        dialog.show()
+        dialog.raise_()
+        return dialog
+
+    def _refresh_attachments(self) -> None:
+        dialog = getattr(self, "_attach_dialog", None)
+        if dialog is not None:
+            dialog.set_items(self.attachments(), editable=not self.edit_block_reason())
+
+    def _attachment(self, key: str):
+        return next((a for a in self.attachments() if a.key == key), None)
+
+    def save_attachment(self, key: str, target: Path | str | None = None) -> Path | None:
+        """Anhang als Datei speichern (Dialog fragt nach dem Ort; Überschreiben nur nach Rückfrage des Dialogs)."""
+        try:
+            name, content = pdfattach.extract(self.data, key)
+        except pdfpages.PdfEditError as error:
+            self.notice.emit(str(error))
+            return None
+        if target is None:
+            from PySide6.QtWidgets import QFileDialog
+            chosen, _f = QFileDialog.getSaveFileName(self, "Anhang speichern",
+                                                     str(self.path.parent / pdfattach.safe_filename(name)))
+            if not chosen:
+                return None
+            target = chosen
+        target = Path(target)
+        try:
+            target.write_bytes(content)
+        except OSError as error:
+            self.notice.emit(f"Nicht gespeichert: {error}")
+            return None
+        self.notice.emit(f"Anhang gespeichert: {target.name}")
+        return target
+
+    def open_attachment(self, key: str, confirmed: bool | None = None) -> bool:
+        """Anhang mit dem System-Programm öffnen – nur nach Rückfrage, Programme/Skripte nie."""
+        from notex.platform import external
+        from notex.ui import dialogs
+        item = self._attachment(key)
+        if item is None:
+            return False
+        if item.risky:
+            dialogs.warn(self, "Anhang öffnen", f"„{item.name}“ ist ein Programm, Skript oder Makro-Dokument.",
+                         informative=f"So etwas öffnet {APP_NAME} nie. Über „Speichern unter …“ lässt es sich "
+                                     "ablegen und vor dem Öffnen prüfen.")
+            return False
+        if not external.available().ok:
+            self.notice.emit(external.available().hint)
+            return False
+        if confirmed is None:
+            confirmed = dialogs.confirm(
+                self, "Anhang öffnen?", f"„{item.name}“ mit dem Standardprogramm öffnen?",
+                yes="Öffnen", danger=True,
+                informative=f"Typ: {item.mime or 'unbekannt'} · Größe: {human_size(item.size)}\n\n"
+                            "Anhänge können Schadsoftware enthalten. Nur öffnen, wenn Sie der Quelle vertrauen.")
+        if not confirmed:
+            return False
+        try:
+            name, content = pdfattach.extract(self.data, key)
+        except pdfpages.PdfEditError as error:
+            self.notice.emit(str(error))
+            return False
+        if pdfattach.risky(name, content[:8]):
+            self.notice.emit("Der Anhang ist ein Programm – wird nicht geöffnet")
+            return False
+        path = _attachment_temp_dir() / pdfattach.safe_filename(name)
+        try:
+            path.write_bytes(content)
+        except OSError as error:
+            self.notice.emit(f"Konnte den Anhang nicht ablegen: {error}")
+            return False
+        if not external.open_path(path):
+            self.notice.emit("Dieser Anhang lässt sich nicht öffnen")
+            return False
+        return True
+
+    def add_attachment(self, path: Path | str | None = None, description: str = "") -> bool:
+        if path is None:
+            from PySide6.QtWidgets import QFileDialog
+            chosen, _f = QFileDialog.getOpenFileName(self, "Datei anhängen", str(self.path.parent))
+            if not chosen:
+                return False
+            path = chosen
+        path = Path(path)
+        try:
+            if path.stat().st_size > pdfattach.MAX_ATTACHMENT:
+                self.notice.emit(f"Zu groß (höchstens {pdfattach.MAX_ATTACHMENT // (1024 * 1024)} MB)")
+                return False
+            content = path.read_bytes()
+        except OSError as error:
+            self.notice.emit(f"Nicht lesbar: {error}")
+            return False
+        if not self._ensure_editing():
+            return False
+        done = self._run(pdfattach.add_attachment, path.name, content, description)
+        self._refresh_attachments()
+        return done
+
+    def remove_attachment(self, key: str, confirmed: bool | None = None) -> bool:
+        item = self._attachment(key)
+        if item is None:
+            return False
+        if confirmed is None:
+            from notex.ui import dialogs
+            confirmed = dialogs.confirm(self, "Anhang entfernen?", f"„{item.name}“ aus dem PDF entfernen?",
+                                        yes="Entfernen", danger=True,
+                                        informative="Rückgängig mit Ctrl+Z, solange nicht gespeichert ist.")
+        if not confirmed or not self._ensure_editing():
+            return False
+        done = self._run(pdfattach.remove_attachment, key, page=item.page)
+        self._refresh_attachments()
+        return done
+
     # ---- Anmerkungen ----------------------------------------------------------------------------------------
     def set_tool(self, tool: str) -> None:
         if tool not in self.tool_buttons:
@@ -1412,6 +1642,15 @@ class PdfPage(ViewerPage):
                 menu.addAction("Feld-Eigenschaften …", lambda: self.field_properties(obj))
             menu.addAction(f"Feld „{field.name}“ löschen", lambda: self.remove_field(field.name))
             return
+        link = next((o for o in self.objects.objects(page) if o.kind == "link" and o.contains(x, y)), None)
+        if link is not None:
+            menu.addSeparator()
+            target = self.link_target(link)
+            if target is not None and target.kind in ("url", "file"):
+                menu.addAction("Link-Ziel kopieren", lambda t=target: self.copy_link_target(t))
+            menu.addAction("Link bearbeiten …", lambda: self.edit_link(link))
+            menu.addAction("Link löschen", lambda: self.delete_object(link))
+            return
         info = pdfannot.hit(self.annotations(page), x, y)
         if info is not None:
             menu.addSeparator()
@@ -1470,6 +1709,8 @@ class PdfPage(ViewerPage):
             return self.edit_diagram(obj)
         if obj.kind == "field":
             return self.field_properties(obj)
+        if obj.kind == "link":
+            return self.edit_link(obj)
         return self.edit_annotation(obj.page, obj.index)
 
     def edit_text_object(self, obj, text: str | None = None, size: float | None = None, color: str | None = None,

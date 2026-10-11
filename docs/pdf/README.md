@@ -8,3 +8,5 @@ die Haupt-README im Abschnitt „PDF“.
   Schwärzen, AppImage.
 - [Seiten und Lesezeichen (V1)](seiten-lesezeichen.md): leere Seite, Seiten ersetzen, Zuschneiden,
   Seitenbeschriftungen, Lesezeichen bearbeiten und aus Überschriften erzeugen.
+- [Anhänge und Links (V2)](anhaenge-links.md): Anhänge speichern, öffnen, hinzufügen, entfernen; Links anlegen und
+  bearbeiten.

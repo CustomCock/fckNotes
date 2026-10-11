@@ -26,6 +26,7 @@ LOCATIONS: dict[str, str] = {
     "page_text": "Seitentext",
     "appearance": "Erscheinungsbilder von Anmerkungen und Feldern",
     "annotation": "Anmerkungen (Text, Autor, Betreff, Antworten)",
+    "link": "Link-Ziele (Webadressen, Dateinamen)",
     "form": "Formularfelder (Wert, Standardwert, Optionen, Tooltip, Name)",
     "outline": "Lesezeichen",
     "attachment": "Anhänge (Name, Beschreibung, Inhalt)",
@@ -124,6 +125,26 @@ def _annotation(reader, data: bytes) -> Iterable[tuple[str, str]]:
                 continue
             texts = [_str(annot.get(key)) for key in ("/Contents", "/RC", "/T", "/Subj", "/TU")]
             yield " ".join(texts), f"in einer Anmerkung auf Seite {index + 1}"
+
+
+def _link(reader, data: bytes) -> Iterable[tuple[str, str]]:
+    for index, page in enumerate(reader.pages):
+        for ref in page.get("/Annots", None) or []:
+            try:
+                annot = ref.get_object()
+                if annot.get("/Subtype") != "/Link":
+                    continue
+                action = annot.get("/A")
+                action = action.get_object() if action is not None else {}
+                texts = [_str(action.get("/URI")), _str(annot.get("/Dest")), _str(action.get("/D"))]
+                spec = action.get("/F")
+                if spec is not None:
+                    spec = spec.get_object()
+                    texts += [_str(spec.get("/UF")), _str(spec.get("/F"))] if hasattr(spec, "get") else [_str(spec)]
+            except Exception:                             # noqa: BLE001
+                yield "\x00UNREADABLE", f"Ein Link auf Seite {index + 1} ließ sich nicht prüfen"
+                continue
+            yield " ".join(texts), f"in einem Link auf Seite {index + 1}"
 
 
 def _fields(reader) -> Iterable[DictionaryObject]:
@@ -353,7 +374,7 @@ def _raw(reader, data: bytes) -> Iterable[tuple[str, str]]:
 
 
 SCANNERS: dict[str, Callable] = {
-    "page_text": _page_text, "appearance": _appearance, "annotation": _annotation, "form": _form,
+    "page_text": _page_text, "appearance": _appearance, "annotation": _annotation, "link": _link, "form": _form,
     "outline": _outline, "attachment": _attachment, "layer": _layer, "metadata": _metadata, "xmp": _xmp,
     "structure": _structure, "names": _names, "javascript": _javascript, "objects": _objects, "raw": _raw,
 }

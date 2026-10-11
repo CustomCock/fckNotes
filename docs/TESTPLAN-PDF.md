@@ -38,3 +38,15 @@ Windows und Linux durchgehen.
    Programm gleich, ein Klick springt an die gespeicherte Position.
 6. Ein PDF mit großen Überschriften: „Aus Überschriften“ – Vorschau prüfen, einzelne abwählen, übernehmen.
 7. Große Datei (über 500 Seiten): Seite 300 durch ein anderes PDF ersetzen und rückgängig machen – flüssig.
+
+## V2 – Anhänge und Links
+1. Eine Datei (z. B. CSV) anhängen, speichern. Im fremden Programm (Acrobat: Büroklammer-Leiste, Firefox:
+   Anhänge-Leiste): Anhang da, Inhalt beim Speichern identisch.
+2. Einen Anhang entfernen, speichern: im fremden Programm weg, `qpdf --check` ohne Fehler.
+3. Ein PDF mit einer `.exe` als Anhang (z. B. aus `tests/test_pdf_attach.py` erzeugt): „Öffnen“ ist ausgegraut,
+   „Speichern unter“ funktioniert.
+4. Links anlegen: Seite (mit Höhe), Lesezeichen, Webadresse, anderes PDF; mit und ohne Rahmen. Im fremden Programm:
+   Rahmen wie gewählt, Klick springt bzw. fragt nach dem Öffnen der Webadresse.
+5. In fckNotes im Lesemodus: Seiten-Link springt, Webadresse öffnet **nichts** (nur Hinweis), Rechtsklick kopiert.
+6. Einen Link verschieben und vergrößern, speichern: im fremden Programm an der neuen Stelle klickbar.
+7. Linux ohne `xdg-open`: „Öffnen“ ist ausgegraut, Tooltip nennt das fehlende Paket.

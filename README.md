@@ -514,6 +514,13 @@ Der Stift schaltet eine zweite Leiste und die **Seitenleiste** (Miniaturen) ein.
   (`Ctrl+Shift+B`), umbenennen (`F2`), löschen (`Entf`), per Ziehen verschieben und verschachteln, ein-/ausrücken.
   **Aus Überschriften erzeugen** schlägt Lesezeichen aus großen Textzeilen vor (Vorschau, einzeln abwählbar).
   Lesezeichen mit Webadresse behalten ihre Aktion unverändert.
+- **Links** (Werkzeug „Link“): Bereich aufziehen, Ziel wählen – Seite (optional mit Höhe), Lesezeichen, Webadresse
+  (nur http/https/mailto) oder ein anderes PDF; Rahmen sichtbar oder unsichtbar. Links lassen sich wie Eingefügtes
+  verschieben, in der Größe ändern, per Doppelklick bearbeiten und mit `Entf` löschen. Im Lesemodus springt ein Klick
+  auf ein Seitenziel; Webadressen und Dateien werden **nie** geöffnet (Rechtsklick › Link-Ziel kopieren).
+- **Anhänge** (Büroklammer oben im PDF-Tab, auch im Lesemodus): alle Anhänge des Dokuments und der Seiten mit Größe
+  und Beschreibung; speichern, öffnen (erst nach Rückfrage mit Typ und Warnung), hinzufügen, entfernen. Programme,
+  Skripte und Makro-Dokumente lassen sich nur speichern, nie öffnen.
 
 **Kommentieren** – Werkzeuge in der Bearbeiten-Leiste (`Esc` = zurück zu „Auswählen“), Farbe über die Palette:
 
@@ -1345,6 +1352,9 @@ Alternativ per Docker: `docker run -d -p 8081:8010 erikvl87/languagetool` (dann 
 | Ctrl+Shift+B (im PDF-Tab, Bearbeiten) | Lesezeichen auf aktueller Seite und Position anlegen |
 | F2 / Entf / Ziehen (Lesezeichen-Leiste) | Umbenennen / löschen / verschieben und verschachteln |
 | Palette › PDF: Lesezeichen bearbeiten / aus Überschriften | Lesezeichen-Leiste öffnen bzw. Vorschläge aus großen Zeilen |
+| Palette › PDF: Werkzeug Link | Bereich aufziehen, Ziel wählen (Seite, Lesezeichen, Webadresse, PDF) |
+| Klick auf einen Link (PDF-Lesemodus) | Zu Seitenzielen springen (Webadressen werden nur angezeigt) |
+| Palette › PDF: Anhänge / Datei anhängen | Anhänge speichern, öffnen (mit Rückfrage), hinzufügen, entfernen |
 | Palette › PDF: Auswahl markieren / unterstreichen / durchstreichen | Anmerkung über dem markierten PDF-Text |
 | Palette › PDF: Werkzeug Notiz / Text | Notiz bzw. Text auf der Seite platzieren (Esc beendet das Werkzeug) |
 | Palette › PDF: Formular ausfüllen | Feldliste rechts, „Übernehmen“ schreibt alle Werte (Ctrl+Z-fähig) |

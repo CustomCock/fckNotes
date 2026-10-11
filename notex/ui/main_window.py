@@ -3666,6 +3666,12 @@ class MainWindow(QMainWindow):
             ("pdf:bookmarks_headings", "PDF: Lesezeichen aus Überschriften …",
              lambda: self.pdf_command("bookmarks_from_headings"), "",
              "pdf lesezeichen überschriften automatisch inhaltsverzeichnis outline"),
+            ("pdf:tool_link", "PDF: Werkzeug Link (Bereich aufziehen)", lambda: self.pdf_command("set_tool", "link"),
+             "", "pdf link verknüpfung hyperlink url webadresse sprung seite"),
+            ("pdf:attachments", "PDF: Anhänge …", lambda: self.pdf_command("show_attachments"), "",
+             "pdf anhang anhänge attachment datei eingebettet speichern extrahieren"),
+            ("pdf:attachment_add", "PDF: Datei anhängen …", lambda: self.pdf_command("add_attachment"), "",
+             "pdf anhang hinzufügen datei einbetten attachment"),
         ]
         for key, title, callback, shortcut, keywords in pdf_cmds:
             self.registry.add(key, title, callback, category="PDF", shortcut=shortcut, keywords=keywords)

@@ -665,6 +665,14 @@ PDF/A wie vorgeschlagen, Noto statt Helvetica, Windows-Zertifikatsspeicher spät
   (Lesezeichen-Leiste mit Ziehen, F2, Entf, Ein-/Ausrücken; Überschriften-Vorschau), Werkzeug „Zuschneiden“,
   `Ctrl+Shift+B`, 8 Palette-Einträge. **Entscheidung:** Zuschneide-Dialog statt eigener Leiste; Lesezeichen-Editor
   ersetzt im Bearbeiten-Modus die Nur-Lese-Leiste. Doku `docs/pdf/seiten-lesezeichen.md`.
+- **V2 – erledigt.** Neu `pdfattach.py` (Namensbaum inkl. `/Kids` und `/AF`, Datei-Anmerkungen; `risky` nach Endung
+  und Dateikopf, `safe_filename` gegen Pfadteile/reservierte Namen; Entfernen löscht auch den Inhalt) und
+  `pdflinks.py` (Ziele Seite/XYZ, URI nur http/https/mailto, GoToR nur auf `.pdf` – **Entscheidung:** kein
+  `/Launch`; fremde Aktionen bleiben beim Verschieben/Rahmen ändern). Links sind jetzt Objekte (`pdfobjects`, kind
+  „link“: verschieben, Größe, Doppelklick, Entf; im Lesemodus Klick = Seitenziel folgen, Webadresse nur Hinweis).
+  Audit-Register: neuer Ort `link`. UI `ui/pdf_links_ui.py` (LinkDialog, AttachmentsDialog nicht modal),
+  Büroklammer im PDF-Tab, Werkzeug „Link“, 3 Palette-Einträge; geöffnete Anhänge landen in
+  `cache/anhaenge/<zufall>/` (älter als ein Tag wird beim nächsten Öffnen gelöscht). Doku `docs/pdf/anhaenge-links.md`.
 
 ## Offen
 
@@ -734,7 +742,7 @@ rdap, scanner, logs, pcap. Standardmäßig an: variables, hex, ports, ioc.
 ## Nächster Schritt
 
 **PDF-Ausbau (Blöcke V, W, X):** Roadmap `docs/ROADMAP-PDF.md`, vom Besitzer freigegeben („alles wie vorgeschlagen“).
-**V0, V1 erledigt** – nächster Block **V2 (Anhänge und Links)**. B- und C-Blöcke vor dem Start abstimmen.
+**V0–V2 erledigt** – nächster Block **V3 (Kommentieren I: Stift, Formen, Stempel)**. B- und C-Blöcke vor dem Start abstimmen.
 
 **Block T (PDF: Objekte, Felderkennung, Diagramme, draw.io) abgeschlossen** auf dem Arbeitsbranch – wartet auf
 Merge/Release durch den Besitzer (Vorschlag 1.18.0). Offen beim Besitzer: Ausprobieren mit echten Arbeitsblättern
