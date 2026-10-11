@@ -93,8 +93,11 @@ def test_custom_stamps_are_stored_portably(tmp_path):
         S.delete_custom(folder, image.key)
 
 
-@pytest.mark.parametrize("text, image", [("", None), ("", b"GIF89a....."), ("x", b"\x89PNG\r\n\x1a\n" + b"0" * (6 << 20))])
-def test_invalid_custom_stamps(tmp_path, text, image):
+@pytest.mark.parametrize("case", ["leer", "gif", "zu-gross"])
+def test_invalid_custom_stamps(tmp_path, case):
+    # Bytes erst hier erzeugen: lange Parameter landen sonst im Testnamen (PYTEST_CURRENT_TEST, unter Windows max. 32 767)
+    text, image = {"leer": ("", None), "gif": ("", b"GIF89a....."),
+                   "zu-gross": ("x", b"\x89PNG\r\n\x1a\n" + b"0" * (6 << 20))}[case]
     with pytest.raises(PdfEditError):
         S.save_custom(tmp_path, text, "#000000", image)
 
