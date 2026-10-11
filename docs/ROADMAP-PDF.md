@@ -1,6 +1,7 @@
 # Roadmap: PDF-Funktionen vervollständigen (Blöcke V, W, X)
 
-Stand: Analyse abgeschlossen, **noch kein Code geändert**. Diese Roadmap wartet auf das OK des Besitzers.
+Stand: Vom Besitzer freigegeben (11.10.2026, „alles wie vorgeschlagen“). **V0 erledigt.** Fortschritt pro Block
+steht in `PROGRESS.md`.
 Block U bleibt für den KI-Assistenten reserviert. Die Benennung setzt die bestehenden Blöcke fort:
 
 | Block | Priorität | Inhalt | Abstimmung |
@@ -140,7 +141,7 @@ Tesseract. Empfehlung: Tesseract auf beiden Systemen für gleiche Ergebnisse. En
 - **Eingebettete Schrift** (Regel 6): `notex/core/pdffont.py` bildet Untermengen von Noto Sans, schreibt
   Type0/CIDFontType2 mit ToUnicode und liefert Breiten für Umbruch und Zentrierung. **Bestehende Freitexte,
   Stempel und Formularfeld-Erscheinungsbilder** stellen in V0 darauf um. Ergebnis: echtes Unicode statt WinAnsi
-  (z. B. Ł, Ş, Ω, →), auf Windows und Linux identisch.
+  (z. B. Ł, Ş, Ω, Kyrillisch), auf Windows und Linux identisch.
 - **Rückgängig-Budget:** Der Stapel wird nach Gesamtgröße begrenzt (Standard 512 MB, einstellbar), nicht nur
   nach Anzahl. Was nicht mehr in den Speicher passt, lagert er in eine Cache-Datei im Portable-Ordner aus.
 - **Portable-Ausweichpfad** (Regel 1): `paths.py` prüft, ob der App-Ordner beschreibbar ist, und weicht sonst

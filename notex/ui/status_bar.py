@@ -66,6 +66,10 @@ class StatusBar(QStatusBar):
         self.addPermanentWidget(self.grammar_state_label)
         self.addPermanentWidget(self.problem_button)
         self.addPermanentWidget(self.readonly_label)
+        self.fallback_label = QLabel()                   # Daten liegen nicht im App-Ordner (nicht beschreibbar)
+        self.fallback_label.setObjectName("StatusWarn")
+        self.addPermanentWidget(self.fallback_label)
+        self.show_fallback()
         for i, label in enumerate((self.position_label, self.encoding_label, self.chars_label, self.dirty_label)):
             if i:
                 dot = QLabel("·")
@@ -74,6 +78,16 @@ class StatusBar(QStatusBar):
                 self.addPermanentWidget(dot)
             self.addPermanentWidget(label)
         self.update_for(None, "")
+
+    def show_fallback(self) -> None:
+        """Hinweis, wenn der App-Ordner schreibgeschützt ist und die Daten im Ausweichordner liegen (Regel „portabel“)."""
+        from notex.paths import using_fallback
+        fallback = using_fallback()
+        self.fallback_label.setVisible(fallback is not None)
+        if fallback is not None:
+            self.fallback_label.setText("Daten im Ausweichordner")
+            self.fallback_label.setToolTip(f"Der App-Ordner ist nicht beschreibbar – Einstellungen und Notizen liegen in "
+                                           f"{fallback}")
 
     def set_spell_state(self, spelling: bool, grammar: bool, language: str, per_tab: bool, grammar_note: str = "") -> None:
         self.spell_button.setChecked(spelling)

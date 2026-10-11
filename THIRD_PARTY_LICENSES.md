@@ -28,6 +28,9 @@ und werden mit in den Build-Ordner kopiert (`_internal/notex/assets/...`,
 | OpenSSL (in cryptography enthalten) | 3.x | Apache License 2.0 | https://www.openssl.org | `licenses/LICENSE-cryptography.txt` (Apache-Text) |
 | cffi | 1.x/2.x | MIT | https://cffi.readthedocs.io | `licenses/LICENSE-cffi.txt` |
 | pycparser | 2.x/3.x | BSD 3-Clause | https://github.com/eliben/pycparser | `licenses/LICENSE-pycparser.txt` |
+| pypdfium2 (mit PDFium) | 5.14.0 | Apache License 2.0 oder BSD 3-Clause; PDFium BSD 3-Clause (Bestandteile: FreeType, libjpeg-turbo, OpenJPEG, lcms2, ICU u. a., Texte in der Datei) | https://github.com/pypdfium2-team/pypdfium2 | `licenses/LICENSE-pypdfium2.txt` |
+| fontTools | 4.66.1 | MIT | https://github.com/fonttools/fonttools | `licenses/LICENSE-fonttools.txt` |
+| Noto Sans (Schrift, wird als Untermenge in PDFs eingebettet) | 2.x | SIL Open Font License 1.1 | https://github.com/notofonts/latin-greek-cyrillic | `notex/assets/fonts/noto/OFL.txt` |
 | Inter (Schrift) | 4.1 | SIL Open Font License 1.1 | https://rsms.me/inter | `notex/assets/fonts/LICENSE-Inter.txt` |
 | JetBrains Mono (Schrift) | 2.304 | SIL Open Font License 1.1 | https://www.jetbrains.com/lp/mono | `notex/assets/fonts/LICENSE-JetBrainsMono.txt` |
 | IANA Service Name and Transport Protocol Port Number Registry (Daten) | Stand 2024-10 | frei für jeden Zweck (gemeinsame Erklärung IANA/IETF 2021, https://www.iana.org/help/licensing-terms) | https://www.iana.org/assignments/service-names-port-numbers | – |

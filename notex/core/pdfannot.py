@@ -6,9 +6,10 @@ Koordinaten: Die Oberfläche denkt in „Ansichts-Punkten“ – Ursprung oben l
 `PageGeom` rechnet hin und her; alle Formeln sind getestet.
 
 Jede neue Anmerkung bekommt einen eigenen Appearance-Stream (/AP): so sieht sie in jedem Betrachter gleich aus
-(Acrobat, Browser, PDFium in fckNotes), auch in solchen, die selbst nichts zeichnen. Text auf der Seite nutzt
-Helvetica (eine der 14 Standardschriften, nichts wird eingebettet) mit WinAnsi-Kodierung – Zeichen außerhalb davon
-(z. B. Emoji) erscheinen als „?“. Gelöschte Anmerkungen werden mitsamt ihren Objekten entfernt.
+(Acrobat, Browser, PDFium in fckNotes), auch in solchen, die selbst nichts zeichnen. Text auf der Seite nutzt die
+mitgelieferte Noto Sans als eingebettete Untermenge (`pdffont`) – überall gleich, Unicode statt WinAnsi; Zeichen, die
+die Schrift nicht hat (z. B. Emoji), erscheinen als „?“. Die Helvetica-Hilfen hier (`text_width`, `wrap`,
+`pdf_string`) bleiben für Formularfelder. Gelöschte Anmerkungen werden mitsamt ihren Objekten entfernt.
 """
 from __future__ import annotations
 
@@ -22,6 +23,7 @@ from pypdf import PdfWriter
 from pypdf.generic import (ArrayObject, BooleanObject, DecodedStreamObject, DictionaryObject, FloatObject, NameObject, NumberObject,
                            TextStringObject)
 
+from notex.core import pdffont
 from notex.core.pdfpages import PdfEditError, open_reader
 
 ID_PREFIX = "fcknotes-"
@@ -416,8 +418,10 @@ TEXT_PADDING = 3.0
 
 
 def freetext_content(text: str, width: float, height: float, size: float, color: str, border: bool = False,
-                     background: str | None = None) -> str:
-    """Erscheinungsbild im eigenen Rechteck 0..width × 0..height (aufrecht, Matrix dreht es auf die Seite)."""
+                     background: str | None = None, use: pdffont.FontUsage | None = None) -> str:
+    """Erscheinungsbild im eigenen Rechteck 0..width × 0..height (aufrecht, Matrix dreht es auf die Seite).
+    `use` sammelt die Zeichen für die eingebettete Schrift (danach `use.resources(writer)`)."""
+    use = use if use is not None else pdffont.FontUsage()
     ops = ["q"]
     if background:
         ops.append(f"{_rgb_op(background, 'rg')} 0 0 {_num(width)} {_num(height)} re f")
@@ -425,17 +429,17 @@ def freetext_content(text: str, width: float, height: float, size: float, color:
         ops.append(f"{_rgb_op(color, 'RG')} 0.8 w 0.4 0.4 {_num(width - 0.8)} {_num(height - 0.8)} re S")
     ops.append(f"0 0 {_num(width)} {_num(height)} re W n")
     leading = size * 1.2
-    lines = wrap(text, size, max(1.0, width - 2 * TEXT_PADDING))
-    ops.append(f"BT /Helv {_num(size)} Tf {_rgb_op(color, 'rg')} {_num(leading)} TL")
+    lines = pdffont.wrap(text, size, max(1.0, width - 2 * TEXT_PADDING))
+    ops.append(f"BT {use.name()} {_num(size)} Tf {_rgb_op(color, 'rg')} {_num(leading)} TL")
     ops.append(f"{_num(TEXT_PADDING)} {_num(height - TEXT_PADDING - size * 0.93)} Td")
     for i, line in enumerate(lines):
-        ops.append(("T* " if i else "") + f"{pdf_string(line)} Tj")
+        ops.append(("T* " if i else "") + f"{use.encode(line)} Tj")
     ops.append("ET Q")
     return "\n".join(ops)
 
 
 def text_height(text: str, size: float, width: float) -> float:
-    return len(wrap(text, size, max(1.0, width - 2 * TEXT_PADDING))) * size * 1.2 + 2 * TEXT_PADDING
+    return len(pdffont.wrap(text, size, max(1.0, width - 2 * TEXT_PADDING))) * size * 1.2 + 2 * TEXT_PADDING
 
 
 def add_text(data: bytes, index: int, rect: Rect, text: str, size: float = 12.0, color: str | None = None,
@@ -467,8 +471,9 @@ def _add_text(writer, index, rect, text, size, color, border, grow, replace: int
     if not border:
         annot[NameObject("/C")] = ArrayObject()                 # kein Rahmen in Betrachtern, die selbst zeichnen
     annot[NameObject("/Rotate")] = NumberObject(geom.rotate)
-    appearance = _form(writer, freetext_content(text, width, height, size, color, border), [0, 0, width, height],
-                       helvetica_resources(writer), geom.matrix())
+    use = pdffont.FontUsage()
+    content = freetext_content(text, width, height, size, color, border, use=use)
+    appearance = _form(writer, content, [0, 0, width, height], use.resources(writer), geom.matrix())
     if replace is None:
         _attach(writer, index, annot, appearance)
     else:

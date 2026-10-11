@@ -10,7 +10,7 @@ import zlib
 
 from pypdf.generic import DictionaryObject, NameObject, NumberObject, StreamObject
 
-from notex.core import pdfannot as A
+from notex.core import pdfannot as A, pdffont
 from notex.core.diagram import pdf as dpdf
 from notex.core.diagram.model import Diagram
 from notex.core.pdfobjects import DIAGRAM_KEY
@@ -52,8 +52,10 @@ def _annotation(writer, page_index: int, top_left: tuple[float, float], diagram:
     rect = geom.rect_to_pdf((x0, y0, x0 + diagram.width * scale, y0 + diagram.height * scale))
     annot = A._base("/Stamp", rect, "#000000", _summary(diagram))
     annot[NameObject("/Name")] = NameObject("/fckNotesDiagram")
-    appearance = A._form(writer, dpdf.content(diagram), [0, 0, diagram.width, diagram.height],
-                         dpdf.font_resources(writer), geom.matrix())
+    use = pdffont.FontUsage()
+    drawing = dpdf.content(diagram, use)
+    appearance = A._form(writer, drawing, [0, 0, diagram.width, diagram.height], dpdf.font_resources(writer, use),
+                         geom.matrix())
     annot[NameObject("/AP")] = DictionaryObject({NameObject("/N"): appearance})
     annot[NameObject(DIAGRAM_KEY)] = _model_stream(writer, diagram)
     annot[NameObject("/P")] = page.indirect_reference

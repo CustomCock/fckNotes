@@ -63,6 +63,25 @@ Alle nennenswerten Änderungen an fckNotes (bis 1.17.0: Notex). Format angelehnt
   Objektdiagramm, Sequenz- und Use-Case-Vorlage mit Lebenslinien bzw. Systemgrenze. draw.io-Austausch kennt die
   neuen Symbole (auch draw.io-eigene wie umlLifeline, umlFrame, cube, umlDestroy).
 
+- **PDF-Ausbau, Block V0 (Grundlagen):**
+  - Text auf PDF-Seiten und Diagramme nutzen die mitgelieferte **Noto Sans**, eingebettet als Untermenge – überall
+    gleich (Windows, Linux, fremde Programme) und mit Unicode über Westeuropäisch hinaus (Ł, Ş, Ω, Kyrillisch).
+    Formularfelder bleiben bewusst bei Helvetica.
+  - **Prüfung nach dem Schwärzen** sucht jetzt an jedem Ablageort: zusätzlich Erscheinungsbilder, Anhänge (auch
+    Inhalt), Ebenen-Namen, Struktur-Tags/Alt-Texte, benannte Ziele, Seitenbeschriftungen, Skripte sowie alle
+    Objekte, dekomprimierten Streams und Rohbytes (frühere Speicherstände).
+  - **Rückgängig mit Speicherbudget** (Einstellung „Speicher für Rückgängig“, Standard 512 MB): ältere Schritte
+    großer PDFs werden nach `cache/undo` ausgelagert statt den Speicher zu füllen.
+  - **Ausweichordner:** Ist der App-Ordner nicht beschreibbar, liegen Daten in `%APPDATA%\fckNotes` bzw.
+    `$XDG_CONFIG_HOME/fckNotes`; die Statusleiste zeigt das an.
+  - **Linux-AppImage** zusätzlich zum tar.gz (Daten portabel in `fckNotes-Daten` neben der Datei).
+  - Unter der Haube: Plattformschicht für Drucken/Sprachausgabe/Scanner/externes Öffnen (fehlt etwas, wird
+    ausgegraut statt abzustürzen), Hintergrundaufgaben mit Fortschritt und Abbrechen, Netzwerk-Wächter in den
+    Tests, Test-PDFs in `tests/fixtures/pdf/` (kaputt, verschlüsselt, gescannt, über 500 Seiten), jedes erzeugte
+    PDF wird wie mit `qpdf --check` geprüft.
+  - Neue Abhängigkeiten: pypdfium2 5.14.0 (Apache-2.0/BSD-3), fontTools 4.66.1 (MIT), Noto Sans (OFL); Linux-Paket
+    +9,5 MB.
+
 ### Behoben
 - Diagramm-Editor: Senkrecht gezogene Linien wurden leicht schief, weil das freie Ende aufs Raster sprang, der
   Andockpunkt aber nicht darauf lag.

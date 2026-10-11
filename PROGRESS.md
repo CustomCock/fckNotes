@@ -635,6 +635,26 @@ Plan: T1 Objekte bearbeiten + direkt ausfüllen → T2 Felderkennung → T3 Diag
   **Bewusst nicht:** Timing-Diagramm-Verläufe, Kommunikationsdiagramm-Nummerierung, Profile/Metaklassen als eigene
   Formen (mit Rechteck/Klasse + Stereotyp-Text darstellbar).
 
+### Block V: PDF-Ausbau Priorität A (ab 11.10.2026, Besitzer)
+Auftrag: alle PDF-Funktionen, die fckNotes gegenüber Acrobat fehlen (Roadmap `docs/ROADMAP-PDF.md`, Regeln dort und im
+Auftrag: portabel, offline, kein PDF-JavaScript, Originale heilig, Schrift eingebettet, AES-256, Schwärzen deckt
+jeden Ablageort ab). Freigegeben: Linux-Release auf ubuntu-22.04, Tesseract (Größe bei W5), ≈ +25 MB, PDF/X-4 nein,
+PDF/A wie vorgeschlagen, Noto statt Helvetica, Windows-Zertifikatsspeicher später.
+- **V0 – erledigt.** `pdffont.py` (Noto Sans Type0/CIDFontType2-Untermengen über fontTools, `retain_gids`,
+  ToUnicode, deterministischer Tag; `FontUsage` sammelt Zeichen je Schnitt), FreeText-AP und Diagramme umgestellt
+  (Editor malt ebenfalls Noto → gleiche Breiten); **Entscheidung:** Formularfelder bleiben Helvetica (/DA, fremde
+  Viewer zeichnen beim Tippen neu – Untermenge hätte Lücken). `pdfaudit.py` mit Register `LOCATIONS` (14 Orte inkl.
+  PDFium-Flatten für Erscheinungsbilder, Objekt-Walk über alle xref-Einträge, Rohbytes + Flate-Streams für frühere
+  Speicherstände); allgemeine Restsuche nur, wenn kein bestimmter Ort traf; `pdfredact.leftovers` nutzt es.
+  `core/undo.SnapshotStack` (Budget, Auslagern nach `cache/undo`, max. 200 Schritte) statt `MAX_UNDO`.
+  `core/tasks.TaskContext` + `ui/tasks.run_task` (QThread, Fortschritt, Abbrechen). `paths`: Ausweichordner
+  (`fallback_root`, `using_fallback`, `cache_dir`, AppImage → `<App>-Daten` neben der Datei), Statusleisten-Hinweis.
+  `notex/platform/` (printing/speech/scanner/external mit `available()`; `external.is_executable` sperrt Programme).
+  Tests: `pdffixtures.py` + `tests/fixtures/pdf/` (kaputt, AES-256/AES-128/RC4, gescannt; groß zur Laufzeit),
+  `assert_valid_pdf` (pikepdf `check_pdf_syntax`), echtes `qpdf --check` wenn vorhanden (CI Linux), Netzwerk-Wächter
+  (conftest, Socket gesperrt) + AST-Importprüfung. Build: pypdfium2/fontTools/Qt-Druck/Sprachausgabe im Bundle,
+  `tools/make_appdir.py` + appimagetool im Release-Workflow. Größe Linux-tar.gz 104,2 → 113,7 MB.
+
 ## Offen
 
 ### Block C – 1.3.0
@@ -702,9 +722,8 @@ rdap, scanner, logs, pcap. Standardmäßig an: variables, hex, ports, ioc.
 
 ## Nächster Schritt
 
-**PDF-Ausbau (Blöcke V, W, X) geplant:** Roadmap in `docs/ROADMAP-PDF.md` (Analyse, Bibliotheken, Abhängigkeiten,
-Blöcke V0–V11 = Priorität A, W1–W9 = B, X1–X14 = C; U bleibt KI-Assistent). **Wartet auf OK des Besitzers**, vorher
-kein Code. B- und C-Blöcke werden jeweils vor dem Start abgestimmt.
+**PDF-Ausbau (Blöcke V, W, X):** Roadmap `docs/ROADMAP-PDF.md`, vom Besitzer freigegeben („alles wie vorgeschlagen“).
+**V0 erledigt** – nächster Block **V1 (Seiten und Lesezeichen)**. B- und C-Blöcke vor dem Start abstimmen.
 
 **Block T (PDF: Objekte, Felderkennung, Diagramme, draw.io) abgeschlossen** auf dem Arbeitsbranch – wartet auf
 Merge/Release durch den Besitzer (Vorschlag 1.18.0). Offen beim Besitzer: Ausprobieren mit echten Arbeitsblättern

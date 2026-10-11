@@ -167,49 +167,8 @@ def redact_pages(data: bytes, images: dict[int, PageImage], options: RedactOptio
 
 
 def leftovers(data: bytes, needles: list[str]) -> list[str]:
-    """Wo stehen die Wörter noch? Durchsucht Seitentext, Anmerkungen, Formularwerte, Lesezeichen und Metadaten.
-    Liefert lesbare Fundstellen („„Meier“ auf Seite 3“); leer = nichts gefunden."""
-    needles = [n.strip() for n in needles if n and n.strip()]
-    if not needles:
-        return []
-    reader = open_reader(data)
-    lowered = [(n, n.casefold()) for n in dict.fromkeys(needles)]
-    hits: list[str] = []
-
-    def check(text: str, where: str) -> None:
-        text = (text or "").casefold()
-        for original, needle in lowered:
-            if needle in text:
-                hits.append(f"„{original}“ {where}")
-
-    for index, page in enumerate(reader.pages):
-        try:
-            check(page.extract_text() or "", f"auf Seite {index + 1}")
-        except Exception:                                # noqa: BLE001 – kaputte Inhalte nicht als „sauber“ werten
-            hits.append(f"Seite {index + 1} ließ sich nicht prüfen")
-        for ref in page.get("/Annots", None) or []:
-            try:
-                annot = ref.get_object()
-                check(str(annot.get("/Contents", "")) + " " + str(annot.get("/V", "")),
-                      f"in einer Anmerkung/einem Feld auf Seite {index + 1}")
-            except Exception:                            # noqa: BLE001
-                continue
-    try:
-        def walk(items):
-            for item in items:
-                if isinstance(item, list):
-                    walk(item)
-                else:
-                    check(str(getattr(item, "title", "") or ""), "in den Lesezeichen")
-        walk(reader.outline)
-    except Exception:                                    # noqa: BLE001
-        pass
-    meta = reader.metadata or {}
-    check(" ".join(str(v) for v in meta.values()), "in den Metadaten")
-    xmp = reader.trailer["/Root"].get("/Metadata")
-    if xmp is not None:
-        try:
-            check(xmp.get_object().get_data().decode("utf-8", "replace"), "in den XMP-Metadaten")
-        except Exception:                                # noqa: BLE001
-            pass
-    return list(dict.fromkeys(hits))
+    """Wo stehen die Wörter noch? Prüft jeden Ablageort aus `pdfaudit.LOCATIONS` (Seitentext, Erscheinungsbilder,
+    Anmerkungen, Felder, Lesezeichen, Anhänge, Ebenen, Metadaten, Struktur-Tags, Skripte) und zuletzt alle Objekte,
+    Streams und Rohbytes (auch frühere Speicherstände). Leer = nichts gefunden."""
+    from notex.core import pdfaudit
+    return pdfaudit.report(data, needles)

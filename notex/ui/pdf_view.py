@@ -40,7 +40,6 @@ TOOLS = [
     ("redact", "redact", "Schwärzen: Bereiche aufziehen (endgültig erst mit „Schwärzen anwenden“)"),
 ]
 CACHE_IMAGES = 24
-MAX_UNDO = 40
 ZOOM_STEPS = [0.25, 0.33, 0.5, 0.67, 0.75, 0.9, 1.0, 1.1, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0, 4.0, 6.0, 8.0]
 IN_MEMORY_LIMIT = 256 * 1024 * 1024
 PAGE_WHITE = "#ffffff"      # PDF-Seiten sind immer weiß gestaltet – unabhängig vom Blatt-Theme
@@ -507,6 +506,7 @@ class PdfPage(ViewerPage):
     quote_requested = Signal(str)          # fertiges Markdown-Zitat
     backup_to_trash = True                 # Einstellung: vor dem ersten Überschreiben Original in den Papierkorb
     highlight_fields = True                # Einstellung: Formularfelder in der Ansicht hinterlegen
+    undo_budget_mb = 512                   # Einstellung: Speicher für Rückgängig-Schritte (Rest → cache/)
 
     def __init__(self, path: Path) -> None:
         super().__init__(path)
@@ -515,8 +515,13 @@ class PdfPage(ViewerPage):
         self.error = ""
         self.data: bytes | None = None      # aktueller Stand (bearbeitbar), None = zu groß/nicht lesbar
         self.encrypted = False
-        self._undo: list[tuple[bytes, int]] = []
-        self._redo: list[tuple[bytes, int]] = []
+        from notex.core.undo import SnapshotStack
+        from notex.paths import cache_dir
+        try:
+            spill = cache_dir() / "undo"
+        except OSError:
+            spill = None
+        self.history = SnapshotStack(self.undo_budget_mb * 1024 * 1024, spill_dir=spill)
         self._dirty = False
         self._backed_up = False
         self.redacted = False               # nach Schwärzen: nur „Speichern unter“ (Original bleibt unangetastet)
@@ -768,9 +773,7 @@ class PdfPage(ViewerPage):
         """Neuen Stand übernehmen (ein Rückgängig-Schritt) und anzeigen."""
         if self.data is None:
             return
-        self._undo.append((self.data, self.canvas.current_page))
-        del self._undo[:-MAX_UNDO]
-        self._redo.clear()
+        self.history.push(self.data, self.canvas.current_page)
         self._show_data(new_data, self.canvas.current_page if page is None else page)
         self._set_dirty(True)
 
@@ -790,18 +793,16 @@ class PdfPage(ViewerPage):
         self._results_changed() if self.search_field.text() else None
 
     def undo(self) -> None:
-        if not self._undo or self.data is None:
+        if not self.history.can_undo or self.data is None:
             return
-        data, page = self._undo.pop()
-        self._redo.append((self.data, self.canvas.current_page))
+        data, page = self.history.undo(self.data, self.canvas.current_page)
         self._show_data(data, page)
         self._set_dirty(True)
 
     def redo(self) -> None:
-        if not self._redo or self.data is None:
+        if not self.history.can_redo or self.data is None:
             return
-        data, page = self._redo.pop()
-        self._undo.append((self.data, self.canvas.current_page))
+        data, page = self.history.redo(self.data, self.canvas.current_page)
         self._show_data(data, page)
         self._set_dirty(True)
 
@@ -1773,8 +1774,8 @@ class PdfPage(ViewerPage):
     def _update_edit_actions(self) -> None:
         if not hasattr(self, "undo_button"):
             return
-        self.undo_button.setEnabled(bool(self._undo))
-        self.redo_button.setEnabled(bool(self._redo))
+        self.undo_button.setEnabled(self.history.can_undo)
+        self.redo_button.setEnabled(self.history.can_redo)
         self.save_button.setEnabled(self._dirty)
 
     def _strip_menu(self, pos) -> None:
@@ -1919,8 +1920,7 @@ class PdfPage(ViewerPage):
             self.notice.emit(f"„{self.path.name}“ wurde extern geändert – deine ungespeicherten Änderungen bleiben")
             return
         page = self.canvas.current_page
-        self._undo.clear()
-        self._redo.clear()
+        self.history.clear()
         self._load()
         self.canvas.go_to(page)
         self._update_edit_actions()
@@ -1929,4 +1929,5 @@ class PdfPage(ViewerPage):
         self.canvas.viewport().update()
 
     def shutdown(self) -> None:
+        self.history.clear()                            # ausgelagerte Rückgängig-Schritte löschen
         self.doc.close()

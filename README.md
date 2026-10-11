@@ -12,7 +12,9 @@ keine Installation: `data/` daneben ist dein Notizbaum, `config.json` merkt sich
 2. Entpacken, z. B. nach `C:\Apps\fckNotes` oder auf einen USB-Stick.
 3. `fckNotes.exe` starten. Beim ersten Start entstehen `data/` und `config.json` daneben.
 
-Mehr ist nicht nötig. SmartScreen warnt beim ersten Start, weil die EXE nicht signiert ist:
+Mehr ist nicht nötig. Liegt der Ordner an einer Stelle ohne Schreibrecht (z. B. unter „Programme“), legt fckNotes
+seine Daten in `%APPDATA%\fckNotes` ab und zeigt das in der Statusleiste („Daten im Ausweichordner“).
+SmartScreen warnt beim ersten Start, weil die EXE nicht signiert ist:
 „Weitere Informationen“ → „Trotzdem ausführen“. Die ZIP bitte komplett entpacken, nicht die
 `fckNotes.exe` direkt aus dem ZIP-Fenster starten: Windows legt sie dann in einen Temp-Ordner, und
 Notizen würden dort landen (fckNotes warnt in dem Fall beim Start).
@@ -76,7 +78,14 @@ tar -xzf fckNotes-v1.4.0-linux-x86_64.tar.gz -C ~/Apps
 ~/Apps/fckNotes/fckNotes
 ```
 
+**Oder als AppImage** (eine Datei, ohne Entpacken): `fckNotes-vX.Y.Z-linux-x86_64.AppImage` laden,
+`chmod +x` und starten. Die Daten legt fckNotes portabel in den Ordner `fckNotes-Daten` neben der AppImage-Datei.
+AppImages brauchen FUSE; fehlt es, startet `./fckNotes-…AppImage --appimage-extract-and-run`.
+
 - Portabel wie unter Windows: `data/`, `config.json`, `history/`, `templates/` liegen neben der Datei `fckNotes`.
+- Ist der App-Ordner nicht beschreibbar (z. B. schreibgeschützter Stick), weicht fckNotes auf
+  `$XDG_CONFIG_HOME/fckNotes` (Windows: `%APPDATA%\fckNotes`) aus und zeigt „Daten im Ausweichordner“ in der
+  Statusleiste.
 - Qt braucht auf manchen Systemen noch `libxcb-cursor0` (Ubuntu/Debian: `sudo apt install libxcb-cursor0`).
 - Rechtschreibung nutzt Enchant/Hunspell des Systems, falls installiert (`libenchant-2-2`), sonst das
   eingebaute spylls mit den mitgelieferten Wörterbüchern.
@@ -478,7 +487,8 @@ PDFs öffnen als eigener Tab – zum Lesen und, mit dem **Stift** rechts oben, z
 
 ### PDF bearbeiten
 
-Der Stift schaltet eine zweite Leiste und die **Seitenleiste** (Miniaturen) ein. Alles passiert erst im Speicher:
+Der Stift schaltet eine zweite Leiste und die **Seitenleiste** (Miniaturen) ein. Alles passiert erst im Speicher
+(bei großen PDFs werden ältere Rückgängig-Schritte über ein einstellbares Speicherbudget nach `cache/` ausgelagert):
 `Ctrl+Z`/`Ctrl+Y` machen jeden Schritt rückgängig, der Tab zeigt „●“, und erst `Ctrl+S` schreibt die Datei
 (`Ctrl+Shift+Alt+S` = Speichern unter). Vor dem ersten Überschreiben legt fckNotes das alte PDF in den Papierkorb
 (abschaltbar unter Einstellungen › Editor › PDF bearbeiten) – der Versionsverlauf gilt nur für Textdateien.
@@ -500,7 +510,9 @@ Der Stift schaltet eine zweite Leiste und die **Seitenleiste** (Miniaturen) ein.
   und im Rechtsklick-Menü wählen.
 - **Notiz**: auf die Seite klicken, Text eingeben – erscheint als Notiz-Symbol, der Text beim Anklicken.
 - **Text auf der Seite**: Bereich aufziehen (oder klicken = 220 pt breit), Text, Größe, Farbe und Rahmen wählen;
-  bricht automatisch um. Schrift ist Helvetica (Westeuropäisch; Emoji o. Ä. werden zu „?“).
+  bricht automatisch um. Schrift ist die mitgelieferte **Noto Sans**, eingebettet als Untermenge – sieht in jedem
+  Programm und auf Windows wie Linux gleich aus und kann Latein, Griechisch und Kyrillisch (Emoji werden zu „?“).
+  Formularfelder nutzen weiter Helvetica, damit fremde Programme beim Tippen alle Zeichen haben.
 - **Rechtsklick auf eine Anmerkung**: Text/Kommentar bearbeiten oder löschen – auch bei Anmerkungen aus anderen
   Programmen.
 - Gespeichert werden normale PDF-Anmerkungen mit eigenem Erscheinungsbild: Acrobat, Browser und Vorschau-Programme
@@ -597,8 +609,10 @@ damit das Diagramm genau in den vorgesehenen Platz passt (außerhalb der Seite g
 2. **„Schwärzen anwenden“**: Die betroffenen Seiten werden als Bild (150/200/300 dpi) mit eingemalten Balken neu
    erzeugt – Text, Schriften, Anmerkungen und Formularwerte dieser Seiten verschwinden aus der Datei. Optional (an):
    Metadaten, Anhänge und Skripte entfernen; optional Lesezeichen entfernen.
-3. Danach prüft fckNotes, ob die geschwärzten Wörter noch irgendwo stehen (andere Seiten, Anmerkungen, Lesezeichen,
-   Metadaten) und nennt die Stellen.
+3. Danach prüft fckNotes, ob die geschwärzten Wörter noch irgendwo stehen – an **jedem** Ort, an dem ein PDF Text
+   ablegen kann: Seitentext, Erscheinungsbilder, Anmerkungen, Formularfelder, Lesezeichen, Anhänge (auch deren
+   Inhalt), Ebenen-Namen, Metadaten/XMP, Alt-Texte, Skripte und zuletzt alle Objekte, Streams und Rohbytes (auch
+   frühere Speicherstände). Es nennt die Stellen.
 4. Gespeichert wird **unter neuem Namen** (`…_geschwärzt.pdf`), das Original bleibt unberührt.
 
 Auf den geschwärzten Seiten ist danach auch der übrige Text nicht mehr markier- oder durchsuchbar (Bild), und die
