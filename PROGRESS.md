@@ -702,6 +702,10 @@ rdap, scanner, logs, pcap. Standardmäßig an: variables, hex, ports, ioc.
 
 ## Nächster Schritt
 
+**PDF-Ausbau (Blöcke V, W, X) geplant:** Roadmap in `docs/ROADMAP-PDF.md` (Analyse, Bibliotheken, Abhängigkeiten,
+Blöcke V0–V11 = Priorität A, W1–W9 = B, X1–X14 = C; U bleibt KI-Assistent). **Wartet auf OK des Besitzers**, vorher
+kein Code. B- und C-Blöcke werden jeweils vor dem Start abgestimmt.
+
 **Block T (PDF: Objekte, Felderkennung, Diagramme, draw.io) abgeschlossen** auf dem Arbeitsbranch – wartet auf
 Merge/Release durch den Besitzer (Vorschlag 1.18.0). Offen beim Besitzer: Ausprobieren mit echten Arbeitsblättern
 (Felderkennung) und eigenen draw.io-Dateien.
