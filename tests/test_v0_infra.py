@@ -152,7 +152,9 @@ def test_make_appdir_layout(tmp_path):
     (source / "_internal").mkdir(parents=True)
     (source / EXE_NAME).write_text("#!/bin/sh\n")
     target = module.build(source, tmp_path / "AppDir")
-    assert (target / "AppRun").stat().st_mode & 0o111
+    if os.name != "nt":                                     # Ausführrecht gibt es nur unter Unix (AppImage = Linux)
+        assert (target / "AppRun").stat().st_mode & 0o111
+    assert (target / "AppRun").read_text(encoding="utf-8").startswith("#!/bin/sh")
     assert (target / "usr" / "lib" / EXE_NAME / EXE_NAME).exists()
     desktop = (target / f"{EXE_NAME}.desktop").read_text(encoding="utf-8")
     assert f"Exec={EXE_NAME}" in desktop and f"Icon={EXE_NAME}" in desktop
