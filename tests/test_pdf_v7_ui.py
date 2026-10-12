@@ -223,7 +223,7 @@ def test_crop_by_dragging_frame(tab, monkeypatch):
     assert not tab.crop_content_image(0, 0)
     assert tab.canvas.tool == "imagecrop" and tab.tool_buttons["pickimage"].isChecked()
     viewport = tab.canvas.viewport()
-    start, end = _widget_pos(tab, 0, 60, 130), _widget_pos(tab, 0, 172, 260)
+    start, end = _widget_pos(tab, 0, 60, 130), _widget_pos(tab, 0, 170, 260)   # mitten im 20. Pixel (167–172)
     QTest.mousePress(viewport, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, start)
     QTest.mouseMove(viewport, end)
     QTest.mouseRelease(viewport, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, end)
