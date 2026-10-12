@@ -3694,6 +3694,19 @@ class MainWindow(QMainWindow):
              "pdf stempel genehmigt entwurf vertraulich erledigt geprüft stamp"),
             ("pdf:stamp_custom", "PDF: Eigenen Stempel anlegen …", lambda: self.pdf_command("create_custom_stamp"), "",
              "pdf stempel eigener text bild logo"),
+            ("pdf:comments", "PDF: Kommentare (Liste) ein/aus",
+             lambda: self.pdf_command("set_comments_visible", None, edit=False), "Ctrl+Shift+M",
+             "pdf kommentare liste anmerkungen antworten status review"),
+            ("pdf:comments_md", "PDF: Kommentare als Markdown zusammenfassen …",
+             lambda: self.pdf_command("export_comments", "md", edit=False), "", "pdf kommentare zusammenfassung markdown"),
+            ("pdf:comments_csv", "PDF: Kommentare als CSV exportieren …",
+             lambda: self.pdf_command("export_comments", "csv", edit=False), "", "pdf kommentare csv excel tabelle"),
+            ("pdf:comments_pdf", "PDF: Kommentar-Zusammenfassung als PDF …",
+             lambda: self.pdf_command("export_comments", "pdf", edit=False), "", "pdf kommentare zusammenfassung pdf"),
+            ("pdf:xfdf_export", "PDF: Kommentare als XFDF exportieren …",
+             lambda: self.pdf_command("export_comments", "xfdf", edit=False), "", "pdf xfdf kommentare acrobat austausch"),
+            ("pdf:xfdf_import", "PDF: Kommentare aus XFDF importieren …", lambda: self.pdf_command("import_xfdf"), "",
+             "pdf xfdf kommentare importieren acrobat"),
         ]
         for key, title, callback, shortcut, keywords in pdf_cmds:
             self.registry.add(key, title, callback, category="PDF", shortcut=shortcut, keywords=keywords)

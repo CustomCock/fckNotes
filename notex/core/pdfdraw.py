@@ -387,6 +387,7 @@ def erase_at(data: bytes, page_index: int, points: list[Point], tolerance: float
     geom = A.geometry_of(page)
     annots = A._annots(page)
     removed = 0
+    gone = []
     for position in range(len(annots) - 1, -1, -1):
         annot = annots[position].get_object()
         if annot.get("/Subtype") != "/Ink":
@@ -403,15 +404,12 @@ def erase_at(data: bytes, page_index: int, points: list[Point], tolerance: float
         if len(keep) == len(strokes):
             continue
         if not keep:
-            popup = annot.get("/Popup")
-            del annots[position]
-            if popup is not None:
-                for i in range(len(annots) - 1, -1, -1):
-                    if annots[i].get_object() is popup.get_object():
-                        del annots[i]
+            gone.append(annot)                            # erst nach der Schleife (Thread kann davor liegen)
             continue
         annot[NameObject("/InkList")] = ArrayObject([A._floats([c for p in s for c in p]) for s in keep])
         redraw(writer, annot)
+    for annot in gone:
+        A.remove_with_thread(annots, annot)
     if not removed:
         return data, 0
     if not annots:

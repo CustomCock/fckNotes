@@ -62,3 +62,15 @@ Windows und Linux durchgehen.
    PNG mit Transparenz anlegen und setzen. Im fremden Programm: Text in Noto Sans, Bild mit Transparenz.
 6. Auf einer gedrehten Seite einen Stempel setzen: steht aufrecht.
 7. Fenster auf etwa 1000 px Breite verkleinern: Die Bearbeiten-Leiste bricht in zwei Zeilen um, nichts ist abgeschnitten.
+
+## V4 – Kommentare, Antworten, Status, XFDF
+1. Ein PDF mit Kommentaren aus Acrobat öffnen: Die Liste zeigt alle Kommentare mit Antworten und Status wie in
+   Acrobat; Klick springt zur Stelle.
+2. Auf einen Kommentar antworten und den Status „angenommen“ setzen, speichern. In Acrobat: Antwort im Faden,
+   Status-Häkchen; die Antwort erscheint nicht als eigenes Symbol auf der Seite.
+3. In Acrobat „Kommentare exportieren“ (XFDF), in fckNotes in eine saubere Kopie importieren: alle Kommentare da,
+   Antworten verbunden. Erneut importieren: keine Doppelten.
+4. In fckNotes als XFDF exportieren und in Acrobat importieren: Kommentare erscheinen an derselben Stelle.
+5. Zusammenfassung als CSV in Excel/LibreOffice öffnen: Umlaute korrekt, Spalten getrennt, ein Kommentar
+   „=1+1“ steht als Text da.
+6. Zusammenfassung als PDF: je Seite die Kommentare mit markiertem Text.

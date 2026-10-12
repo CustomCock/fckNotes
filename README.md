@@ -530,6 +530,11 @@ Der Stift schaltet eine zweite Leiste und die **Seitenleiste** (Miniaturen) ein.
   `stamps/`), optional mit Datum und Namen (Einstellungen › Editor › PDF bearbeiten › „Name für Stempel“).
   Klicken setzt den Stempel in Originalgröße, Aufziehen passt ihn ein.
 - Die Bearbeiten-Leiste bricht bei schmalem Fenster gruppenweise in eine zweite Zeile um.
+- **Kommentare** (Sprechblase oben im PDF-Tab, `Ctrl+Shift+M`): alle Kommentare als Liste mit Antworten – suchen
+  (auch im markierten Text), filtern nach Art, Autor, Status und Seite, sortieren nach Seite, Datum, Autor, Art oder
+  Status; ein Klick springt zur Stelle. **Antworten** (`R`), **Status** (offen, angenommen, abgelehnt, erledigt) und
+  Löschen samt Antworten. **Zusammenfassung** als Markdown, CSV (für Excel) oder PDF mit markiertem Text;
+  **XFDF** exportieren und importieren (Austausch mit Acrobat; vorhandene Kommentare werden nicht verdoppelt).
 
 **Kommentieren** – Werkzeuge in der Bearbeiten-Leiste (`Esc` = zurück zu „Auswählen“), Farbe über die Palette:
 
@@ -1369,6 +1374,10 @@ Alternativ per Docker: `docker run -d -p 8081:8010 erikvl87/languagetool` (dann 
 | Enter / Rücktaste / Esc (Polygon zeichnen) | Polygon beenden / letzten Punkt entfernen / Punkte verwerfen |
 | Palette › PDF: Stil für Stift und Formen | Farbe, Stärke, Füllung, Deckkraft, Linienstil (auch fürs ausgewählte Objekt) |
 | Palette › PDF: Werkzeug Stempel / Eigenen Stempel anlegen | Stempel setzen (Klick = Originalgröße) bzw. aus Text/Bild anlegen |
+| Ctrl+Shift+M (im PDF-Tab) / Palette › PDF: Kommentare | Kommentar-Seitenleiste ein/aus |
+| R / Entf (Kommentarliste) | Antworten / Kommentar samt Antworten löschen |
+| Palette › PDF: Kommentare als Markdown / CSV / PDF | Zusammenfassung mit Seite, Autor, Status, markiertem Text |
+| Palette › PDF: Kommentare als XFDF exportieren / importieren | Austausch mit Acrobat und anderen Programmen |
 | Palette › PDF: Auswahl markieren / unterstreichen / durchstreichen | Anmerkung über dem markierten PDF-Text |
 | Palette › PDF: Werkzeug Notiz / Text | Notiz bzw. Text auf der Seite platzieren (Esc beendet das Werkzeug) |
 | Palette › PDF: Formular ausfüllen | Feldliste rechts, „Übernehmen“ schreibt alle Werte (Ctrl+Z-fähig) |

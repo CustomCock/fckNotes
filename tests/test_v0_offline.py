@@ -19,7 +19,8 @@ ROOT = Path(__file__).resolve().parent.parent / "notex"
 NETWORK_MODULES = {"socket", "ssl", "urllib", "http", "requests", "aiohttp", "httpx", "ftplib", "smtplib",
                    "telnetlib", "xmlrpc", "websocket", "websockets"}
 PURE_STRING_MODULES = {"urllib.parse"}          # nur Zeichenketten (quote/unquote), kein Netzwerk
-OFFLINE_FILES = sorted([*ROOT.glob("core/pdf*.py"), *ROOT.glob("core/diagram/*.py"), *ROOT.glob("platform/*.py"),
+OFFLINE_FILES = sorted([*ROOT.glob("core/pdf*.py"), ROOT / "core/xfdf.py", *ROOT.glob("core/diagram/*.py"),
+                        *ROOT.glob("platform/*.py"),
                         *ROOT.glob("ui/pdf*.py"), *ROOT.glob("ui/diagram*.py"), ROOT / "core/undo.py",
                         ROOT / "core/tasks.py", ROOT / "ui/tasks.py"])
 

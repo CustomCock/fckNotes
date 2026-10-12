@@ -110,8 +110,19 @@ Alle nennenswerten Änderungen an fckNotes (bis 1.17.0: Notex). Format angelehnt
   - **Stempel**: Genehmigt, Entwurf, Vertraulich, Erledigt, Geprüft und eigene aus Text oder Bild (portabel in
     `stamps/`), optional mit Datum und Namen; Einstellung „Name für Stempel“.
   - Zeichnungen und Formen lassen sich kommentieren.
+- **PDF-Ausbau, Block V4 (Kommentieren II: Liste, Antworten, Status, Export, XFDF):**
+  - **Kommentar-Seitenleiste** (`Ctrl+Shift+M`): Threads mit Antworten, Suche (auch im markierten Text), Filter nach
+    Art, Autor, Status, Seite; Sortierung nach Seite, Datum, Autor, Art, Status; Klick springt zur Stelle.
+  - **Antworten** (`/IRT`, `/RT /R`) und **Status** (offen/angenommen/abgelehnt/erledigt/abgebrochen über
+    `/State` + `/StateModel /Review`, wie Acrobat); Löschen entfernt den ganzen Faden.
+  - **Zusammenfassung** als Markdown, CSV (mit BOM für Excel, Formel-Zellen entschärft) und PDF – je Seite mit
+    markiertem Text und Antworten.
+  - **XFDF** exportieren und importieren: alle gängigen Kommentararten, Antworten und Status bleiben verbunden;
+    gleiche Kommentare werden nicht verdoppelt; sicheres Parsen (keine ENTITY/DTD, Größen- und Zahlgrenzen).
 
 ### Behoben
+- PDF: Beim Löschen einer Anmerkung blieben Antworten anderer Programme (`/IRT`) als verwaiste Einträge zurück – jetzt
+  geht der ganze Faden mit (auch beim Radierer).
 - PDF bearbeiten: Die Bearbeiten-Leiste erzwang ein sehr breites Fenster (mit V2 1581 px, mit V3 1766 px) – sie
   bricht jetzt gruppenweise in eine zweite Zeile um.
 - PDF: Ungültige Farbangaben wurden stillschweigend zu Schwarz – Stempel und Formen lehnen sie jetzt ab.

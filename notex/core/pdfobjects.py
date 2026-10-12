@@ -80,7 +80,7 @@ def list_objects(data: bytes, page_index: int) -> list[PdfObject]:
         try:
             annot = ref.get_object()
             subtype = str(annot.get("/Subtype", ""))
-            if subtype == "/Popup" or "/Rect" not in annot:
+            if subtype == "/Popup" or "/Rect" not in annot or "/IRT" in annot:   # Antworten gehören zum Thread
                 continue
             x0, y0, x1, y1 = (float(v) for v in annot["/Rect"])
         except Exception:                                  # noqa: BLE001 – kaputte Einträge überspringen

@@ -684,6 +684,16 @@ PDF/A wie vorgeschlagen, Noto statt Helvetica, Windows-Zertifikatsspeicher spät
   (DrawStyleDialog, CustomStampDialog), Formen- und Stempel-Menü, Einstellung `pdf_author`, 11 Palette-Einträge.
   **Fix nebenbei:** Bearbeiten-Leiste erzwang 1581 px (V2) bzw. 1766 px Fensterbreite → `widgets.FlowLayout`,
   Gruppen brechen um (Mindestbreite jetzt ~420 px), Regressionstest. Doku `docs/pdf/zeichnen-stempel.md`.
+- **V4 – erledigt.** Neu `pdfcomments.py` (Threads über `/IRT` mit Kreis-Schutz, Antworten `/RT /R` mit NoView,
+  Status als versteckter `/State`-Eintrag – jüngster gilt, markierter Text über PDFium je QuadPoint, `filter_comments`,
+  Markdown/CSV-Zusammenfassung mit Schutz vor CSV-Formeln) und `xfdf.py` (Export aller Kommentararten inkl.
+  `coords`, `inklist`, `vertices`, `start/end/head/tail`, `fringe`, cloudy; Import mit eigenem Erscheinungsbild je
+  Art, Zusammenführen über `/NM`, Antworten/Status nach ihren Kommentaren, Stempel über `pdfstamps`; Parsen wie
+  draw.io: kein DOCTYPE/ENTITY, 20 MB, 20 000 Kommentare, Zahlen endlich und begrenzt). **Fix:** `delete_annotation`
+  und der Radierer entfernen den ganzen Faden (`remove_with_thread`). Antworten/Status erscheinen nicht mehr als
+  eigene Objekte. UI `ui/pdf_comments.py` (zweizeilige Liste, Filter, Kontextmenü, `R`/`Entf`), Sprechblase +
+  `Ctrl+Shift+M`, Export MD/CSV(BOM)/PDF (über `export_service`)/XFDF, 6 Palette-Einträge. **Entscheidung:** XFDF
+  ohne Formularfelder (kommt mit V5) und ohne Datei-Anhänge/Klänge. Doku `docs/pdf/kommentare.md`.
 
 ## Offen
 
@@ -753,7 +763,7 @@ rdap, scanner, logs, pcap. Standardmäßig an: variables, hex, ports, ioc.
 ## Nächster Schritt
 
 **PDF-Ausbau (Blöcke V, W, X):** Roadmap `docs/ROADMAP-PDF.md`, vom Besitzer freigegeben („alles wie vorgeschlagen“).
-**V0–V3 erledigt** – nächster Block **V4 (Kommentieren II: Liste, Antworten, Status, Export, XFDF)**. B- und C-Blöcke vor dem Start abstimmen.
+**V0–V4 erledigt** – nächster Block **V5 (Formulare)**. B- und C-Blöcke vor dem Start abstimmen.
 
 **Block T (PDF: Objekte, Felderkennung, Diagramme, draw.io) abgeschlossen** auf dem Arbeitsbranch – wartet auf
 Merge/Release durch den Besitzer (Vorschlag 1.18.0). Offen beim Besitzer: Ausprobieren mit echten Arbeitsblättern

@@ -22,7 +22,8 @@ def win(tmp_path, monkeypatch):
 # ---- Netzwerk-Wächter (Regel „offline“) ------------------------------------------------------------------------
 # PDF-, Diagramm- und Plattform-Tests dürfen keine Verbindung öffnen. Jeder Versuch lässt den Test scheitern –
 # auch dann, wenn eine Bibliothek das „heimlich“ täte.
-OFFLINE_MODULES = ("test_pdf", "test_diagram", "test_drawio", "test_v0", "test_pdfaudit", "test_pdffont")
+OFFLINE_MODULES = ("test_pdf", "test_diagram", "test_drawio", "test_v0", "test_pdfaudit", "test_pdffont",
+                   "test_xfdf")
 
 
 class NetworkUsed(AssertionError):

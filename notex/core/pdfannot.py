@@ -531,7 +531,7 @@ def list_annotations(data: bytes, index: int) -> list[AnnotInfo]:
         try:
             annot = ref.get_object()
             subtype = str(annot.get("/Subtype", ""))
-            if subtype in SKIP_SUBTYPES or "/Rect" not in annot:
+            if subtype in SKIP_SUBTYPES or "/Rect" not in annot or "/IRT" in annot:   # Antworten: im Thread
                 continue
             x0, y0, x1, y1 = (float(v) for v in annot["/Rect"])
         except Exception:                                 # noqa: BLE001 – kaputte Einträge überspringen
@@ -559,16 +559,31 @@ def delete_annotation(data: bytes, index: int, position: int) -> bytes:
     if not 0 <= position < len(annots):
         raise PdfEditError("Diese Anmerkung gibt es nicht mehr")
     target = annots[position].get_object()
-    popup = target.get("/Popup")
-    del annots[position]
-    if popup is not None:
-        popup_obj = popup.get_object()
-        for i in range(len(annots) - 1, -1, -1):
-            if annots[i].get_object() is popup_obj:
-                del annots[i]
+    remove_with_thread(annots, target)
     if not annots:
         del page["/Annots"]
     return finish(writer)
+
+
+def remove_with_thread(annots, target) -> None:
+    """Anmerkung samt Popup, Antworten und Status-Einträgen (/IRT, auch verschachtelt) aus /Annots nehmen."""
+    doomed = [target]
+    i = 0
+    while i < len(doomed):
+        current = doomed[i]
+        popup = current.get("/Popup")
+        if popup is not None:
+            doomed.append(popup.get_object())
+        for ref in annots:
+            obj = ref.get_object()
+            irt = obj.get("/IRT")
+            if irt is not None and irt.get_object() is current and all(obj is not d for d in doomed):
+                doomed.append(obj)
+        i += 1
+    for j in range(len(annots) - 1, -1, -1):
+        obj = annots[j].get_object()
+        if any(obj is d for d in doomed):
+            del annots[j]
 
 
 def freetext_style(annot) -> tuple[float, str, bool]:

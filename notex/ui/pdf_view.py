@@ -21,8 +21,8 @@ from PySide6.QtWidgets import (QAbstractScrollArea, QApplication, QComboBox, QDi
                                QLabel, QLineEdit, QMenu, QPushButton, QSplitter, QTreeView, QVBoxLayout, QWidget)
 
 from notex import APP_NAME
-from notex.core import (pdfannot, pdfattach, pdfdetect, pdfdiagram, pdfdoc, pdfdraw, pdfforms, pdflinks, pdfobjects,
-                        pdfoutline, pdfpages, pdfredact, pdfstamps)
+from notex.core import (pdfannot, pdfattach, pdfcomments, pdfdetect, pdfdiagram, pdfdoc, pdfdraw, pdfforms, pdflinks,
+                        pdfobjects, pdfoutline, pdfpages, pdfredact, pdfstamps, xfdf)
 from notex.core.pdfdoc import PageLayout
 from notex.theme.theme import style_menu
 from notex.theme.tokens import COLORS, SPACING
@@ -733,6 +733,19 @@ class PdfPage(ViewerPage):
         next_hit.clicked.connect(lambda: self.next_result(1))
         self.hits_label = QLabel()
         self.hits_label.setObjectName("DataInfo")
+        self.comments_button = IconButton("message-square-text", "Kommentare: Liste, Antworten, Status, Export  "
+                                          "Ctrl+Shift+M")
+        self.comments_button.setCheckable(True)
+        self.comments_button.toggled.connect(self.set_comments_visible)
+        from notex.ui.pdf_comments import CommentsPanel
+        self.comments_panel = CommentsPanel()
+        self.comments_panel.jump.connect(self.show_comment)
+        self.comments_panel.reply_requested.connect(lambda page, index: self.reply_comment(page, index))
+        self.comments_panel.status_requested.connect(lambda page, index, st: self.set_comment_status(page, index, st))
+        self.comments_panel.delete_requested.connect(lambda page, index: self.delete_comment(page, index))
+        self.comments_panel.export_requested.connect(lambda kind: self.export_comments(kind))
+        self.comments_panel.import_requested.connect(lambda: self.import_xfdf())
+        self.comments_panel.setVisible(False)
         self.attach_button = IconButton("paperclip", "Anhänge: speichern, öffnen, hinzufügen, entfernen")
         self.attach_button.clicked.connect(lambda: self.show_attachments())
         self.quote_button = IconButton("quote", "Markierten Text als Zitat in die Notiz im anderen Teil einfügen")
@@ -768,7 +781,8 @@ class PdfPage(ViewerPage):
             bar.addWidget(widget)
         bar.addSpacing(SPACING.md)
         bar.addWidget(self.search_field, 1)
-        for widget in (prev_hit, next_hit, self.hits_label, self.attach_button, self.quote_button, self.edit_button):
+        for widget in (prev_hit, next_hit, self.hits_label, self.comments_button, self.attach_button, self.quote_button,
+                       self.edit_button):
             bar.addWidget(widget)
         self.splitter = QSplitter(Qt.Orientation.Horizontal)
         self.splitter.setObjectName("PreviewSplitter")
@@ -777,9 +791,10 @@ class PdfPage(ViewerPage):
         self.splitter.addWidget(self.outline_editor)
         self.splitter.addWidget(self.canvas)
         self.splitter.addWidget(self.form_panel)
+        self.splitter.addWidget(self.comments_panel)
         self.splitter.setStretchFactor(3, 1)
         self.splitter.setCollapsible(0, False)
-        self.splitter.setSizes([self.strip.width(), 220, 240, 900, 280])
+        self.splitter.setSizes([self.strip.width(), 220, 240, 900, 280, 320])
         self.outline.setVisible(False)
         frame = QFrame()
         frame.setObjectName("DataFrame")
@@ -795,7 +810,8 @@ class PdfPage(ViewerPage):
         for sequence, slot in (("Ctrl+G", self._focus_page), ("F3", lambda: self.next_result(1)),
                                ("Shift+F3", lambda: self.next_result(-1)), ("Ctrl+Z", self.undo),
                                ("Ctrl+Y", self.redo), ("Ctrl+Shift+Z", self.redo),
-                               ("Ctrl+Shift+B", lambda: self.add_bookmark())):
+                               ("Ctrl+Shift+B", lambda: self.add_bookmark()),
+                               ("Ctrl+Shift+M", lambda: self.set_comments_visible())):
             shortcut = QShortcut(QKeySequence(sequence), self)
             shortcut.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
             shortcut.activated.connect(slot)
@@ -861,6 +877,7 @@ class PdfPage(ViewerPage):
             self.strip.rebuild()
         self.refresh_form()
         self._refresh_attachments()
+        self._refresh_comments()
 
     # ---- Bearbeiten: Zustand, Rückgängig, Speichern -----------------------------------------------------------
     def edit_block_reason(self) -> str:
@@ -2310,6 +2327,126 @@ class PdfPage(ViewerPage):
         if not self.form_panel.isHidden():
             self.form_panel.set_fields(self.fields)
 
+    # ---- Kommentare (Block V4) -------------------------------------------------------------------------------
+    def comments(self) -> list:
+        try:
+            return pdfcomments.list_comments(self.data) if self.data else []
+        except Exception:                               # noqa: BLE001 – unlesbar: leere Liste
+            return []
+
+    def set_comments_visible(self, on: bool | None = None) -> None:
+        if on is None:                                  # Palette/Kürzel: umschalten
+            on = self.comments_panel.isHidden()
+        self.comments_button.blockSignals(True)
+        self.comments_button.setChecked(on)
+        self.comments_button.blockSignals(False)
+        self.comments_panel.setVisible(on)
+        if on:
+            self._refresh_comments()
+
+    def _refresh_comments(self) -> None:
+        if hasattr(self, "comments_panel") and not self.comments_panel.isHidden():
+            self.comments_panel.current_page = self.canvas.current_page
+            self.comments_panel.set_comments(self.comments())
+
+    def show_comment(self, page: int, rect: tuple) -> None:
+        x0, y0, x1, y1 = rect
+        self.canvas.go_to(page, QPointF(x0, max(0.0, y0 - 40)))
+        self.canvas.overlays = [o for o in self.canvas.overlays if o[2] != "field"] + \
+            [(page, QRectF(x0, y0, x1 - x0, y1 - y0), "field")]
+        self.canvas.viewport().update()
+        QTimer.singleShot(1500, self._clear_field_overlay)
+
+    def reply_comment(self, page: int, index: int, text: str | None = None) -> bool:
+        if text is None:
+            from notex.ui.pdf_edit import TextDialog
+            dialog = TextDialog(self, "Antworten", "")
+            if dialog.exec() != QDialog.DialogCode.Accepted:
+                return False
+            text = dialog.values()[0]
+        if not text.strip() or not self._ensure_editing():
+            return False
+        return self._run(pdfcomments.add_reply, page, index, text, self.stamp_user(), page=page)
+
+    def set_comment_status(self, page: int, index: int, status: str) -> bool:
+        if not self._ensure_editing():
+            return False
+        return self._run(pdfcomments.set_status, page, index, status, self.stamp_user(), page=page)
+
+    def delete_comment(self, page: int, index: int, confirmed: bool | None = None) -> bool:
+        if confirmed is None:
+            from notex.ui import dialogs
+            confirmed = dialogs.confirm(self, "Kommentar löschen?", "Diesen Kommentar samt Antworten löschen?",
+                                        yes="Löschen", danger=True, informative="Rückgängig mit Ctrl+Z.")
+        if not confirmed or not self._ensure_editing():
+            return False
+        return self._run(pdfannot.delete_annotation, page, index, page=page)
+
+    def export_comments(self, kind: str, target: Path | str | None = None) -> Path | None:
+        """Zusammenfassung als Markdown/CSV/PDF oder alle Kommentare als XFDF speichern."""
+        suffix = {"md": ".md", "csv": ".csv", "pdf": ".pdf", "xfdf": ".xfdf"}.get(kind)
+        if suffix is None or not self.data:
+            return None
+        stem = self.path.stem + ("" if kind == "xfdf" else "-kommentare")
+        if target is None:
+            from PySide6.QtWidgets import QFileDialog
+            filters = {"md": "Markdown (*.md)", "csv": "CSV (*.csv)", "pdf": "PDF (*.pdf)", "xfdf": "XFDF (*.xfdf)"}
+            chosen, _f = QFileDialog.getSaveFileName(self, "Kommentare exportieren",
+                                                     str(self.path.with_name(stem + suffix)), filters[kind])
+            if not chosen:
+                return None
+            target = chosen
+        target = Path(target)
+        if target.resolve() == self.path.resolve():
+            self.notice.emit("Das würde das PDF selbst überschreiben – bitte einen anderen Namen wählen")
+            return None
+        try:
+            if kind == "xfdf":
+                target.write_bytes(xfdf.export_xfdf(self.data, self.path.name))
+            elif kind == "csv":
+                target.write_text(pdfcomments.summary_csv(self.comments()), encoding="utf-8-sig", newline="")
+            else:
+                text = pdfcomments.summary_markdown(self.comments(), self.path.name)
+                if kind == "md":
+                    target.write_text(text, encoding="utf-8")
+                else:
+                    from notex.core.export import ExportMeta
+                    from notex.ui.export_service import export_pdf
+                    export_pdf(target, text, "markdown", ExportMeta(title=f"Kommentare – {self.path.name}",
+                                                                    author=self.stamp_user()))
+        except (OSError, pdfpages.PdfEditError) as error:
+            self.notice.emit(f"Nicht exportiert: {error}")
+            return None
+        self.notice.emit(f"Exportiert: {target.name}")
+        return target
+
+    def import_xfdf(self, source: Path | str | None = None) -> bool:
+        """Kommentare aus einer XFDF-Datei übernehmen (ein Rückgängig-Schritt; gleiche Kommentare nicht doppelt)."""
+        if source is None:
+            from PySide6.QtWidgets import QFileDialog
+            chosen, _f = QFileDialog.getOpenFileName(self, "Kommentare importieren", str(self.path.parent),
+                                                     "XFDF (*.xfdf *.xml)")
+            if not chosen:
+                return False
+            source = chosen
+        try:
+            raw = Path(source).read_bytes()[: xfdf.MAX_FILE + 1]
+        except OSError as error:
+            self.notice.emit(f"Nicht lesbar: {error}")
+            return False
+        if not self._ensure_editing():
+            return False
+        summary = []
+
+        def run(data):
+            result = xfdf.import_xfdf(data, raw)
+            summary.append(result.summary())
+            return result.data
+        done = self._run(run)
+        if done and summary:
+            self.notice.emit(summary[0])
+        return done
+
     def set_form_visible(self, on: bool) -> None:
         if on and not self._ensure_editing():
             on = False
@@ -2592,6 +2729,9 @@ class PdfPage(ViewerPage):
         self.page_field.setText(self.page_label(index))
         if not self.strip.isHidden():
             self.strip.select_page(index)
+        if not self.comments_panel.isHidden() and self.comments_panel.this_page.isChecked():
+            self.comments_panel.current_page = index
+            self.comments_panel.refresh()
         self.status_changed.emit()
 
     def _on_zoom(self) -> None:

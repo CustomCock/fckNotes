@@ -11,3 +11,4 @@ die Haupt-README im Abschnitt „PDF“.
 - [Anhänge und Links (V2)](anhaenge-links.md): Anhänge speichern, öffnen, hinzufügen, entfernen; Links anlegen und
   bearbeiten.
 - [Zeichnen, Formen und Stempel (V3)](zeichnen-stempel.md): Stift, Radierer, Rechteck bis Wolke, Stil, Stempel.
+- [Kommentare: Liste, Antworten, Status, Export (V4)](kommentare.md): Seitenleiste, Filter, Zusammenfassung, XFDF.
