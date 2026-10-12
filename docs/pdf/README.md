@@ -14,3 +14,4 @@ die Haupt-README im Abschnitt „PDF“.
 - [Kommentare: Liste, Antworten, Status, Export (V4)](kommentare.md): Seitenleiste, Filter, Zusammenfassung, XFDF.
 - [Formulare (V5)](formulare.md): weitere Feldtypen, Eigenschaften, Tab-Reihenfolge, Daten, Antworten sammeln.
 - [Passwortschutz und Schwärzen nach Muster (V6)](schutz.md): Passwörter, Rechte, AES-256, Muster mit Prüfziffern.
+- [Bilder (V7)](bilder.md): einfügen, drehen, skalieren; Bilder im Inhalt exportieren, ersetzen, zuschneiden, löschen.

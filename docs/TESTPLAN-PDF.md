@@ -95,3 +95,13 @@ Windows und Linux durchgehen.
 4. Schutz entfernen, speichern: öffnet überall ohne Passwort.
 5. Ein Dokument mit E-Mail, IBAN, Telefon und Steuer-ID: „Nach Mustern schwärzen“ findet alle, eine
    falsche IBAN (Prüfziffer) nicht; nach dem Schwärzen findet die Suche in Acrobat nichts mehr.
+
+## V7 – Bilder
+1. `tests/fixtures/pdf/bilder.pdf` öffnen, Werkzeug „Bilder im Seiteninhalt“: fünf Rahmen auf Seite 1. Das große
+   JPEG exportieren und mit einem Hex-Vergleich prüfen: identisch mit dem eingebetteten Stream.
+2. Das obere JPEG links halb zuschneiden, speichern unter: in Acrobat ist die rechte Hälfte weg, die linke steht an
+   derselben Stelle; das zweite JPEG auf Seite 1 und das auf Seite 2 sind unverändert.
+3. Ein Handyfoto (Hochformat, EXIF-Drehung) einfügen: steht in Acrobat und im Browser aufrecht.
+4. Ein PNG mit Transparenz einfügen, auf 30° drehen, Deckkraft 50 %, einbrennen: in Acrobat gleich, durchsichtig.
+5. „Überall ersetzen“ auf dem JPEG (3×): alle drei Stellen zeigen in Acrobat das neue Bild; Dateigröße passt.
+6. Ein Bild löschen, speichern, mit `qpdf --show-xref` bzw. der Suche nach dem Bild-Stream prüfen: weg.

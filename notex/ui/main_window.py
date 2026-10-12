@@ -3739,6 +3739,23 @@ class MainWindow(QMainWindow):
             ("pdf:redact_patterns", "PDF: Nach Mustern schwärzen (E-Mail, IBAN, Telefon …) …",
              lambda: self.pdf_command("redact_patterns"), "",
              "pdf schwärzen muster email telefon iban kreditkarte steuer-id dsgvo regex"),
+            ("pdf:tool_image", "PDF: Bild einfügen (PNG, JPG, WebP)", lambda: self.pdf_command("set_tool", "image"), "",
+             "pdf bild einfügen foto logo png jpg jpeg webp grafik image"),
+            ("pdf:tool_pickimage", "PDF: Bilder im Seiteninhalt auswählen",
+             lambda: self.pdf_command("set_tool", "pickimage", edit=False), "",
+             "pdf bilder inhalt auswählen ersetzen zuschneiden löschen exportieren"),
+            ("pdf:images", "PDF: Bilder im Dokument (exportieren, ersetzen, zuschneiden, löschen) …",
+             lambda: self.pdf_command("show_images", edit=False), "",
+             "pdf bilder liste extrahieren exportieren ersetzen zuschneiden löschen image"),
+            ("pdf:images_export_all", "PDF: Alle Bilder exportieren …",
+             lambda: self.pdf_command("export_all_images", edit=False), "",
+             "pdf bilder alle exportieren extrahieren speichern ordner png jpg"),
+            ("pdf:image_rotate_right", "PDF: Ausgewähltes Bild nach rechts drehen",
+             lambda: self.pdf_command("rotate_image", None, 90), "R", "pdf bild drehen rechts rotieren 90"),
+            ("pdf:image_rotate_left", "PDF: Ausgewähltes Bild nach links drehen",
+             lambda: self.pdf_command("rotate_image", None, -90), "Shift+R", "pdf bild drehen links rotieren 90"),
+            ("pdf:image_properties", "PDF: Ausgewähltes Bild – Drehung und Deckkraft …",
+             lambda: self.pdf_command("image_properties"), "", "pdf bild drehen winkel deckkraft transparenz"),
         ]
         for key, title, callback, shortcut, keywords in pdf_cmds:
             self.registry.add(key, title, callback, category="PDF", shortcut=shortcut, keywords=keywords)

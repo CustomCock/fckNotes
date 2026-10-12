@@ -157,3 +157,95 @@ def big(pages: int = 520) -> bytes:
 
 def is_encrypted(data: bytes) -> bool:
     return PdfReader(io.BytesIO(data)).is_encrypted
+
+
+# ---- Bilder (V7) --------------------------------------------------------------------------------------------------
+QUADRANTS = ((220, 30, 30), (30, 160, 60), (40, 60, 220), (250, 250, 250))   # oben links, oben rechts, unten l., u. r.
+
+
+def picture(fmt: str = "PNG", size: tuple[int, int] = (40, 20), alpha: bool = False, orientation: int = 1,
+            mode: str = "") -> bytes:
+    """Bilddatei mit vier farbigen Vierteln (QUADRANTS); optional Transparenz oder EXIF-Drehung."""
+    from PIL import Image
+    w, h = size
+    image = Image.new("RGBA" if alpha else "RGB", size)
+    for y in range(h):
+        for x in range(w):
+            color = QUADRANTS[(y >= h // 2) * 2 + (x >= w // 2)]
+            image.putpixel((x, y), (*color, 255 if x < w // 2 else 96) if alpha else color)
+    if mode and mode != image.mode:
+        image = image.convert(mode)
+    buffer = io.BytesIO()
+    kwargs = {}
+    if orientation != 1:
+        exif = Image.Exif()
+        exif[0x0112] = orientation
+        kwargs["exif"] = exif.tobytes()
+    image.save(buffer, fmt, **({"quality": 95} if fmt == "JPEG" else {}), **kwargs)
+    return buffer.getvalue()
+
+
+def _image_xobject(writer: PdfWriter, raw: bytes, w: int, h: int, filter_: str, colorspace: str = "/DeviceRGB",
+                   smask=None):
+    image = StreamObject()
+    image._data = raw
+    for key, value in (("/Type", NameObject("/XObject")), ("/Subtype", NameObject("/Image")),
+                       ("/Width", NumberObject(w)), ("/Height", NumberObject(h)),
+                       ("/ColorSpace", NameObject(colorspace)), ("/BitsPerComponent", NumberObject(8)),
+                       ("/Filter", NameObject(filter_))):
+        image[NameObject(key)] = value
+    if smask is not None:
+        image[NameObject("/SMask")] = smask
+    return writer._add_object(image)
+
+
+def quadrant_raw(w: int = 40, h: int = 20) -> bytes:
+    return b"".join(bytes(QUADRANTS[(y >= h // 2) * 2 + (x >= w // 2)]) for y in range(h) for x in range(w))
+
+
+def images_doc() -> bytes:
+    """Zwei Seiten mit allen Bildarten.
+
+    Seite 1 (Inhalt in dieser Reihenfolge): 0 = JPEG /ImJ (72, 600, 200 × 100), 1 = Flate-RGB mit /SMask /ImP
+    (300, 600, 160 × 80), 2 = Inline-Bild 4 × 2 Grau (72, 450, 80 × 40), 3 = dasselbe JPEG /ImJ noch einmal
+    (300, 450, 100 × 50), 4 = Bild /ImF in Gruppe /Fm1 (Form mit Matrix, 72, 250, 120 × 60). Text „Bilder“ oben.
+    Seite 2: das JPEG /ImJ ein drittes Mal (gemeinsame Ressourcen über /Parent? nein: eigene Ressourcen, gleiches
+    Objekt) – also 3 Verwendungen im Dokument."""
+    writer = _writer(["Bilder", "Seite zwei"])
+    jpeg = picture("JPEG", (40, 20))
+    jref = _image_xobject(writer, jpeg, 40, 20, "/DCTDecode")
+    mask = StreamObject()
+    mask._data = zlib.compress(bytes([255 if x < 20 else 96 for _y in range(20) for x in range(40)]))
+    for key, value in (("/Type", NameObject("/XObject")), ("/Subtype", NameObject("/Image")),
+                       ("/Width", NumberObject(40)), ("/Height", NumberObject(20)),
+                       ("/ColorSpace", NameObject("/DeviceGray")), ("/BitsPerComponent", NumberObject(8)),
+                       ("/Filter", NameObject("/FlateDecode"))):
+        mask[NameObject(key)] = value
+    pref = _image_xobject(writer, zlib.compress(quadrant_raw()), 40, 20, "/FlateDecode", smask=writer._add_object(mask))
+    fref = _image_xobject(writer, zlib.compress(quadrant_raw()), 40, 20, "/FlateDecode")
+    form = DecodedStreamObject()
+    form.set_data(b"q 120 0 0 60 0 0 cm /ImF Do Q")
+    for key, value in (("/Type", NameObject("/XObject")), ("/Subtype", NameObject("/Form"))):
+        form[NameObject(key)] = value
+    form[NameObject("/BBox")] = ArrayObject([NumberObject(0), NumberObject(0), NumberObject(120), NumberObject(60)])
+    form[NameObject("/Matrix")] = ArrayObject([NumberObject(v) for v in (1, 0, 0, 1, 72, 250)])
+    form[NameObject("/Resources")] = DictionaryObject({NameObject("/XObject"): DictionaryObject({
+        NameObject("/ImF"): fref})})
+    formref = writer._add_object(form)
+    inline = b"BI /W 4 /H 2 /CS /G /BPC 8 ID \x00\x55\xaa\xff\xff\xaa\x55\x00 EI"
+    for index, page in enumerate(writer.pages):
+        resources = page["/Resources"].get_object()
+        xobjects = DictionaryObject({NameObject("/ImJ"): jref})
+        if index == 0:
+            xobjects[NameObject("/ImP")] = pref
+            xobjects[NameObject("/Fm1")] = formref
+            drawing = (b"q 200 0 0 100 72 600 cm /ImJ Do Q\nq 160 0 0 80 300 600 cm /ImP Do Q\n"
+                       b"q 80 0 0 40 72 450 cm " + inline + b" Q\nq 100 0 0 50 300 450 cm /ImJ Do Q\n/Fm1 Do\n")
+        else:
+            drawing = b"q 200 0 0 100 72 600 cm /ImJ Do Q\n"
+        resources[NameObject("/XObject")] = xobjects
+        old = page["/Contents"].get_object().get_data()
+        content = DecodedStreamObject()
+        content.set_data(old + b"\n" + drawing)
+        page[NameObject("/Contents")] = writer._add_object(content)
+    return _out(writer)

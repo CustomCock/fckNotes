@@ -5,8 +5,9 @@ auf der Seite ausfüllen (Klick hinein).
 und lässt ihn Auswahlrahmen und Griffe zeichnen. Geändert wird nur über den Qt-freien Kern (`notex.core.pdfobjects`),
 jede Änderung ist ein Rückgängig-Schritt des Tabs.
 
-Bedienung: Klick wählt aus (im Bearbeiten-Modus), Ziehen verschiebt, Griffe ändern die Größe (Unterschrift/Diagramm
-behalten das Seitenverhältnis), Pfeiltasten schieben (Shift = 10 pt), Entf löscht, Doppelklick bearbeitet.
+Bedienung: Klick wählt aus (im Bearbeiten-Modus), Ziehen verschiebt, Griffe ändern die Größe (Unterschrift/Diagramm/
+Bild behalten an den Ecken das Seitenverhältnis; Shift verzerrt ein gerade stehendes Bild), Pfeiltasten schieben
+(Shift = 10 pt), R / Shift+R drehen ein Bild, Entf löscht, Doppelklick bearbeitet.
 Ein Klick in ein Formularfeld öffnet die Eingabe direkt auf der Seite; Ziehen am Feld verschiebt es.
 """
 from __future__ import annotations
@@ -121,7 +122,11 @@ class ObjectController(QObject):
         dx, dy = x - sx, y - sy
         if handle:
             rect = resized(obj.rect, handle, dx, dy)
-            if obj.keep_aspect and len(handle) == 2:
+            from PySide6.QtGui import QGuiApplication
+            free = obj.free_aspect and bool(QGuiApplication.keyboardModifiers() & Qt.KeyboardModifier.ShiftModifier)
+            if obj.kind == "image" and not obj.free_aspect:
+                rect = pdfobjects.fit_aspect(obj.rect, rect, handle if len(handle) == 2 else "")
+            elif obj.keep_aspect and len(handle) == 2 and not free:
                 rect = pdfobjects.fit_aspect(obj.rect, rect, handle)
         else:
             x0, y0, x1, y1 = obj.rect
@@ -155,8 +160,15 @@ class ObjectController(QObject):
         return True
 
     def key(self, event) -> bool:
+        if self.canvas.tool == "pickimage" and hasattr(self.page, "image_key"):
+            return self.page.image_key(event)
         if self.selected is None or not self.page.editing or self.editor is not None:
             return False
+        if event.key() == Qt.Key.Key_R and self.selected.kind == "image" and \
+                not event.modifiers() & Qt.KeyboardModifier.ControlModifier:
+            left = bool(event.modifiers() & Qt.KeyboardModifier.ShiftModifier)
+            self.page.rotate_image(self.selected, -90 if left else 90)
+            return True
         if event.key() in (Qt.Key.Key_Delete, Qt.Key.Key_Backspace):
             obj, self.selected = self.selected, None
             self.page.delete_object(obj)

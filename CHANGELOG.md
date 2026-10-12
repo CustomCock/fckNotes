@@ -137,6 +137,17 @@ Alle nennenswerten Änderungen an fckNotes (bis 1.17.0: Notex). Format angelehnt
   - **Nach Mustern schwärzen**: E-Mail, Telefon DE/international, IBAN (Mod-97), BIC, Kreditkarte (Luhn), Datum,
     Steuer-ID (ISO 7064), PLZ, IP, URL und eigene Ausdrücke (gespeichert, mit Zeitlimit) – Vorschau mit
     Abwählen, dann vormerken oder gleich schwärzen, danach die erweiterte Prüfung.
+- **PDF-Ausbau, Block V7 (Bilder):**
+  - **Bild einfügen** (PNG, JPG, WebP, GIF, BMP, TIFF): Klick = natürliche Größe, Rahmen = einpassen, Shift = füllen;
+    JPEG unverändert, sonst verlustfrei mit Transparenz; EXIF-gedrehte Fotos stehen aufrecht.
+  - Eingefügte Bilder **verschieben, skalieren** (Ecken mit Seitenverhältnis, Shift verzerrt), **drehen** (`R` /
+    `Shift+R`, beliebiger Winkel), **Deckkraft**, ersetzen, exportieren, einbrennen.
+  - **Bilder im Seiteninhalt** finden (auch Inline-Bilder und Bilder in Gruppen), auswählen und **exportieren**
+    (JPEG/JPEG 2000 unverändert, sonst PNG; alle auf einmal im Hintergrund, ohne zu überschreiben),
+    **ersetzen** (nur hier – eingepasst oder gestreckt – oder überall, wo es vorkommt), **zuschneiden** (die Pixel
+    außerhalb verschwinden aus der Datei, der Rest bleibt am Platz) und **löschen** (ganz aus der Datei, wenn es
+    sonst nirgends vorkommt).
+  - Neue Abhängigkeit **Pillow** (MIT-CMU, gepinnt) zum Lesen und Schreiben der Bilder.
 
 ### Behoben
 - PDF-Formulare: Der Eigenschaften-Dialog zeigte die eingestellte Schriftgröße nicht an (immer „passend“).

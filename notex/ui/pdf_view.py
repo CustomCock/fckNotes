@@ -22,7 +22,7 @@ from PySide6.QtWidgets import (QAbstractScrollArea, QApplication, QComboBox, QDi
 
 from notex import APP_NAME
 from notex.core import (pdfannot, pdfattach, pdfcomments, pdfdetect, pdfdiagram, pdfdoc, pdfdraw, pdffieldtypes,
-                        pdfformdata, pdfforms, pdflinks, pdfobjects, pdfoutline, pdfpages, pdfredact, pdfsecurity,
+                        pdfformdata, pdfforms, pdfimages, pdflinks, pdfobjects, pdfoutline, pdfpages, pdfredact, pdfsecurity,
                         pdfstamps, redact_patterns, xfdf)
 from notex.core.pdfdoc import PageLayout
 from notex.theme.theme import style_menu
@@ -49,6 +49,10 @@ TOOLS = [
     ("shape", "shapes", "Formen: Rechteck, Ellipse, Linie, Pfeil, Polygon, Wolke"),
     ("stamp", "stamp", "Stempel: Genehmigt, Entwurf, Vertraulich, Erledigt, Geprüft oder eigener"),
     ("formfield", "list-plus", "Weitere Formularfelder: Optionsfeld-Gruppe, Dropdown, Listenfeld, Schaltfläche"),
+    ("image", "image-plus", "Bild einfügen: Bereich aufziehen oder klicken, dann PNG/JPG/WebP wählen "
+                            "(Shift beim Aufziehen: Rahmen ganz füllen)"),
+    ("pickimage", "image", "Bilder im Seiteninhalt: anklicken, dann Rechtsklick – exportieren, ersetzen, zuschneiden, "
+                           "löschen (Entf)"),
 ]
 FIELD_TOOLS = ("radio", "combo", "listbox", "button")
 FIELD_LABELS = [("radio", "circle-dot", "Optionsfeld-Gruppe (Bereich aufziehen)"),
@@ -90,7 +94,8 @@ def _alpha(color: str, alpha: int) -> QColor:
 
 
 REGION_TOOLS = {"note", "text", "field", "checkbox", "signature", "redact", "diagram", "crop", "link", "rect",
-                "ellipse", "cloud", "stamp", "radio", "combo", "listbox", "button"}   # Ziehen/Klicken = Bereich
+                "ellipse", "cloud", "stamp", "radio", "combo", "listbox", "button", "image", "pickimage",
+                "imagecrop"}                                                        # Ziehen/Klicken = Bereich
 PATH_TOOLS = {"ink", "eraser", "line", "arrow", "polygon"}   # Ziehen zeichnet einen Pfad; Polygon: Klicks, Doppelklick
 SHAPE_TOOLS = ("rect", "ellipse", "line", "arrow", "polygon", "cloud")
 MARKUP_TOOLS = {"highlight", "underline", "strikeout", "redact_text"}          # Textauswahl → sofort anwenden
@@ -132,6 +137,7 @@ class _PdfCanvas(QAbstractScrollArea):
         self.tool = "select"
         self.menu_hook = None                 # callable(menu, page, x_pt, y_pt) – ergänzt das Kontextmenü
         self.overlays: list[tuple[int, QRectF, str]] = []    # (Seite, Rechteck in Punkt, Art) z. B. Schwärz-Vorschau
+        self.image_overlay = None                          # Seite → [(Rechteck, ausgewählt)] Bilder im Inhalt
         self._band: tuple[int, float, float, float, float] | None = None
         self._path: tuple[int, list] | None = None       # laufender Pfad (Seite, Punkte)
         self._hover: tuple[float, float] | None = None    # Polygon: Mausposition für die Gummiband-Linie
@@ -295,6 +301,15 @@ class _PdfCanvas(QAbstractScrollArea):
                     painter.setBrush(_alpha(COLORS.accent, 40))
                     painter.setPen(QPen(QColor(COLORS.accent), 1.5))
                 painter.drawRect(view)
+                painter.setPen(Qt.PenStyle.NoPen)
+            if self.image_overlay is not None:
+                for (x0, y0, x1, y1), chosen in self.image_overlay(page.index):
+                    view = QRectF(target.x() + x0 * scale, target.y() + y0 * scale, (x1 - x0) * scale,
+                                  (y1 - y0) * scale)
+                    painter.setBrush(_alpha(COLORS.accent, 45) if chosen else Qt.BrushStyle.NoBrush)
+                    painter.setPen(QPen(QColor(COLORS.accent), 2 if chosen else 1,
+                                        Qt.PenStyle.DashLine if chosen else Qt.PenStyle.DotLine))
+                    painter.drawRect(view)
                 painter.setPen(Qt.PenStyle.NoPen)
             if self._band is not None and self._band[0] == page.index:
                 _i, x0, y0, x1, y1 = self._band
@@ -678,6 +693,10 @@ class PdfPage(ViewerPage):
         self.current_stamp = pdfstamps.BUILTIN[0]
         self.stamp_with_date = False
         self.stamp_with_user = False
+        self.selected_image = None                     # pdfimages.PageImage (Werkzeug „Bilder im Inhalt“)
+        self._image_cache: dict[int, list] = {}
+        self._crop_target = None                       # (Seite, Index) für das Zuschneiden per Rahmen
+        self.canvas.image_overlay = self._image_overlay
         from notex.ui.pdf_objects import ObjectController
         self.objects = ObjectController(self)
         self.objects.highlight_fields = self.highlight_fields
@@ -995,6 +1014,11 @@ class PdfPage(ViewerPage):
 
     def _show_data(self, data: bytes, page: int) -> None:
         self.data = data
+        self._image_cache.clear()
+        chosen = self.selected_image
+        if chosen is not None:                             # gleiche Stelle wieder auswählen (z. B. nach Zuschneiden)
+            again = self.content_images(chosen.page)
+            self.selected_image = again[chosen.index] if chosen.index < len(again) else None
         selected = self.strip.selected_pages()
         self.canvas.selection = None
         self.canvas.current_highlight = None              # Suchtreffer gehören zum alten Stand
@@ -1007,6 +1031,7 @@ class PdfPage(ViewerPage):
         if not self.strip.isHidden() and selected:
             self.strip.select_page(page)
         self._results_changed() if self.search_field.text() else None
+        self._refresh_images()
 
     def undo(self) -> None:
         if not self.history.can_undo or self.data is None:
@@ -1434,6 +1459,10 @@ class PdfPage(ViewerPage):
         self.redact_apply.setVisible(False)
         group(t["select"], t["highlight"], t["underline"], t["strikeout"], t["note"], t["text"], self.color_button)
         group(t["ink"], t["eraser"], t["shape"], t["stamp"], self.style_button, t["diagram"], t["link"])
+        images = IconButton("images", "Bilder im Dokument: Liste – exportieren (einzeln/alle), ersetzen, zuschneiden, "
+                            "löschen")
+        images.clicked.connect(lambda: self.show_images())
+        group(t["image"], t["pickimage"], images)
         self.taborder_button = IconButton("list-ordered", "Tab-Reihenfolge: Nummern einblenden, bearbeiten, "
                                           "nach Zeilen/Spalten")
         self.taborder_button.setCheckable(True)
@@ -2064,11 +2093,15 @@ class PdfPage(ViewerPage):
 
     # ---- Anmerkungen ----------------------------------------------------------------------------------------
     def set_tool(self, tool: str) -> None:
-        if tool not in self.tool_buttons and tool not in SHAPE_TOOLS and tool not in FIELD_TOOLS:
+        if tool not in self.tool_buttons and tool not in SHAPE_TOOLS and tool not in FIELD_TOOLS and \
+                tool != "imagecrop":
             tool = "select"
         for name, button in self.tool_buttons.items():
             button.setChecked(name == tool or (name == "shape" and tool in SHAPE_TOOLS)
-                              or (name == "formfield" and tool in FIELD_TOOLS))
+                              or (name == "formfield" and tool in FIELD_TOOLS)
+                              or (name == "pickimage" and tool == "imagecrop"))
+        if tool not in ("pickimage", "imagecrop"):
+            self.selected_image = None
         if tool in SHAPE_TOOLS:
             icon_name = next(i for k, i, _l in SHAPE_LABELS if k == tool)
             from notex.theme.icons import icon
@@ -2190,6 +2223,16 @@ class PdfPage(ViewerPage):
             getattr(self, f"_region_{tool}")(page, box)
 
     def _extend_menu(self, menu, page: int, x: float, y: float) -> None:
+        obj = self.objects.at(page, x, y)
+        if obj is not None and obj.kind == "image":
+            self._image_object_menu(menu, obj)
+            return
+        content = pdfimages.hit(self.content_images(page), x, y) if self.data else None
+        if content is not None and (self.canvas.tool in ("pickimage", "imagecrop") or
+                                    not self.canvas.selected_text()):
+            self._content_image_menu(menu, content)
+            if self.canvas.tool in ("pickimage", "imagecrop"):
+                return
         if self.edit_block_reason():
             return
         pending = next((i for i, (p, (x0, y0, x1, y1)) in enumerate(self.redactions)
@@ -2246,6 +2289,386 @@ class PdfPage(ViewerPage):
             menu.addAction("Notiz hier …", lambda: self.add_note(page, x, y))
             menu.addAction("Text hier …", lambda: self.add_text(page, (x, y, x, y)))
 
+    # ---- Bilder (Block V7) -------------------------------------------------------------------------------------
+    def _read_picture(self, path: Path | str | None, title: str = "Bild wählen") -> bytes | None:
+        if path is None:
+            from PySide6.QtWidgets import QFileDialog
+            from notex.ui.pdf_images_ui import IMAGE_FILTER
+            chosen, _f = QFileDialog.getOpenFileName(self, title, str(self.path.parent), IMAGE_FILTER)
+            if not chosen:
+                return None
+            path = chosen
+        path = Path(path)
+        try:
+            if path.stat().st_size > pdfimages.MAX_FILE:
+                self.notice.emit(f"Bild zu groß (höchstens {pdfimages.MAX_FILE // (1024 * 1024)} MB)")
+                return None
+            return path.read_bytes()
+        except OSError as error:
+            self.notice.emit(f"Nicht lesbar: {error}")
+            return None
+
+    def _region_image(self, page: int, box: tuple) -> None:
+        from PySide6.QtGui import QGuiApplication
+        stretch = bool(QGuiApplication.keyboardModifiers() & Qt.KeyboardModifier.ShiftModifier)
+        self.insert_image(page, box, keep_aspect=not stretch)
+
+    def insert_image(self, page: int, rect: tuple, path: Path | str | None = None, keep_aspect: bool = True,
+                     opacity: float = 1.0) -> bool:
+        """Bild als Objekt einfügen (Klick = natürliche Größe, Rahmen = einpassen bzw. füllen)."""
+        content = self._read_picture(path, "Bild einfügen")
+        if content is None or not self._ensure_editing():
+            return False
+        if not self._run(pdfimages.insert_image, page, tuple(rect), content, keep_aspect, opacity, page=page):
+            return False
+        images = [o for o in self.objects.objects(page) if o.kind == "image"]
+        if images:
+            self.objects.select(max(images, key=lambda o: o.index))
+        return True
+
+    def _image_obj(self, obj):
+        obj = obj or self.objects.selected
+        if obj is None or obj.kind != "image":
+            self.notice.emit("Erst ein eingefügtes Bild anklicken (Werkzeug „Auswählen“)")
+            return None
+        return obj
+
+    def rotate_image(self, obj=None, degrees: float = 90, absolute: bool = False) -> bool:
+        obj = self._image_obj(obj)
+        if obj is None or not self._ensure_editing():
+            return False
+        return self._run(pdfimages.rotate_image, obj.page, obj.index, degrees, absolute, page=obj.page)
+
+    def image_properties(self, obj=None, angle: float | None = None, opacity: float | None = None) -> bool:
+        obj = self._image_obj(obj)
+        if obj is None:
+            return False
+        try:
+            meta = pdfimages.image_meta(self.data, obj.page, obj.index)
+        except pdfpages.PdfEditError as error:
+            self.notice.emit(str(error))
+            return False
+        if angle is None and opacity is None:
+            from notex.ui.pdf_images_ui import ImagePropertiesDialog
+            dialog = ImagePropertiesDialog(self, meta.angle, meta.opacity)
+            if dialog.exec() != QDialog.DialogCode.Accepted:
+                return False
+            angle, opacity = dialog.values()
+        angle = meta.angle if angle is None else angle
+        opacity = meta.opacity if opacity is None else opacity
+        if abs(angle - meta.angle) < 0.01 and abs(opacity - meta.opacity) < 0.001:
+            return False
+        if not self._ensure_editing():
+            return False
+        page, index = obj.page, obj.index
+        return self._run(lambda d: pdfimages.set_image_opacity(pdfimages.rotate_image(d, page, index, angle, True),
+                                                               page, index, opacity), page=page)
+
+    def replace_image(self, obj=None, path: Path | str | None = None) -> bool:
+        obj = self._image_obj(obj)
+        if obj is None:
+            return False
+        content = self._read_picture(path, "Bild ersetzen")
+        if content is None or not self._ensure_editing():
+            return False
+        return self._run(pdfimages.replace_inserted, obj.page, obj.index, content, page=obj.page)
+
+    def _save_image_bytes(self, raw: bytes, ext: str, name: str, target: Path | str | None) -> Path | None:
+        if target is None:
+            from PySide6.QtWidgets import QFileDialog
+            chosen, _f = QFileDialog.getSaveFileName(self, "Bild exportieren", str(self.path.parent / f"{name}.{ext}"),
+                                                     f"Bild (*.{ext})")
+            if not chosen:
+                return None
+            target = chosen
+        target = Path(target)
+        if target.suffix.lower() != f".{ext}":
+            target = target.with_name(target.name + f".{ext}")
+        try:
+            target.write_bytes(raw)
+        except OSError as error:
+            self.notice.emit(f"Nicht gespeichert: {error}")
+            return None
+        self.notice.emit(f"Bild gespeichert: {target.name}")
+        return target
+
+    def export_image(self, obj=None, target: Path | str | None = None) -> Path | None:
+        obj = self._image_obj(obj)
+        if obj is None:
+            return None
+        try:
+            raw, ext = pdfimages.export_inserted(self.data, obj.page, obj.index)
+        except pdfpages.PdfEditError as error:
+            self.notice.emit(str(error))
+            return None
+        return self._save_image_bytes(raw, ext, f"{self.path.stem}-S{obj.page + 1}-Bild", target)
+
+    def _image_object_menu(self, menu, obj) -> None:
+        menu.addSeparator()
+        menu.addAction("Bild exportieren …", lambda: self.export_image(obj))
+        if self.edit_block_reason():
+            return
+        menu.addAction("Bild: Drehung und Deckkraft …", lambda: self.image_properties(obj))
+        menu.addAction("Bild nach rechts drehen  R", lambda: self.rotate_image(obj, 90))
+        menu.addAction("Bild nach links drehen  Shift+R", lambda: self.rotate_image(obj, -90))
+        menu.addAction("Bild ersetzen …", lambda: self.replace_image(obj))
+        menu.addAction("Bild löschen", lambda: self.delete_object(obj))
+
+    # Bilder im Seiteninhalt
+    def content_images(self, page: int) -> list:
+        if page not in self._image_cache:
+            try:
+                self._image_cache[page] = pdfimages.page_images(self.data, page) if self.data else []
+            except Exception:                           # noqa: BLE001 – unlesbarer Inhalt: keine Bilder anbieten
+                self._image_cache[page] = []
+        return self._image_cache[page]
+
+    def _image_overlay(self, page: int) -> list:
+        if self.canvas.tool not in ("pickimage", "imagecrop") or self.data is None:
+            return []
+        chosen = self.selected_image
+        return [(image.rect, chosen is not None and (chosen.page, chosen.index) == (page, image.index))
+                for image in self.content_images(page)]
+
+    def select_content_image(self, page: int, index: int | None) -> None:
+        images = self.content_images(page)
+        self.selected_image = images[index] if index is not None and 0 <= index < len(images) else None
+        if self.selected_image is not None:
+            self.notice.emit(self.selected_image.describe())
+            dialog = getattr(self, "_images_dialog", None)
+            if dialog is not None and dialog.isVisible():
+                dialog.select(page, index)
+        self.canvas.viewport().update()
+        self.status_changed.emit()
+
+    def _region_pickimage(self, page: int, box: tuple) -> None:
+        x0, y0, x1, y1 = box
+        image = pdfimages.hit(self.content_images(page), (x0 + x1) / 2 if x1 > x0 else x0,
+                              (y0 + y1) / 2 if y1 > y0 else y0)
+        self.select_content_image(page, image.index if image is not None else None)
+
+    def _region_imagecrop(self, page: int, box: tuple) -> None:
+        target, self._crop_target = self._crop_target, None
+        self.set_tool("pickimage")
+        if target is None or target[0] != page:
+            self.notice.emit("Den Rahmen bitte auf der Seite des Bilds aufziehen")
+            return
+        if abs(box[2] - box[0]) < 2 or abs(box[3] - box[1]) < 2:
+            self.notice.emit("Zuschneiden abgebrochen – bitte einen Rahmen aufziehen")
+            return
+        self.crop_content_image(page, target[1], rect=box)
+
+    def image_key(self, event) -> bool:
+        """Tasten im Werkzeug „Bilder im Inhalt“: Entf löscht, Esc hebt die Auswahl auf."""
+        image = self.selected_image
+        if image is None:
+            return False
+        if event.key() in (Qt.Key.Key_Delete, Qt.Key.Key_Backspace):
+            self.delete_content_image(image.page, image.index)
+            return True
+        if event.key() == Qt.Key.Key_Escape:
+            self.select_content_image(image.page, None)
+            return True
+        return False
+
+    def _content_image(self, page: int, index: int):
+        images = self.content_images(page)
+        if not 0 <= index < len(images):
+            self.notice.emit("Dieses Bild gibt es nicht mehr")
+            return None
+        return images[index]
+
+    def _content_image_menu(self, menu, image) -> None:
+        menu.addSeparator()
+        sub = menu.addMenu(f"Bild auf der Seite ({image.width_px} × {image.height_px} px)")
+        style_menu(sub)
+        sub.addAction("Exportieren …", lambda: self.export_content_image(image.page, image.index))
+        if self.edit_block_reason():
+            return
+        replace = sub.addAction("Ersetzen …", lambda: self.replace_content_image(image.page, image.index))
+        replace.setEnabled(image.can_replace_here or image.can_replace_all)
+        crop = sub.addAction("Zuschneiden …", lambda: self.crop_content_image(image.page, image.index))
+        crop.setEnabled(image.can_crop)
+        delete = sub.addAction("Löschen  Entf", lambda: self.delete_content_image(image.page, image.index))
+        delete.setEnabled(image.can_delete)
+
+    def export_content_image(self, page: int, index: int, target: Path | str | None = None) -> Path | None:
+        try:
+            raw, ext = pdfimages.export_content_image(self.data, page, index)
+        except pdfpages.PdfEditError as error:
+            self.notice.emit(str(error))
+            return None
+        return self._save_image_bytes(raw, ext, f"{self.path.stem}-S{page + 1}-Bild{index + 1}", target)
+
+    def export_all_images(self, folder: Path | str | None = None, wait: bool = False) -> list[Path]:
+        """Alle Bilder im Hintergrund in einen Ordner exportieren (nie überschreiben: Name (2), (3) …)."""
+        if self.data is None:
+            return []
+        if folder is None:
+            from PySide6.QtWidgets import QFileDialog
+            chosen = QFileDialog.getExistingDirectory(self, "Bilder exportieren nach", str(self.path.parent))
+            if not chosen:
+                return []
+            folder = chosen
+        folder, data, stem, result = Path(folder), self.data, self.path.stem, {}
+
+        def unique(name: str) -> Path:
+            target = folder / name
+            number = 2
+            while target.exists():
+                target = folder / f"{Path(name).stem} ({number}){Path(name).suffix}"
+                number += 1
+            return target
+
+        def work(ctx):
+            images = pdfimages.all_images(data, progress=lambda i, n: ctx.step(i, n * 2, f"Seite {i} von {n} …"))
+            written, skipped = [], 0
+            for number, image in enumerate(images):
+                if ctx.cancelled:
+                    break
+                ctx.step(len(images) + number, len(images) * 2, f"Bild {number + 1} von {len(images)} …")
+                try:
+                    raw, ext = pdfimages.export_content_image(data, image.page, image.index)
+                    target = unique(f"{stem}-S{image.page + 1}-Bild{image.index + 1}.{ext}")
+                    target.write_bytes(raw)
+                    written.append(target)
+                except (pdfpages.PdfEditError, OSError):
+                    skipped += 1
+            return written, skipped
+
+        def done(outcome) -> None:
+            written, skipped = outcome
+            result["paths"] = written
+            extra = f", {skipped} nicht lesbar" if skipped else ""
+            self.notice.emit(f"{len(written)} Bild(er) exportiert nach {folder.name}{extra}" if written or skipped
+                             else "Keine Bilder im Seiteninhalt")
+
+        from notex.ui.tasks import run_task
+        worker = run_task(self, "Bilder exportieren …", work, on_done=done,
+                          on_error=lambda message: self.notice.emit(message), show_dialog=not wait)
+        if wait:                                        # Tests: synchron abwarten
+            worker.wait()
+            from PySide6.QtCore import QCoreApplication
+            for _ in range(50):
+                QCoreApplication.processEvents()
+                if "paths" in result:
+                    break
+        return list(result.get("paths", []))
+
+    def replace_content_image(self, page: int, index: int, path: Path | str | None = None,
+                              everywhere: bool | None = None, keep_aspect: bool = True) -> bool:
+        image = self._content_image(page, index)
+        if image is None:
+            return False
+        if not (image.can_replace_here or image.can_replace_all):
+            self.notice.emit("Inline-Bilder lassen sich nicht ersetzen – nur exportieren oder löschen")
+            return False
+        if everywhere is None:
+            if image.can_replace_here and image.can_replace_all:
+                from dataclasses import replace
+                from notex.ui.pdf_images_ui import ReplaceImageDialog
+                counted = replace(image, uses=pdfimages.uses_of(self.data, page, index))
+                dialog = ReplaceImageDialog(self, counted)
+                if dialog.exec() != QDialog.DialogCode.Accepted:
+                    return False
+                everywhere, keep_aspect = dialog.values()
+            else:
+                everywhere = not image.can_replace_here
+        content = self._read_picture(path, "Bild ersetzen")
+        if content is None or not self._ensure_editing():
+            return False
+        return self._run(pdfimages.replace_content_image, page, index, content, everywhere, keep_aspect, page=page)
+
+    def crop_content_image(self, page: int, index: int, rect: tuple | None = None,
+                           margins: tuple | None = None) -> bool:
+        """Zuschneiden: Rahmen (Ansichts-Punkte) oder Ränder in Anteilen (links, oben, rechts, unten); ohne beides
+        fragt ein Dialog – oder man zieht danach einen Rahmen auf der Seite auf."""
+        image = self._content_image(page, index)
+        if image is None:
+            return False
+        if not image.can_crop:
+            self.notice.emit("Dieses Bild lässt sich nicht zuschneiden (Inline-Bild, Maske oder in einer Gruppe)")
+            return False
+        if rect is None and margins is None:
+            from notex.ui.pdf_images_ui import CropImageDialog
+            dialog = CropImageDialog(self, image)
+            if dialog.exec() != QDialog.DialogCode.Accepted:
+                return False
+            if dialog.drag:
+                if not self._ensure_editing():
+                    return False
+                self._crop_target = (page, index)
+                self.set_tool("imagecrop")
+                self.selected_image = image
+                self.canvas.viewport().update()
+                self.notice.emit("Rahmen über dem Bild aufziehen – Esc bricht ab")
+                return False
+            margins = dialog.margins()
+        if rect is None:
+            left, top, right, bottom = margins
+            x0, y0, x1, y1 = image.rect
+            w, h = x1 - x0, y1 - y0
+            rect = (x0 + left * w, y0 + top * h, x1 - right * w, y1 - bottom * h)
+        if not self._ensure_editing():
+            return False
+        self.selected_image = image
+        return self._run(pdfimages.crop_content_image, page, index, tuple(rect), page=page)
+
+    def delete_content_image(self, page: int, index: int, confirmed: bool | None = None) -> bool:
+        image = self._content_image(page, index)
+        if image is None:
+            return False
+        if not image.can_delete:
+            self.notice.emit("Bilder in Gruppen lassen sich nur exportieren oder überall ersetzen")
+            return False
+        if confirmed is None:
+            from notex.ui import dialogs
+            confirmed = dialogs.confirm(self, "Bild löschen?", f"{image.describe()} von Seite {page + 1} entfernen?",
+                                        yes="Löschen", danger=True,
+                                        informative="Rückgängig mit Ctrl+Z, solange nicht gespeichert ist.")
+        if not confirmed or not self._ensure_editing():
+            return False
+        self.selected_image = None
+        return self._run(pdfimages.delete_content_image, page, index, page=page)
+
+    def show_images(self):
+        """Liste aller Bilder im Seiteninhalt (nicht modal). Exportieren geht auch im Lesemodus."""
+        from notex.ui.pdf_images_ui import ImagesDialog
+        dialog = getattr(self, "_images_dialog", None)
+        if dialog is None:
+            dialog = ImagesDialog(self)
+            dialog.show_requested.connect(self._show_image)
+            dialog.export_requested.connect(lambda p, i: self.export_content_image(p, i))
+            dialog.export_all_requested.connect(lambda: self.export_all_images())
+            dialog.replace_requested.connect(lambda p, i: self.replace_content_image(p, i))
+            dialog.crop_requested.connect(lambda p, i: self.crop_content_image(p, i))
+            dialog.delete_requested.connect(lambda p, i: self.delete_content_image(p, i))
+            self._images_dialog = dialog
+        self._refresh_images(force=True)
+        dialog.show()
+        dialog.raise_()
+        return dialog
+
+    def _refresh_images(self, force: bool = False) -> None:
+        dialog = getattr(self, "_images_dialog", None)
+        if dialog is None or (not force and not dialog.isVisible()) or self.data is None:
+            return
+        try:
+            items = pdfimages.all_images(self.data)
+        except Exception:                               # noqa: BLE001
+            items = []
+        dialog.set_items(items, editable=not self.edit_block_reason())
+
+    def _show_image(self, page: int, index: int) -> None:
+        image = self._content_image(page, index)
+        if image is None:
+            return
+        if self.canvas.tool not in ("pickimage", "imagecrop"):
+            self.set_tool("pickimage")
+        self.selected_image = image
+        self.canvas.go_to(page, QPointF(image.rect[0], max(image.rect[1], 0.1)))
+        self.canvas.viewport().update()
+
     # ---- Eingefügtes anfassen (Objekte) ------------------------------------------------------------------------
     def set_object_rect(self, obj, rect: tuple) -> bool:
         if not self._ensure_editing():
@@ -2276,9 +2699,11 @@ class PdfPage(ViewerPage):
         return self.edit_object(obj)
 
     def edit_object(self, obj) -> bool:
-        """Doppelklick/„Bearbeiten …“: je nach Art Text mit Stil, Notiz/Kommentar, Unterschrift ersetzen, Feld."""
+        """Doppelklick/„Bearbeiten …“: je nach Art Text mit Stil, Notiz/Kommentar, Unterschrift ersetzen, Feld, Bild."""
         if obj.kind == "text":
             return self.edit_text_object(obj)
+        if obj.kind == "image":
+            return self.image_properties(obj)
         if obj.kind == "signature":
             return self.replace_signature(obj)
         if obj.kind == "diagram" and hasattr(self, "edit_diagram"):

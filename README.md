@@ -550,6 +550,11 @@ Der Stift schaltet eine zweite Leiste und die **Seitenleiste** (Miniaturen) ein.
 - **Nach Mustern schwärzen** (Regex-Symbol): E-Mail, Telefon, IBAN (Prüfsumme), BIC, Kreditkarte (Luhn), Datum,
   Steuer-ID (Prüfziffer), PLZ, IP, Webadresse und eigene Ausdrücke – Vorschau mit allen Treffern zum Abwählen,
   dann vormerken oder gleich schwärzen; danach prüft fckNotes wie immer, ob noch etwas übrig ist.
+- **Bilder** (Block V7): **einfügen** (PNG, JPG, WebP …; Klick = natürliche Größe, Rahmen = einpassen, Shift =
+  füllen), verschieben, skalieren, **drehen** (`R` / `Shift+R`, beliebiger Winkel per Doppelklick), Deckkraft,
+  ersetzen, exportieren, einbrennen. **Bilder im Seiteninhalt** (Scans, Fotos, Logos) auswählen und **exportieren**
+  (JPEG unverändert, sonst PNG; alle auf einmal), **ersetzen** (nur hier oder überall), **zuschneiden** (die Pixel
+  außerhalb verschwinden wirklich) und **löschen**. Details: `docs/pdf/bilder.md`.
 
 **Kommentieren** – Werkzeuge in der Bearbeiten-Leiste (`Esc` = zurück zu „Auswählen“), Farbe über die Palette:
 
@@ -1399,6 +1404,13 @@ Alternativ per Docker: `docker run -d -p 8081:8010 erikvl87/languagetool` (dann 
 | Palette › PDF: Formular-Antworten sammeln | Mehrere ausgefüllte PDFs → eine CSV-Tabelle |
 | Palette › PDF: Passwortschutz / Rechte-Passwort eingeben | Schutz setzen, ändern, entfernen (AES-256) bzw. Bearbeiten freigeben |
 | Palette › PDF: Nach Mustern schwärzen | E-Mail, IBAN, Telefon … finden, Vorschau, vormerken |
+| Palette › PDF: Bild einfügen | Bild setzen (Klick = natürliche Größe, Rahmen = einpassen, Shift = füllen) |
+| R / Shift+R (eingefügtes Bild ausgewählt) / Palette › PDF: Ausgewähltes Bild drehen | 90° nach rechts / links drehen |
+| Shift beim Ziehen an einer Bild-Ecke | Bild verzerren statt Seitenverhältnis halten |
+| Palette › PDF: Ausgewähltes Bild – Drehung und Deckkraft | Beliebiger Winkel, Durchsichtigkeit |
+| Palette › PDF: Bilder im Seiteninhalt auswählen | Bilder umranden; Klick wählt, Rechtsklick = exportieren, ersetzen, zuschneiden |
+| Entf / Esc (Werkzeug „Bilder im Seiteninhalt“) | Ausgewähltes Bild löschen (Rückfrage) / Auswahl aufheben |
+| Palette › PDF: Bilder im Dokument / Alle Bilder exportieren | Liste aller Bilder bzw. alle in einen Ordner (nie überschreiben) |
 | Palette › PDF: Auswahl markieren / unterstreichen / durchstreichen | Anmerkung über dem markierten PDF-Text |
 | Palette › PDF: Werkzeug Notiz / Text | Notiz bzw. Text auf der Seite platzieren (Esc beendet das Werkzeug) |
 | Palette › PDF: Formular ausfüllen | Feldliste rechts, „Übernehmen“ schreibt alle Werte (Ctrl+Z-fähig) |

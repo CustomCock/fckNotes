@@ -5,8 +5,8 @@ Ein Objekt ist eine Anmerkung oder ein Formularfeld-Widget auf einer Seite, adre
 löschen und kommentieren, aber nicht verschieben. Links sind Objekte (verschieben, Größe, Ziel ändern); Popups nicht.
 
 Verschieben/Größe ändern zeichnet das Erscheinungsbild neu, wo eine Verzerrung stören würde (Text auf der Seite,
-Textfelder, Kontrollkästchen); Stempel (Unterschrift, Diagramm, Bild) werden einfach in den neuen Rahmen gesetzt –
-die Oberfläche behält dafür das Seitenverhältnis bei.
+Textfelder, Kontrollkästchen, eingefügte Bilder samt Drehung); Stempel (Unterschrift, Diagramm) werden einfach in den
+neuen Rahmen gesetzt – die Oberfläche behält dafür das Seitenverhältnis bei.
 """
 from __future__ import annotations
 
@@ -17,19 +17,20 @@ from pypdf.generic import DictionaryObject, NameObject
 from notex.core import pdfannot as A
 from notex.core import pdfdraw as D
 from notex.core import pdfforms as F
+from notex.core import pdfimages as I
 from notex.core import pdflinks as L
 from notex.core.pdfpages import PdfEditError, open_reader
 
 DIAGRAM_KEY = "/fckNotesDiagram"
-MOVABLE = {"text", "note", "stamp", "signature", "diagram", "field", "link", "ink", "square", "circle", "line",
-           "polygon", "polyline"}
+MOVABLE = {"text", "note", "stamp", "signature", "diagram", "image", "field", "link", "ink", "square", "circle",
+           "line", "polygon", "polyline"}
 
 
 @dataclass(frozen=True)
 class PdfObject:
     page: int
     index: int              # Position in /Annots
-    kind: str               # text | note | stamp | signature | diagram | field | highlight | underline | …
+    kind: str               # text | note | stamp | signature | diagram | image | field | highlight | underline | …
     rect: A.Rect            # Ansichts-Punkte
     label: str
     contents: str = ""
@@ -37,6 +38,7 @@ class PdfObject:
     field: str = ""         # voll qualifizierter Feldname (nur kind == "field")
     field_kind: str = ""    # text | checkbox | radio | choice | signature | button
     state: str = ""         # „an“-Zustand dieses Widgets (Kontrollkästchen/Optionsfeld)
+    angle: float = 0.0      # Drehung eines eingefügten Bilds (Grad, im Uhrzeigersinn)
 
     @property
     def movable(self) -> bool:
@@ -44,7 +46,12 @@ class PdfObject:
 
     @property
     def keep_aspect(self) -> bool:
-        return self.kind in ("signature", "diagram", "stamp") or self.field_kind in ("checkbox", "radio")
+        return self.kind in ("signature", "diagram", "stamp", "image") or self.field_kind in ("checkbox", "radio")
+
+    @property
+    def free_aspect(self) -> bool:
+        """Darf (mit Shift) verzerrt werden: eingefügte Bilder, solange sie gerade stehen (0/90/180/270 Grad)."""
+        return self.kind == "image" and I.is_right_angle(self.angle)
 
     def contains(self, x: float, y: float, tolerance: float = 2.0) -> bool:
         x0, y0, x1, y1 = self.rect
@@ -58,6 +65,8 @@ def _kind_of(annot) -> str:
     if subtype == "/Link":
         return "link"
     if subtype == "/Stamp":
+        if I.IMAGE_KEY in annot:
+            return "image"
         if DIAGRAM_KEY in annot:
             return "diagram"
         if str(annot.get("/Name", "")) == "/fckNotesSignature":
@@ -66,7 +75,7 @@ def _kind_of(annot) -> str:
     return A.KIND_NAMES.get(subtype, subtype.lstrip("/").lower())
 
 
-LABELS = {**A.LABELS, "link": "Link", "signature": "Unterschrift", "diagram": "Diagramm"}
+LABELS = {**A.LABELS, "link": "Link", "signature": "Unterschrift", "diagram": "Diagramm", "image": "Bild"}
 
 
 def list_objects(data: bytes, page_index: int) -> list[PdfObject]:
@@ -99,6 +108,9 @@ def list_objects(data: bytes, page_index: int) -> list[PdfObject]:
             states = F._states(annot)
             out.append(PdfObject(page_index, position, "field", rect, f"Feld „{name}“", "", ours, name, field_kind,
                                  states[0] if states else ""))
+        elif kind == "image":
+            out.append(PdfObject(page_index, position, kind, rect, LABELS["image"], "", ours,
+                                 angle=I.meta_of(annot).angle))
         else:
             out.append(PdfObject(page_index, position, kind, rect, LABELS.get(kind, kind.capitalize()),
                                  str(annot.get("/Contents", "") or ""), ours))
@@ -132,6 +144,9 @@ def set_rect(data: bytes, page_index: int, position: int, rect_view: A.Rect) -> 
     geom = A.geometry_of(page)
     if kind == "link":
         L.set_link_rect(writer, page, annot, (x0, y0, x1, y1))
+        return A.finish(writer)
+    if kind == "image":
+        I.reframe(writer, page, annot, (x0, y0, x1, y1))
         return A.finish(writer)
     if kind in D.DRAW_KINDS:
         old = geom.rect_to_view(sorted_rect(annot["/Rect"]))

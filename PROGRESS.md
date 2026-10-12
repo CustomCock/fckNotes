@@ -715,6 +715,21 @@ PDF/A wie vorgeschlagen, Noto statt Helvetica, Windows-Zertifikatsspeicher spät
   Vormerken über die bestehende Schwärz-Pipeline (Prüfung danach). UI `ui/pdf_security_ui.py`, Schloss- und
   Regex-Knopf, 3 Palette-Einträge, Config `pdf_redact_patterns`. Test-Fix: `QInputDialog.getText` blockiert in
   Tests nie mehr (conftest). Doku `docs/pdf/schutz.md`.
+- **V7 – erledigt.** Neu `pdfimages.py`: eingefügte Bilder als Stempel-Anmerkung mit `/fckNotesImage` (Winkel,
+  Größe; Erscheinungsbild = Einheitsquadrat × Größe × Drehung, Form-Matrix für gedrehte Seiten), `reframe` (gerade
+  Winkel frei skalierbar, schiefe nur mit Seitenverhältnis), `rotate_image`, Deckkraft (/CA + ExtGState),
+  `replace_inserted`, `export_inserted`; Einlesen über **Pillow** (neu, gepinnt 12.3.0, +≈ 7 MB): JPEG ohne
+  EXIF-Drehung roh als /DCTDecode, sonst Flate + /SMask. **Entscheidung:** EXIF-gedrehte JPEGs werden einmal
+  aufgerichtet und mit Qualität 95 neu kodiert (statt Drehung über die Matrix) – einfacher und überall gleich.
+  Inhalts-Bilder: eigener Scanner über den Content-Stream (CTM über q/Q/cm, `Do` auf Bild- und Form-XObjects mit
+  Zyklenschutz, Inline-Bilder), `all_images` zählt Verwendungen. Ändern nur am obersten Content-Stream der Seite:
+  Löschen entfernt den `Do`/`BI…EI`-Operator, Zuschneiden schneidet die **Pixel** (neues XObject + innere Matrix,
+  **Entscheidung:** kein Clip-Pfad, damit der weggeschnittene Teil nicht in der Datei bleibt), Ersetzen „nur hier“
+  (neuer Name + Einpass-Matrix) oder „überall“ (`_replace_object` auf dem alten XObject). Seiten-Ressourcen werden vor
+  dem Ändern kopiert (geteilte Ressourcen anderer Seiten bleiben unberührt). Inline nur exportieren/löschen, Bilder
+  in Gruppen nur exportieren/überall ersetzen. UI `ui/pdf_images_ui.py` (Liste, Ersetzen, Zuschneiden,
+  Eigenschaften), Werkzeuge „Bild einfügen“ und „Bilder im Seiteninhalt“ (Rahmen-Overlay, Entf/Esc, Zuschneiden per
+  Rahmen), `R`/`Shift+R`, Shift-Ecke verzerrt, 7 Palette-Einträge, Fixture `bilder.pdf`. Doku `docs/pdf/bilder.md`.
 
 ## Offen
 
@@ -784,7 +799,8 @@ rdap, scanner, logs, pcap. Standardmäßig an: variables, hex, ports, ioc.
 ## Nächster Schritt
 
 **PDF-Ausbau (Blöcke V, W, X):** Roadmap `docs/ROADMAP-PDF.md`, vom Besitzer freigegeben („alles wie vorgeschlagen“).
-**V0–V6 erledigt** – nächster Block **V7 (Bilder)**. B- und C-Blöcke vor dem Start abstimmen.
+**V0–V7 erledigt** – nächster Block **V8 (Wasserzeichen, Kopf-/Fußzeilen, Seitenzahlen, Hintergrund)**. B- und
+C-Blöcke vor dem Start abstimmen.
 
 **Block T (PDF: Objekte, Felderkennung, Diagramme, draw.io) abgeschlossen** auf dem Arbeitsbranch – wartet auf
 Merge/Release durch den Besitzer (Vorschlag 1.18.0). Offen beim Besitzer: Ausprobieren mit echten Arbeitsblättern

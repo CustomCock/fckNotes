@@ -53,7 +53,7 @@ def check_dependencies() -> None:
     """PyInstaller baut auch ohne PySide6 stumm weiter – dann startet die Exe mit „No module named 'PySide6'“."""
     missing = []
     for module in ("PySide6", "pygments", "enchant", "spylls", "send2trash", "markdown_it", "regex", "cryptography", "yaml", "pypdf", "yara", "evtx", "dpkt",
-                   "pypdfium2", "fontTools"):
+                   "pypdfium2", "fontTools", "PIL"):
         try:
             __import__(module)
         except ImportError:
@@ -92,7 +92,7 @@ def main() -> None:
         "--hidden-import=markdown_it", "--hidden-import=mdurl", "--hidden-import=regex", "--hidden-import=yaml", "--hidden-import=pypdf", "--hidden-import=yara", "--hidden-import=evtx", "--hidden-import=dpkt", "--hidden-import=PySide6.QtPdf", "--hidden-import=cryptography.hazmat.primitives.kdf.argon2",
         # PDF-Ausbau (V0): PDFium ohne Qt (Text/Objekte), Schrift-Untermengen, Drucken, Sprachausgabe
         "--hidden-import=pypdfium2", "--collect-binaries", "pypdfium2_raw", "--hidden-import=pypdfium2_raw",
-        "--hidden-import=fontTools.subset", "--collect-submodules", "fontTools.ttLib.tables",
+        "--hidden-import=fontTools.subset", "--hidden-import=PIL.Image", "--collect-submodules", "fontTools.ttLib.tables",
         "--hidden-import=PySide6.QtPrintSupport", "--hidden-import=PySide6.QtTextToSpeech",
         # Nicht benötigte Qt-Module weglassen, damit der Ordner kleiner bleibt
         "--exclude-module", "PySide6.QtWebEngineCore",

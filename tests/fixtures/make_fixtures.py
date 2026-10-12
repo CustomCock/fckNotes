@@ -24,6 +24,7 @@ FILES = {
     "verschluesselt_aes128.pdf": lambda: F.encrypted("AES-128"),
     "verschluesselt_rc4.pdf": lambda: F.encrypted("RC4-128"),
     "gescannt.pdf": lambda: F.scanned(2),
+    "bilder.pdf": F.images_doc,
 }
 
 
