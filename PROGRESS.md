@@ -704,6 +704,17 @@ PDF/A wie vorgeschlagen, Noto statt Helvetica, Windows-Zertifikatsspeicher spät
   `read_object` verliert ohne Dokument Daten), `collect` → CSV. `pdfcomments.csv_cell` öffentlich. UI: Werkzeug
   „Weitere Felder“ (Menü), `ui/pdf_forms_ui.py` (NewFieldDialog, TabOrderDialog), `FieldDialog` erweitert,
   Tab-Nummern auf den Feldern, Formulardaten-Menü, 12 Palette-Einträge. Doku `docs/pdf/formulare.md`.
+- **V6 – erledigt.** Neu `pdfsecurity.py` (`inspect`, `unlock` → Klartext im Speicher + `Protection`, `protect`/
+  `reapply` nur AES-256 R6, Rechte-Bits /P, `Protection.__repr__` ohne Passwörter). Laden: verschlüsselte PDFs
+  werden entsperrt und sind voll bearbeitbar; **Entscheidung:** verbieten die Rechte Änderungen und wurde nur mit
+  dem Öffnen-Passwort entsperrt, bleibt der Tab lesbar, bis das Rechte-Passwort kommt (Rechte respektieren). Beim
+  Speichern einmal je Tab „Schutz beibehalten?“; Öffnen-Passwort unbekannt (mit Rechte-Passwort geöffnet) → neu
+  fragen; Rechte-Passwort unbekannt → zufällig. **Entscheidung:** Schutz ist eine Speicher-Einstellung des Tabs,
+  kein Rückgängig-Schritt (er wird erst beim Speichern angewendet). Neu `redact_patterns.py` (11 Muster mit Prüfern,
+  eigene Regex über `regex` mit Zeitlimit, `find_hits` mit Zeilen-Rechtecken aus PDFium) + Vorschau-Dialog,
+  Vormerken über die bestehende Schwärz-Pipeline (Prüfung danach). UI `ui/pdf_security_ui.py`, Schloss- und
+  Regex-Knopf, 3 Palette-Einträge, Config `pdf_redact_patterns`. Test-Fix: `QInputDialog.getText` blockiert in
+  Tests nie mehr (conftest). Doku `docs/pdf/schutz.md`.
 
 ## Offen
 
@@ -773,7 +784,7 @@ rdap, scanner, logs, pcap. Standardmäßig an: variables, hex, ports, ioc.
 ## Nächster Schritt
 
 **PDF-Ausbau (Blöcke V, W, X):** Roadmap `docs/ROADMAP-PDF.md`, vom Besitzer freigegeben („alles wie vorgeschlagen“).
-**V0–V5 erledigt** – nächster Block **V6 (Schutz: Passwort/Rechte und Muster-Schwärzen)**. B- und C-Blöcke vor dem Start abstimmen.
+**V0–V6 erledigt** – nächster Block **V7 (Bilder)**. B- und C-Blöcke vor dem Start abstimmen.
 
 **Block T (PDF: Objekte, Felderkennung, Diagramme, draw.io) abgeschlossen** auf dem Arbeitsbranch – wartet auf
 Merge/Release durch den Besitzer (Vorschlag 1.18.0). Offen beim Besitzer: Ausprobieren mit echten Arbeitsblättern

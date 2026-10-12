@@ -17,7 +17,7 @@ Alle nennenswerten Änderungen an fckNotes (bis 1.17.0: Notex). Format angelehnt
   löschen, als neues PDF herauslösen, ein PDF einfügen, aufteilen (einzeln / alle N Seiten / nach Bereichen) und
   „PDFs zusammenfügen …“ (Palette). Änderungen erst im Speicher mit Rückgängig/Wiederholen, `Ctrl+S` speichert;
   vor dem ersten Überschreiben landet das Original im Papierkorb (abschaltbar). Gelöschte Seiten bleiben nicht
-  unsichtbar in der Datei. Passwortgeschützte PDFs bleiben nur lesbar.
+  unsichtbar in der Datei. Passwortgeschützte PDFs lassen sich nach Passworteingabe bearbeiten (Block V6).
 - **PDF kommentieren**: Markieren, Unterstreichen, Durchstreichen (Werkzeug oder Rechtsklick auf markierten Text),
   Haftnotizen, Text direkt auf der Seite (Größe, Farbe, Rahmen, automatischer Umbruch, auch auf gedrehten Seiten);
   Anmerkungen per Rechtsklick bearbeiten oder löschen. Eigene Erscheinungsbilder → sieht in Acrobat/Browser gleich aus.
@@ -128,6 +128,15 @@ Alle nennenswerten Änderungen an fckNotes (bis 1.17.0: Notex). Format angelehnt
     in `/Annots` passen zusammen.
   - **Formulardaten** als JSON, XFDF und FDF exportieren/importieren (eigener, streng begrenzter FDF-Leser),
     **Formular zurücksetzen**, **Antworten sammeln** aus mehreren ausgefüllten PDFs als CSV.
+- **PDF-Ausbau, Block V6 (Schutz):**
+  - **Passwort-PDFs voll bearbeiten** nach Eingabe des Passworts; beim Speichern „Schutz beibehalten?“ – geschrieben
+    wird nur AES-256 (R6), RC4/AES-128 nur gelesen und beim Speichern modernisiert.
+  - **Passwortschutz setzen/ändern/entfernen**: Öffnen-Passwort, Rechte (Drucken, Ändern, Kopieren, Kommentieren,
+    Formulare, Seiten …) mit Rechte-Passwort. Verbietet ein PDF Änderungen, bleibt es ohne Rechte-Passwort nur
+    lesbar. Passwörter nie im Log, nie gespeichert.
+  - **Nach Mustern schwärzen**: E-Mail, Telefon DE/international, IBAN (Mod-97), BIC, Kreditkarte (Luhn), Datum,
+    Steuer-ID (ISO 7064), PLZ, IP, URL und eigene Ausdrücke (gespeichert, mit Zeitlimit) – Vorschau mit
+    Abwählen, dann vormerken oder gleich schwärzen, danach die erweiterte Prüfung.
 
 ### Behoben
 - PDF-Formulare: Der Eigenschaften-Dialog zeigte die eingestellte Schriftgröße nicht an (immer „passend“).

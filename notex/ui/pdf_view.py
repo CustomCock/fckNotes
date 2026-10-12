@@ -22,7 +22,8 @@ from PySide6.QtWidgets import (QAbstractScrollArea, QApplication, QComboBox, QDi
 
 from notex import APP_NAME
 from notex.core import (pdfannot, pdfattach, pdfcomments, pdfdetect, pdfdiagram, pdfdoc, pdfdraw, pdffieldtypes,
-                        pdfformdata, pdfforms, pdflinks, pdfobjects, pdfoutline, pdfpages, pdfredact, pdfstamps, xfdf)
+                        pdfformdata, pdfforms, pdflinks, pdfobjects, pdfoutline, pdfpages, pdfredact, pdfsecurity,
+                        pdfstamps, redact_patterns, xfdf)
 from notex.core.pdfdoc import PageLayout
 from notex.theme.theme import style_menu
 from notex.theme.tokens import COLORS, SPACING
@@ -646,7 +647,9 @@ class PdfPage(ViewerPage):
         self._buffer: QBuffer | None = None
         self.error = ""
         self.data: bytes | None = None      # aktueller Stand (bearbeitbar), None = zu groß/nicht lesbar
-        self.encrypted = False
+        self.encrypted = False              # True = nur lesbar (Passwort fehlt bzw. Rechte verbieten Änderungen)
+        self.protection = None              # pdfsecurity.Protection: Schutz, der beim Speichern wieder gilt
+        self._keep_protection: bool | None = None   # Antwort auf „Schutz beibehalten?“ (je Tab einmal)
         from notex.core.undo import SnapshotStack
         from notex.paths import cache_dir
         try:
@@ -824,18 +827,48 @@ class PdfPage(ViewerPage):
         self._load()
 
     # ---- Laden ------------------------------------------------------------------------------------
-    def _load(self, password: str = "") -> None:
+    def _load(self, password: str = "", retry: bool = False) -> None:
         self.doc.close()
-        if password:
-            self.doc.setPassword(password)
-        self.encrypted = bool(password)
+        self.encrypted = False
         size = self.path.stat().st_size
         if size <= IN_MEMORY_LIMIT:
             raw = self.path.read_bytes()                    # Datei gleich wieder zu (Windows: umbenennbar)
+            try:
+                info = pdfsecurity.inspect(raw)
+            except pdfpages.PdfEditError:
+                info = None
+            if info is not None and info.encrypted:         # entsperren: bearbeitbar im Speicher, Schutz merken
+                if info.needs_password and not password:
+                    text = self._ask_password(retry)
+                    if text:
+                        self._load(text, retry=True)
+                        return
+                    self.error = "Passwortgeschützt – nicht geöffnet"
+                    self.data = None
+                    self._finish_load()
+                    return
+                try:
+                    raw, self.protection = pdfsecurity.unlock(raw, password)
+                except pdfpages.PdfEditError as error:
+                    if "Falsches Passwort" in str(error):
+                        text = self._ask_password(True)
+                        if text:
+                            self._load(text, retry=True)
+                            return
+                        self.error = "Passwortgeschützt – nicht geöffnet"
+                    else:
+                        self.error = str(error)
+                    self.data = None
+                    self._finish_load()
+                    return
+                self.encrypted = not self.protection.can_edit
             self.data = raw
             self._set_buffer(self._display_bytes(raw))
         else:
             self.data = None
+            if password:
+                self.doc.setPassword(password)
+                self.encrypted = True
             self.doc.load(str(self.path))
         if self.doc.error() == QPdfDocument.Error.IncorrectPassword:
             text, ok = QInputDialog.getText(self, "Passwortgeschütztes PDF", f"Passwort für „{self.path.name}“:",
@@ -848,6 +881,15 @@ class PdfPage(ViewerPage):
             self.error = f"PDF lässt sich nicht öffnen ({self.doc.error().name})"
         else:
             self.error = ""
+        self._finish_load()
+
+    def _ask_password(self, retry: bool = False) -> str:
+        """Passwort abfragen (nur hier und nur in einer lokalen Variablen – nie im Log, nie gespeichert)."""
+        prompt = ("Falsches Passwort – noch einmal:" if retry else f"Passwort für „{self.path.name}“:")
+        text, ok = QInputDialog.getText(self, "Passwortgeschütztes PDF", prompt, QLineEdit.EchoMode.Password)
+        return text if ok else ""
+
+    def _finish_load(self) -> None:
         self._after_load()
         has_outline = self.bookmarks.rowCount(QModelIndex()) > 0
         self.outline_button.setChecked(has_outline)
@@ -893,6 +935,9 @@ class PdfPage(ViewerPage):
         if self.data is None:
             return "Zu groß zum Bearbeiten (über 256 MB)"
         if self.encrypted:
+            if self.protection is not None:
+                return ("Das PDF verbietet Änderungen – zum Bearbeiten das Rechte-Passwort eingeben "
+                        "(Palette › PDF: Passwortschutz …)")
             return "Passwortgeschützte PDFs lassen sich nur ansehen, nicht bearbeiten"
         return ""
 
@@ -1007,9 +1052,12 @@ class PdfPage(ViewerPage):
             return True
         if self.redacted:
             return self.save_as()
+        out = self._bytes_for_saving()
+        if out is None:
+            return False
         try:
             from notex.ui.pdf_edit import write_pdf
-            note = write_pdf(self.path, self.data, backup=self.backup_to_trash and not self._backed_up)
+            note = write_pdf(self.path, out, backup=self.backup_to_trash and not self._backed_up)
         except OSError as error:
             from notex.ui import dialogs
             dialogs.warn(self, "Speichern fehlgeschlagen", str(self.path), informative=str(error))
@@ -1020,6 +1068,167 @@ class PdfPage(ViewerPage):
         if note:
             self.notice.emit(note)
         return True
+
+    # ---- Passwortschutz (Block V6) ----------------------------------------------------------------------------
+    def _ask_keep_protection(self) -> str:
+        """„keep“, „remove“ oder „cancel“ – einmal je Tab gefragt."""
+        from PySide6.QtWidgets import QMessageBox
+        box = QMessageBox(self)
+        box.setWindowTitle("Passwortschutz")
+        box.setText("Dieses PDF war geschützt. Soll der Schutz beim Speichern bleiben?")
+        algorithm = self.protection.algorithm if self.protection else ""
+        box.setInformativeText("Gespeichert wird mit AES-256" + (f" (bisher {algorithm})"
+                                                                if algorithm and algorithm != "AES-256" else "") + ".")
+        keep = box.addButton("Schutz beibehalten", QMessageBox.ButtonRole.AcceptRole)
+        remove = box.addButton("Ohne Schutz speichern", QMessageBox.ButtonRole.DestructiveRole)
+        box.addButton("Abbrechen", QMessageBox.ButtonRole.RejectRole)
+        box.setDefaultButton(keep)
+        box.exec()
+        clicked = box.clickedButton()
+        return "keep" if clicked is keep else "remove" if clicked is remove else "cancel"
+
+    def _bytes_for_saving(self) -> bytes | None:
+        """Was auf die Platte geht: unverändert oder – bei Schutz – mit AES-256 verschlüsselt. None = abgebrochen."""
+        if self.protection is None:
+            return self.data
+        if self._keep_protection is None:
+            choice = self._ask_keep_protection()
+            if choice == "cancel":
+                return None
+            self._keep_protection = choice == "keep"
+        if not self._keep_protection:
+            return self.data
+        protection = self.protection
+        if protection.user_password is None:              # mit Rechte-Passwort entsperrt: Öffnen-Passwort neu setzen
+            text, ok = QInputDialog.getText(self, "Öffnen-Passwort", "Das bisherige Öffnen-Passwort ist unbekannt. "
+                                            "Neues Öffnen-Passwort (leer = ohne):", QLineEdit.EchoMode.Password)
+            if not ok:
+                return None
+            protection = pdfsecurity.with_passwords(protection, user_password=text)
+            self.protection = protection
+        try:
+            return pdfsecurity.reapply(self.data, protection)
+        except pdfpages.PdfEditError as error:
+            from notex.ui import dialogs
+            dialogs.warn(self, "Passwortschutz", str(error))
+            return None
+
+    def unlock_rights(self, password: str | None = None) -> bool:
+        """Rechte-Passwort eingeben: danach ist das PDF voll bearbeitbar (falls es Änderungen verbietet)."""
+        if self.protection is None:
+            self.notice.emit("Dieses PDF hat keinen Passwortschutz")
+            return False
+        if password is None:
+            text, ok = QInputDialog.getText(self, "Rechte-Passwort", "Rechte-Passwort:", QLineEdit.EchoMode.Password)
+            if not ok or not text:
+                return False
+            password = text
+        try:
+            _plain, protection = pdfsecurity.unlock(self.path.read_bytes(), password)
+        except (OSError, pdfpages.PdfEditError) as error:
+            self.notice.emit(str(error))
+            return False
+        if protection.unlocked_as != "owner":
+            self.notice.emit("Das ist nicht das Rechte-Passwort")
+            return False
+        self.protection = pdfsecurity.with_passwords(protection, user_password=self.protection.user_password)
+        self.encrypted = False
+        self.status_changed.emit()
+        self.notice.emit("Rechte freigegeben – das PDF ist jetzt bearbeitbar")
+        return True
+
+    def edit_protection(self, protection=...) -> bool:
+        """Öffnen-/Rechte-Passwort setzen, ändern oder entfernen. Gilt beim nächsten Speichern (AES-256)."""
+        current = self.protection
+        restricted = current is not None and current.unlocked_as == "user" and \
+            current.permissions != pdfsecurity.Permissions()
+        if restricted and not self.unlock_rights():
+            return False
+        if protection is ...:
+            from notex.ui.pdf_security_ui import ProtectionDialog
+            dialog = ProtectionDialog(self, self.protection)
+            if dialog.exec() != QDialog.DialogCode.Accepted:
+                return False
+            protection = dialog.protection()
+        if self.data is None:
+            return False
+        if protection is not None:                         # selbst gesetzt = volle Rechte in diesem Tab
+            from dataclasses import replace
+            protection = replace(protection, unlocked_as="owner", algorithm="AES-256")
+        self.protection = protection
+        self._keep_protection = protection is not None
+        self._set_dirty(True)
+        self.notice.emit("Schutz wird beim Speichern angewendet (AES-256)" if protection is not None
+                         else "Schutz wird beim Speichern entfernt")
+        self.status_changed.emit()
+        return True
+
+    # ---- Schwärzen nach Muster (Block V6) -------------------------------------------------------------------
+    def redact_patterns(self, keys: list[str] | None = None, custom: dict | None = None, choose=None,
+                        apply_now: bool | None = None) -> int:
+        """Muster (E-Mail, IBAN, …) suchen, Treffer in einer Vorschau abwählen, dann vormerken (oder gleich schwärzen).
+        `choose` (Tests): Funktion hits → ausgewählte hits statt Vorschau-Dialog."""
+        if self.data is None or self.edit_block_reason():
+            self.notice.emit(self.edit_block_reason() or "Nichts zu durchsuchen")
+            return 0
+        if keys is None:
+            from notex.ui.pdf_security_ui import PatternRedactDialog
+            config = getattr(self.window(), "config", None)
+            saved = list(config.get("pdf_redact_patterns", []) or []) if config is not None else []
+            dialog = PatternRedactDialog(self, saved)
+            if dialog.exec() != QDialog.DialogCode.Accepted:
+                return 0
+            keys, custom = dialog.keys(), dialog.active_custom()
+            if config is not None:
+                config["pdf_redact_patterns"] = dialog.custom_entries()
+        from notex.ui.tasks import run_task
+        data, result = self.data, {}
+
+        def work(ctx):
+            return redact_patterns.find_hits(data, keys, custom,
+                                             progress=lambda i, n: ctx.step(i, n, f"Seite {i + 1} von {n} …"))
+
+        def done(hits) -> None:
+            result["hits"] = hits
+            if not hits:
+                self.notice.emit("Keine Treffer für die gewählten Muster")
+                return
+            now = apply_now
+            if choose is not None:
+                chosen = choose(hits)
+            else:
+                from notex.ui.pdf_security_ui import PatternHitsDialog
+                dialog = PatternHitsDialog(self, hits)
+                if dialog.exec() != QDialog.DialogCode.Accepted:
+                    return
+                chosen, now = dialog.chosen(), dialog.apply_now.isChecked()
+            result["count"] = self.mark_pattern_hits(chosen)
+            if now and result["count"]:
+                self.apply_redactions()
+
+        worker = run_task(self, "Muster suchen …", work, on_done=done,
+                          on_error=lambda message: self.notice.emit(message), show_dialog=choose is None)
+        if choose is not None:                              # Tests: synchron abwarten
+            worker.wait()
+            from PySide6.QtCore import QCoreApplication
+            for _ in range(50):
+                QCoreApplication.processEvents()
+                if "hits" in result:
+                    break
+        return int(result.get("count", 0))
+
+    def mark_pattern_hits(self, hits: list) -> int:
+        if not hits or not self._ensure_editing():
+            return 0
+        for hit in hits:
+            for rect in hit.rects:
+                self.redactions.append((hit.page, tuple(rect)))
+            if hit.text not in self.redact_terms:
+                self.redact_terms.append(hit.text)
+        self._sync_redactions()
+        pages = len({h.page for h in hits})
+        self.notice.emit(f"{len(hits)} Treffer auf {pages} Seite(n) zum Schwärzen vorgemerkt")
+        return len(hits)
 
     def save_as(self, target: Path | str | None = None) -> bool:
         if self.data is None:
@@ -1041,9 +1250,12 @@ class PdfPage(ViewerPage):
                                    informative="Empfehlung: unter neuem Namen speichern und das Original behalten.",
                                    yes="Überschreiben", danger=True):
                 return False
+        out = self._bytes_for_saving()
+        if out is None:
+            return False
         try:
             from notex.ui.pdf_edit import write_pdf
-            write_pdf(target, self.data)
+            write_pdf(target, out)
         except OSError as error:
             from notex.ui import dialogs
             dialogs.warn(self, "Speichern fehlgeschlagen", str(target), informative=str(error))
@@ -1231,7 +1443,10 @@ class PdfPage(ViewerPage):
         formdata.clicked.connect(lambda: self._formdata_menu(formdata))
         group(t["field"], t["checkbox"], t["formfield"], t["signature"], self.form_button, detect,
               self.taborder_button, formdata, flatten)
-        self.tool_row = group(t["redact"], t["crop"], self.redact_apply)
+        patterns = IconButton("regex", "Nach Mustern schwärzen: E-Mail, Telefon, IBAN, Kreditkarte, Steuer-ID … "
+                              "oder eigene Ausdrücke")
+        patterns.clicked.connect(lambda: self.redact_patterns())
+        self.tool_row = group(t["redact"], patterns, t["crop"], self.redact_apply)
         assert set(t) == {name for name, _i, _t in TOOLS}, "jedes Werkzeug gehört in eine Gruppe"
         self.undo_button = IconButton("undo-2", "Rückgängig  Ctrl+Z")
         self.undo_button.clicked.connect(self.undo)
@@ -1241,7 +1456,10 @@ class PdfPage(ViewerPage):
         self.save_button.clicked.connect(self.save)
         save_as = IconButton("file-down", "Speichern unter …  Ctrl+Shift+Alt+S")
         save_as.clicked.connect(lambda: self.save_as())
-        group(self.undo_button, self.redo_button, self.save_button, save_as)
+        self.protect_button = IconButton("lock", "Passwortschutz: Öffnen-/Rechte-Passwort setzen, ändern, entfernen "
+                                         "(AES-256)")
+        self.protect_button.clicked.connect(lambda: self.edit_protection())
+        group(self.undo_button, self.redo_button, self.save_button, save_as, self.protect_button)
         return bar_frame
 
     # ---- Seitenwerkzeuge (Block V1) --------------------------------------------------------------------------

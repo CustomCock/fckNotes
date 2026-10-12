@@ -3732,6 +3732,13 @@ class MainWindow(QMainWindow):
              "pdf formular antworten sammeln csv tabelle auswerten"),
             ("pdf:form_reset", "PDF: Formular zurücksetzen (Standardwerte)", lambda: self.pdf_command("reset_form"), "",
              "pdf formular zurücksetzen leeren standardwerte"),
+            ("pdf:protect", "PDF: Passwortschutz …", lambda: self.pdf_command("edit_protection", edit=False), "",
+             "pdf passwort schutz verschlüsseln aes rechte drucken kopieren entfernen"),
+            ("pdf:unlock_rights", "PDF: Rechte-Passwort eingeben (bearbeiten freigeben) …",
+             lambda: self.pdf_command("unlock_rights", edit=False), "", "pdf rechte passwort besitzer freigeben"),
+            ("pdf:redact_patterns", "PDF: Nach Mustern schwärzen (E-Mail, IBAN, Telefon …) …",
+             lambda: self.pdf_command("redact_patterns"), "",
+             "pdf schwärzen muster email telefon iban kreditkarte steuer-id dsgvo regex"),
         ]
         for key, title, callback, shortcut, keywords in pdf_cmds:
             self.registry.add(key, title, callback, category="PDF", shortcut=shortcut, keywords=keywords)

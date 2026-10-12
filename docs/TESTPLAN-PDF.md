@@ -85,3 +85,13 @@ Windows und Linux durchgehen.
 4. Daten als FDF und XFDF exportieren, in Acrobat importieren („Formulardaten importieren“) – und umgekehrt eine
    Acrobat-FDF in fckNotes einlesen.
 5. Drei ausgefüllte Kopien → „Antworten sammeln“: CSV öffnet in Excel mit einer Zeile je Datei.
+
+## V6 – Passwortschutz und Muster-Schwärzen
+1. `tests/fixtures/pdf/` AES-256-Fixture mit Passwort öffnen, eine Seite drehen, speichern mit „Schutz beibehalten“:
+   Acrobat fragt nach demselben Passwort; Dokumenteigenschaften zeigen AES-256.
+2. RC4-Fixture öffnen, speichern mit Schutz: Acrobat zeigt danach AES-256.
+3. In Acrobat ein PDF mit „Ändern verboten“ und Rechte-Passwort erstellen; in fckNotes öffnen: nur lesbar, nach
+   Rechte-Passwort bearbeitbar; gespeichert gelten die Rechte in Acrobat weiter.
+4. Schutz entfernen, speichern: öffnet überall ohne Passwort.
+5. Ein Dokument mit E-Mail, IBAN, Telefon und Steuer-ID: „Nach Mustern schwärzen“ findet alle, eine
+   falsche IBAN (Prüfziffer) nicht; nach dem Schwärzen findet die Suche in Acrobat nichts mehr.

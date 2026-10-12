@@ -57,6 +57,7 @@ DEFAULTS: dict[str, Any] = {
     "pdf_highlight_fields": True, # PDF: Formularfelder in der Ansicht zart hinterlegen (wie Acrobat)
     "pdf_undo_budget_mb": 512,    # PDF: Speicher für Rückgängig-Schritte; mehr wird in cache/ ausgelagert
     "pdf_author": "",             # PDF: Name für Stempel (leer = Anmeldename des Systems)
+    "pdf_redact_patterns": [],    # PDF: eigene Schwärz-Muster [{"name", "regex", "on"}] (keine Treffer, nur Muster)
     "theme": default_theme(), # das aktive Theme, komplett (Presets/Dateien sind nur Vorlagen)
     "spellcheck": {
         "enabled": True,

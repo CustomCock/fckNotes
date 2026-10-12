@@ -13,6 +13,8 @@ def win(tmp_path, monkeypatch):
     monkeypatch.setenv("NOTEX_ROOT", str(tmp_path))
     monkeypatch.setattr(QDialog, "exec", lambda self: 0)
     monkeypatch.setattr(QMessageBox, "exec", lambda self: 0)
+    from PySide6.QtWidgets import QInputDialog
+    monkeypatch.setattr(QInputDialog, "getText", staticmethod(lambda *a, **k: ("", False)))   # nie blockieren
     QApplication.instance() or QApplication([])
     window = uihelp.make_window(tmp_path)
     yield window
@@ -23,7 +25,7 @@ def win(tmp_path, monkeypatch):
 # PDF-, Diagramm- und Plattform-Tests dürfen keine Verbindung öffnen. Jeder Versuch lässt den Test scheitern –
 # auch dann, wenn eine Bibliothek das „heimlich“ täte.
 OFFLINE_MODULES = ("test_pdf", "test_diagram", "test_drawio", "test_v0", "test_pdfaudit", "test_pdffont",
-                   "test_xfdf")
+                   "test_xfdf", "test_redact")
 
 
 class NetworkUsed(AssertionError):

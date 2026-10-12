@@ -480,7 +480,7 @@ PDFs öffnen als eigener Tab – zum Lesen und, mit dem **Stift** rechts oben, z
   Ohne Teilung landet das Zitat in der Zwischenablage. Teilen geht jetzt auch aus einem PDF-Tab heraus (`Ctrl+\`).
 - Keine Skripte, keine Link-Aktionen. Die Datei wird in den Speicher gelesen und gleich wieder geschlossen –
   umbenennen/verschieben geht auch, während der Tab offen ist. Passwortgeschützte PDFs fragen nach dem Passwort (es
-  wird nirgends gespeichert) und lassen sich nur ansehen, nicht bearbeiten.
+  wird nirgends gespeichert) und lassen sich danach auch bearbeiten (siehe „Passwortschutz“).
 - Technik: QtPdf (PDFium) zum Anzeigen, pypdf zum Bearbeiten; ohne QtWebEngine.
 
 ![PDF mit Zitat](docs/45-pdf-quote.png)
@@ -543,6 +543,13 @@ Der Stift schaltet eine zweite Leiste und die **Seitenleiste** (Miniaturen) ein.
   „nach Spalten“ ordnen.
 - **Formulardaten** (Datenbank-Symbol): Werte als JSON, XFDF oder FDF exportieren und importieren, Formular
   zurücksetzen, **Antworten sammeln** – mehrere ausgefüllte Kopien werden zu einer CSV-Tabelle.
+- **Passwortschutz** (Schloss-Symbol): Passwort-PDFs lassen sich nach Eingabe des Passworts **voll bearbeiten**;
+  beim Speichern fragt fckNotes, ob der Schutz bleibt. Öffnen-Passwort und Rechte (Drucken, Ändern, Kopieren …) mit
+  Rechte-Passwort setzen, ändern oder entfernen – geschrieben wird nur AES-256, ältere RC4/AES-128-Dateien werden
+  beim Speichern auf AES-256 gehoben. Verbietet ein PDF Änderungen, hilft nur das Rechte-Passwort.
+- **Nach Mustern schwärzen** (Regex-Symbol): E-Mail, Telefon, IBAN (Prüfsumme), BIC, Kreditkarte (Luhn), Datum,
+  Steuer-ID (Prüfziffer), PLZ, IP, Webadresse und eigene Ausdrücke – Vorschau mit allen Treffern zum Abwählen,
+  dann vormerken oder gleich schwärzen; danach prüft fckNotes wie immer, ob noch etwas übrig ist.
 
 **Kommentieren** – Werkzeuge in der Bearbeiten-Leiste (`Esc` = zurück zu „Auswählen“), Farbe über die Palette:
 
@@ -1390,6 +1397,8 @@ Alternativ per Docker: `docker run -d -p 8081:8010 erikvl87/languagetool` (dann 
 | Palette › PDF: Tab-Reihenfolge bearbeiten / anzeigen | Reihenfolge der Tab-Taste durch die Felder |
 | Palette › PDF: Formulardaten als JSON / XFDF / FDF exportieren, importieren | Feldwerte austauschen |
 | Palette › PDF: Formular-Antworten sammeln | Mehrere ausgefüllte PDFs → eine CSV-Tabelle |
+| Palette › PDF: Passwortschutz / Rechte-Passwort eingeben | Schutz setzen, ändern, entfernen (AES-256) bzw. Bearbeiten freigeben |
+| Palette › PDF: Nach Mustern schwärzen | E-Mail, IBAN, Telefon … finden, Vorschau, vormerken |
 | Palette › PDF: Auswahl markieren / unterstreichen / durchstreichen | Anmerkung über dem markierten PDF-Text |
 | Palette › PDF: Werkzeug Notiz / Text | Notiz bzw. Text auf der Seite platzieren (Esc beendet das Werkzeug) |
 | Palette › PDF: Formular ausfüllen | Feldliste rechts, „Übernehmen“ schreibt alle Werte (Ctrl+Z-fähig) |
