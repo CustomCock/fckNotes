@@ -338,7 +338,7 @@ def summary_markdown(comments: list[Comment], title: str = "") -> str:
 CSV_HEADER = ["Nr", "Seite", "Art", "Autor", "Datum", "Status", "Kommentar", "Markierter Text", "Antwort auf"]
 
 
-def _cell(value) -> str:
+def csv_cell(value) -> str:
     """Zellen, die Excel/LibreOffice als Formel lesen würde (=, +, -, @, Tab, CR am Anfang), mit ' entschärfen –
     Kommentare können aus fremden PDFs stammen (CSV-Injection)."""
     text = str(value)
@@ -354,10 +354,10 @@ def summary_csv(comments: list[Comment]) -> str:
     for c in sorted(comments, key=SORT_KEYS["page"]):
         number += 1
         parent = number
-        writer.writerow([number, c.page + 1, c.label, _cell(c.author), format_date(c.date), c.status_label,
-                         _cell(c.contents), _cell(c.quoted), ""])
+        writer.writerow([number, c.page + 1, c.label, csv_cell(c.author), format_date(c.date), c.status_label,
+                         csv_cell(c.contents), csv_cell(c.quoted), ""])
         for reply in c.replies:
             number += 1
-            writer.writerow([number, reply.page + 1, "Antwort", _cell(reply.author), format_date(reply.date), "",
-                             _cell(reply.contents), "", parent])
+            writer.writerow([number, reply.page + 1, "Antwort", csv_cell(reply.author), format_date(reply.date), "",
+                             csv_cell(reply.contents), "", parent])
     return buffer.getvalue()

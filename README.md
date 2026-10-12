@@ -535,6 +535,14 @@ Der Stift schaltet eine zweite Leiste und die **Seitenleiste** (Miniaturen) ein.
   Status; ein Klick springt zur Stelle. **Antworten** (`R`), **Status** (offen, angenommen, abgelehnt, erledigt) und
   Löschen samt Antworten. **Zusammenfassung** als Markdown, CSV (für Excel) oder PDF mit markiertem Text;
   **XFDF** exportieren und importieren (Austausch mit Acrobat; vorhandene Kommentare werden nicht verdoppelt).
+- **Weitere Formularfelder** (Listen-Plus-Symbol in der Bearbeiten-Leiste): **Optionsfeld-Gruppe** (genau eine
+  Wahl), **Dropdown** (auf Wunsch mit eigener Eingabe), **Listenfeld** und **Schaltfläche** (nur „Formular
+  zurücksetzen“ oder „Seite anspringen“ – keine Skripte). **Feld-Eigenschaften** (Doppelklick): Name, Pflicht, nur
+  lesen, Standardwert, Einträge, Schriftgröße, Ausrichtung, Tooltip.
+- **Tab-Reihenfolge** (Nummern-Symbol): Nummern auf den Feldern einblenden, per Ziehen ändern oder „nach Zeilen“ /
+  „nach Spalten“ ordnen.
+- **Formulardaten** (Datenbank-Symbol): Werte als JSON, XFDF oder FDF exportieren und importieren, Formular
+  zurücksetzen, **Antworten sammeln** – mehrere ausgefüllte Kopien werden zu einer CSV-Tabelle.
 
 **Kommentieren** – Werkzeuge in der Bearbeiten-Leiste (`Esc` = zurück zu „Auswählen“), Farbe über die Palette:
 
@@ -1378,6 +1386,10 @@ Alternativ per Docker: `docker run -d -p 8081:8010 erikvl87/languagetool` (dann 
 | R / Entf (Kommentarliste) | Antworten / Kommentar samt Antworten löschen |
 | Palette › PDF: Kommentare als Markdown / CSV / PDF | Zusammenfassung mit Seite, Autor, Status, markiertem Text |
 | Palette › PDF: Kommentare als XFDF exportieren / importieren | Austausch mit Acrobat und anderen Programmen |
+| Palette › PDF: Neues Feld Optionsfeld-Gruppe / Dropdown / Listenfeld / Schaltfläche | Bereich aufziehen, Einträge angeben |
+| Palette › PDF: Tab-Reihenfolge bearbeiten / anzeigen | Reihenfolge der Tab-Taste durch die Felder |
+| Palette › PDF: Formulardaten als JSON / XFDF / FDF exportieren, importieren | Feldwerte austauschen |
+| Palette › PDF: Formular-Antworten sammeln | Mehrere ausgefüllte PDFs → eine CSV-Tabelle |
 | Palette › PDF: Auswahl markieren / unterstreichen / durchstreichen | Anmerkung über dem markierten PDF-Text |
 | Palette › PDF: Werkzeug Notiz / Text | Notiz bzw. Text auf der Seite platzieren (Esc beendet das Werkzeug) |
 | Palette › PDF: Formular ausfüllen | Feldliste rechts, „Übernehmen“ schreibt alle Werte (Ctrl+Z-fähig) |

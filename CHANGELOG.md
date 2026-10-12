@@ -119,8 +119,18 @@ Alle nennenswerten Änderungen an fckNotes (bis 1.17.0: Notex). Format angelehnt
     markiertem Text und Antworten.
   - **XFDF** exportieren und importieren: alle gängigen Kommentararten, Antworten und Status bleiben verbunden;
     gleiche Kommentare werden nicht verdoppelt; sicheres Parsen (keine ENTITY/DTD, Größen- und Zahlgrenzen).
+- **PDF-Ausbau, Block V5 (Formulare):**
+  - Neue Feldtypen: **Optionsfeld-Gruppe**, **Dropdown** (optional mit eigener Eingabe), **Listenfeld** und
+    **Schaltfläche** (nur „Formular zurücksetzen“ / „Seite anspringen“, kein JavaScript).
+  - **Feld-Eigenschaften** erweitert: Pflicht, nur lesen, Standardwert, Einträge, Schriftgröße (jetzt vorbelegt),
+    Ausrichtung, Tooltip; Schaltflächen-Beschriftung und -Aktion.
+  - **Tab-Reihenfolge**: Nummern einblenden, per Ziehen ändern, nach Zeilen/Spalten – `/Tabs` und die Reihenfolge
+    in `/Annots` passen zusammen.
+  - **Formulardaten** als JSON, XFDF und FDF exportieren/importieren (eigener, streng begrenzter FDF-Leser),
+    **Formular zurücksetzen**, **Antworten sammeln** aus mehreren ausgefüllten PDFs als CSV.
 
 ### Behoben
+- PDF-Formulare: Der Eigenschaften-Dialog zeigte die eingestellte Schriftgröße nicht an (immer „passend“).
 - PDF: Beim Löschen einer Anmerkung blieben Antworten anderer Programme (`/IRT`) als verwaiste Einträge zurück – jetzt
   geht der ganze Faden mit (auch beim Radierer).
 - PDF bearbeiten: Die Bearbeiten-Leiste erzwang ein sehr breites Fenster (mit V2 1581 px, mit V3 1766 px) – sie

@@ -74,3 +74,14 @@ Windows und Linux durchgehen.
 5. Zusammenfassung als CSV in Excel/LibreOffice öffnen: Umlaute korrekt, Spalten getrennt, ein Kommentar
    „=1+1“ steht als Text da.
 6. Zusammenfassung als PDF: je Seite die Kommentare mit markiertem Text.
+
+## V5 – Formulare
+1. Je ein Feld anlegen: Optionsgruppe (3 Optionen), Dropdown, Listenfeld, Schaltfläche „Zurücksetzen“ und
+   „Seite 2“. Speichern, in Acrobat/Firefox ausfüllen: Optionsgruppe erlaubt genau eine Wahl, Dropdown klappt auf,
+   „Zurücksetzen“ leert/setzt Standardwerte, „Seite 2“ springt.
+2. Pflichtfeld und Tooltip setzen: Acrobat markiert das Feld rot umrandet und zeigt den Tooltip.
+3. Tab-Reihenfolge per Ziehen ändern, speichern: In Acrobat springt die Tab-Taste in dieser Reihenfolge; dann „nach
+   Spalten“ – ebenso.
+4. Daten als FDF und XFDF exportieren, in Acrobat importieren („Formulardaten importieren“) – und umgekehrt eine
+   Acrobat-FDF in fckNotes einlesen.
+5. Drei ausgefüllte Kopien → „Antworten sammeln“: CSV öffnet in Excel mit einer Zeile je Datei.

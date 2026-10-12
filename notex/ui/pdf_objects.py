@@ -12,7 +12,7 @@ Ein Klick in ein Formularfeld öffnet die Eingabe direkt auf der Seite; Ziehen a
 from __future__ import annotations
 
 from PySide6.QtCore import QObject, QPointF, QRectF, Qt, QTimer
-from PySide6.QtGui import QColor, QPen
+from PySide6.QtGui import QColor, QPainter, QPen
 from PySide6.QtWidgets import QComboBox, QLineEdit, QPlainTextEdit
 
 from notex.core import pdfobjects
@@ -187,6 +187,26 @@ class ObjectController(QObject):
             for other in self.objects(page_index):
                 if other.kind == "field":
                     painter.drawRect(view(other.rect))
+            painter.restore()
+        if getattr(self.page, "show_tab_numbers", False):  # Tab-Reihenfolge: Nummer je Feld (Reihenfolge in /Annots)
+            painter.save()
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+            numbers: dict[str, int] = {}
+            for other in sorted(self.objects(page_index), key=lambda o: o.index):
+                if other.kind != "field":
+                    continue
+                number = numbers.setdefault(other.field, len(numbers) + 1)
+                x0, y0 = view(other.rect).topLeft().x(), view(other.rect).topLeft().y()
+                badge = QRectF(x0 - 9, y0 - 9, 18, 18)
+                painter.setPen(Qt.PenStyle.NoPen)
+                painter.setBrush(QColor(COLORS.accent))
+                painter.drawEllipse(badge)
+                painter.setPen(QColor("#ffffff"))
+                font = painter.font()
+                font.setPixelSize(10)
+                font.setBold(True)
+                painter.setFont(font)
+                painter.drawText(badge, Qt.AlignmentFlag.AlignCenter, str(number))
             painter.restore()
         if self.page.editing:                             # Links (oft unsichtbar) im Bearbeiten-Modus zeigen
             painter.save()

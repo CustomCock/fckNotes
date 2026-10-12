@@ -12,3 +12,4 @@ die Haupt-README im Abschnitt „PDF“.
   bearbeiten.
 - [Zeichnen, Formen und Stempel (V3)](zeichnen-stempel.md): Stift, Radierer, Rechteck bis Wolke, Stil, Stempel.
 - [Kommentare: Liste, Antworten, Status, Export (V4)](kommentare.md): Seitenleiste, Filter, Zusammenfassung, XFDF.
+- [Formulare (V5)](formulare.md): weitere Feldtypen, Eigenschaften, Tab-Reihenfolge, Daten, Antworten sammeln.

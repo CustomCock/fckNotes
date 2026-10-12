@@ -21,8 +21,8 @@ from PySide6.QtWidgets import (QAbstractScrollArea, QApplication, QComboBox, QDi
                                QLabel, QLineEdit, QMenu, QPushButton, QSplitter, QTreeView, QVBoxLayout, QWidget)
 
 from notex import APP_NAME
-from notex.core import (pdfannot, pdfattach, pdfcomments, pdfdetect, pdfdiagram, pdfdoc, pdfdraw, pdfforms, pdflinks,
-                        pdfobjects, pdfoutline, pdfpages, pdfredact, pdfstamps, xfdf)
+from notex.core import (pdfannot, pdfattach, pdfcomments, pdfdetect, pdfdiagram, pdfdoc, pdfdraw, pdffieldtypes,
+                        pdfformdata, pdfforms, pdflinks, pdfobjects, pdfoutline, pdfpages, pdfredact, pdfstamps, xfdf)
 from notex.core.pdfdoc import PageLayout
 from notex.theme.theme import style_menu
 from notex.theme.tokens import COLORS, SPACING
@@ -47,7 +47,13 @@ TOOLS = [
     ("eraser", "eraser", "Radierer: über Freihand-Striche fahren – entfernt immer ganze Striche"),
     ("shape", "shapes", "Formen: Rechteck, Ellipse, Linie, Pfeil, Polygon, Wolke"),
     ("stamp", "stamp", "Stempel: Genehmigt, Entwurf, Vertraulich, Erledigt, Geprüft oder eigener"),
+    ("formfield", "list-plus", "Weitere Formularfelder: Optionsfeld-Gruppe, Dropdown, Listenfeld, Schaltfläche"),
 ]
+FIELD_TOOLS = ("radio", "combo", "listbox", "button")
+FIELD_LABELS = [("radio", "circle-dot", "Optionsfeld-Gruppe (Bereich aufziehen)"),
+                ("combo", "chevron-down", "Dropdown (Bereich aufziehen)"),
+                ("listbox", "list", "Listenfeld (Bereich aufziehen)"),
+                ("button", "square", "Schaltfläche: zurücksetzen oder Seite anspringen")]
 SHAPE_LABELS = [("rect", "square", "Rechteck"), ("ellipse", "circle", "Ellipse"), ("line", "minus", "Linie"),
                 ("arrow", "move-up-right", "Pfeil"), ("polygon", "pentagon", "Polygon (Klicks, Doppelklick/Enter beendet)"),
                 ("cloud", "cloud", "Wolke")]
@@ -83,7 +89,7 @@ def _alpha(color: str, alpha: int) -> QColor:
 
 
 REGION_TOOLS = {"note", "text", "field", "checkbox", "signature", "redact", "diagram", "crop", "link", "rect",
-                "ellipse", "cloud", "stamp"}   # Ziehen/Klicken legt einen Bereich fest
+                "ellipse", "cloud", "stamp", "radio", "combo", "listbox", "button"}   # Ziehen/Klicken = Bereich
 PATH_TOOLS = {"ink", "eraser", "line", "arrow", "polygon"}   # Ziehen zeichnet einen Pfad; Polygon: Klicks, Doppelklick
 SHAPE_TOOLS = ("rect", "ellipse", "line", "arrow", "polygon", "cloud")
 MARKUP_TOOLS = {"highlight", "underline", "strikeout", "redact_text"}          # Textauswahl → sofort anwenden
@@ -1190,6 +1196,8 @@ class PdfPage(ViewerPage):
                 button.clicked.connect(lambda _c=False: self._shape_menu())
             elif name == "stamp":
                 button.clicked.connect(lambda _c=False: self._stamp_menu())
+            elif name == "formfield":
+                button.clicked.connect(lambda _c=False: self._field_menu())
             else:
                 button.clicked.connect(lambda _c=False, n=name: self.set_tool(n))
             self.tool_buttons[name] = button
@@ -1214,7 +1222,15 @@ class PdfPage(ViewerPage):
         self.redact_apply.setVisible(False)
         group(t["select"], t["highlight"], t["underline"], t["strikeout"], t["note"], t["text"], self.color_button)
         group(t["ink"], t["eraser"], t["shape"], t["stamp"], self.style_button, t["diagram"], t["link"])
-        group(t["field"], t["checkbox"], t["signature"], self.form_button, detect, flatten)
+        self.taborder_button = IconButton("list-ordered", "Tab-Reihenfolge: Nummern einblenden, bearbeiten, "
+                                          "nach Zeilen/Spalten")
+        self.taborder_button.setCheckable(True)
+        self.taborder_button.clicked.connect(lambda _c=False: self._taborder_menu())
+        formdata = IconButton("database", "Formulardaten: exportieren (JSON, XFDF, FDF), importieren, "
+                              "Antworten sammeln")
+        formdata.clicked.connect(lambda: self._formdata_menu(formdata))
+        group(t["field"], t["checkbox"], t["formfield"], t["signature"], self.form_button, detect,
+              self.taborder_button, formdata, flatten)
         self.tool_row = group(t["redact"], t["crop"], self.redact_apply)
         assert set(t) == {name for name, _i, _t in TOOLS}, "jedes Werkzeug gehört in eine Gruppe"
         self.undo_button = IconButton("undo-2", "Rückgängig  Ctrl+Z")
@@ -1830,10 +1846,11 @@ class PdfPage(ViewerPage):
 
     # ---- Anmerkungen ----------------------------------------------------------------------------------------
     def set_tool(self, tool: str) -> None:
-        if tool not in self.tool_buttons and tool not in SHAPE_TOOLS:
+        if tool not in self.tool_buttons and tool not in SHAPE_TOOLS and tool not in FIELD_TOOLS:
             tool = "select"
         for name, button in self.tool_buttons.items():
-            button.setChecked(name == tool or (name == "shape" and tool in SHAPE_TOOLS))
+            button.setChecked(name == tool or (name == "shape" and tool in SHAPE_TOOLS)
+                              or (name == "formfield" and tool in FIELD_TOOLS))
         if tool in SHAPE_TOOLS:
             icon_name = next(i for k, i, _l in SHAPE_LABELS if k == tool)
             from notex.theme.icons import icon
@@ -2094,20 +2111,238 @@ class PdfPage(ViewerPage):
                                                         target, strokes), page=page)
 
     def field_properties(self, obj, new_name: str | None = None, multiline: bool | None = None,
-                         size: float | None = None) -> bool:
+                         size: float | None = None, properties: dict | None = None) -> bool:
         info = next((f for f in self.fields if f.name == obj.field), None)
         if info is None:
             return False
-        if new_name is None and multiline is None and size is None:
+        if new_name is None and multiline is None and size is None and properties is None:
             from PySide6.QtWidgets import QDialog
             from notex.ui.pdf_edit import FieldDialog
-            dialog = FieldDialog(self, info)
+            dialog = FieldDialog(self, info, self.doc.pageCount())
             if dialog.exec() != QDialog.DialogCode.Accepted:
                 return False
             new_name, multiline, size = dialog.values()
+            properties = dialog.properties()
         if not self._ensure_editing():
             return False
-        return self._run(pdfforms.update_field, info.name, new_name, multiline, size, page=obj.page)
+        properties = properties or {}
+
+        def change(data):
+            data = pdfforms.update_field(data, info.name, new_name, multiline, size)
+            if properties:
+                name = info.name
+                if new_name and new_name.strip() != info.name.split(".")[-1]:
+                    name = (info.name.rsplit(".", 1)[0] + "." if "." in info.name else "") + new_name.strip()
+                data = pdffieldtypes.set_properties(data, name, **properties)
+            return data
+        return self._run(change, page=obj.page)
+
+    # ---- Formular: weitere Feldtypen, Tab-Reihenfolge, Daten (Block V5) -------------------------------------------
+    show_tab_numbers = False
+
+    def _field_menu(self) -> None:
+        from notex.theme.icons import icon
+        menu = style_menu(QMenu(self))
+        for key, icon_name, label in FIELD_LABELS:
+            action = menu.addAction(icon(icon_name), label, lambda k=key: self.set_tool(k))
+            action.setCheckable(True)
+            action.setChecked(self.canvas.tool == key)
+        button = self.tool_buttons["formfield"]
+        self.set_tool(self.canvas.tool)
+        menu.exec(button.mapToGlobal(button.rect().bottomLeft()))
+
+    def _unique_field_name(self, base: str) -> str:
+        names = {f.name for f in self.fields}
+        if base not in names:
+            return base
+        number = 2
+        while f"{base}{number}" in names:
+            number += 1
+        return f"{base}{number}"
+
+    def _region_radio(self, page: int, box: tuple) -> None:
+        self.add_form_field("radio", page, box)
+
+    def _region_combo(self, page: int, box: tuple) -> None:
+        self.add_form_field("combo", page, box)
+
+    def _region_listbox(self, page: int, box: tuple) -> None:
+        self.add_form_field("listbox", page, box)
+
+    def _region_button(self, page: int, box: tuple) -> None:
+        self.add_form_field("button", page, box)
+
+    def add_form_field(self, kind: str, page: int, box: tuple, values: dict | None = None) -> bool:
+        """Neues Feld im aufgezogenen Bereich; ohne `values` fragt ein Dialog (Name, Einträge, Aktion)."""
+        x0, y0, x1, y1 = box
+        defaults = {"radio": (140, 60), "combo": (180, 20), "listbox": (180, 70), "button": (120, 24)}[kind]
+        if x1 - x0 < 8 or y1 - y0 < 8:
+            box = (x0, y0, x0 + defaults[0], y0 + defaults[1])
+        if values is None:
+            from notex.ui.pdf_forms_ui import NewFieldDialog
+            base = {"radio": "Auswahl", "combo": "Dropdown", "listbox": "Liste", "button": "Schaltfläche"}[kind]
+            dialog = NewFieldDialog(self, kind, self._unique_field_name(base), self.doc.pageCount(), page)
+            if dialog.exec() != QDialog.DialogCode.Accepted:
+                return False
+            values = dialog.values()
+        if not self._ensure_editing():
+            return False
+        name = values["name"]
+        if kind == "radio":
+            rects = pdffieldtypes.layout_radios(box, len(values["options"]), values.get("vertical", True))
+            done = self._run(pdffieldtypes.add_radio_group, page, rects, name, values["options"], page=page)
+        elif kind in ("combo", "listbox"):
+            done = self._run(pdffieldtypes.add_choice, page, tuple(box), name, values["options"], kind == "combo",
+                             "", bool(values.get("editable")), page=page)
+        else:
+            done = self._run(pdffieldtypes.add_button, page, tuple(box), name, values["label"],
+                             values.get("action", "reset"), int(values.get("target_page", 0)), page=page)
+        if done:
+            self.set_tool("select")
+        return done
+
+    def _taborder_menu(self) -> None:
+        self.taborder_button.setChecked(self.show_tab_numbers)
+        menu = style_menu(QMenu(self))
+        numbers = menu.addAction("Nummern einblenden", lambda: self.set_tab_numbers(not self.show_tab_numbers))
+        numbers.setCheckable(True)
+        numbers.setChecked(self.show_tab_numbers)
+        menu.addSeparator()
+        menu.addAction("Reihenfolge bearbeiten …", lambda: self.edit_tab_order())
+        menu.addAction("Nach Zeilen ordnen", lambda: self.edit_tab_order(mode="rows"))
+        menu.addAction("Nach Spalten ordnen", lambda: self.edit_tab_order(mode="columns"))
+        button = self.taborder_button
+        menu.exec(button.mapToGlobal(button.rect().bottomLeft()))
+
+    def set_tab_numbers(self, on: bool | None = None) -> None:
+        self.show_tab_numbers = (not self.show_tab_numbers) if on is None else bool(on)
+        self.taborder_button.setChecked(self.show_tab_numbers)
+        self.canvas.viewport().update()
+
+    def edit_tab_order(self, page: int | None = None, order: list[str] | None = None, mode: str | None = None) -> bool:
+        """Tab-Reihenfolge der Seite: eigene Liste (`order`), „rows“ oder „columns“; ohne Angaben fragt ein Dialog."""
+        page = self.canvas.current_page if page is None else page
+        if order is None and mode is None:
+            names = pdffieldtypes.tab_order(self.data, page) if self.data else []
+            if not names:
+                self.notice.emit("Auf dieser Seite gibt es keine Formularfelder")
+                return False
+            from notex.ui.pdf_forms_ui import TabOrderDialog
+            dialog = TabOrderDialog(self, page, names)
+            if dialog.exec() != QDialog.DialogCode.Accepted:
+                return False
+            if dialog.mode == "custom":
+                order = dialog.order()
+            else:
+                mode = dialog.mode
+        if not self._ensure_editing():
+            return False
+        self.set_tab_numbers(True)
+        if mode is not None:
+            return self._run(pdffieldtypes.auto_tab_order, page, mode, page=page)
+        return self._run(pdffieldtypes.set_tab_order, page, list(order), page=page)
+
+    def _formdata_menu(self, anchor) -> None:
+        menu = style_menu(QMenu(self))
+        for kind, label in (("json", "Daten als JSON exportieren …"), ("xfdf", "Daten als XFDF exportieren …"),
+                            ("fdf", "Daten als FDF exportieren …")):
+            menu.addAction(label, lambda k=kind: self.export_form_data(k))
+        menu.addAction("Daten importieren (JSON, XFDF, FDF) …", lambda: self.import_form_data())
+        menu.addSeparator()
+        menu.addAction("Antworten sammeln (mehrere PDFs → CSV) …", lambda: self.collect_responses())
+        menu.addAction("Formular zurücksetzen (Standardwerte)", lambda: self.reset_form())
+        menu.exec(anchor.mapToGlobal(anchor.rect().bottomLeft()))
+
+    def export_form_data(self, kind: str, target: Path | str | None = None) -> Path | None:
+        if not self.data or kind not in ("json", "xfdf", "fdf"):
+            return None
+        if not self.fields:
+            self.notice.emit("Dieses PDF hat keine Formularfelder")
+            return None
+        if target is None:
+            from PySide6.QtWidgets import QFileDialog
+            chosen, _f = QFileDialog.getSaveFileName(self, "Formulardaten exportieren",
+                                                     str(self.path.with_name(f"{self.path.stem}-daten.{kind}")),
+                                                     f"{kind.upper()} (*.{kind})")
+            if not chosen:
+                return None
+            target = chosen
+        target = Path(target)
+        export = {"json": pdfformdata.export_json, "xfdf": pdfformdata.export_xfdf_fields,
+                  "fdf": pdfformdata.export_fdf}[kind]
+        try:
+            target.write_bytes(export(self.data, self.path.name))
+        except (OSError, pdfpages.PdfEditError) as error:
+            self.notice.emit(f"Nicht exportiert: {error}")
+            return None
+        self.notice.emit(f"Formulardaten exportiert: {target.name}")
+        return target
+
+    def import_form_data(self, source: Path | str | None = None) -> bool:
+        if source is None:
+            from PySide6.QtWidgets import QFileDialog
+            chosen, _f = QFileDialog.getOpenFileName(self, "Formulardaten importieren", str(self.path.parent),
+                                                     "Formulardaten (*.json *.xfdf *.fdf *.xml)")
+            if not chosen:
+                return False
+            source = chosen
+        try:
+            raw = Path(source).read_bytes()[: pdfformdata.MAX_FILE + 1]
+        except OSError as error:
+            self.notice.emit(f"Nicht lesbar: {error}")
+            return False
+        if not self._ensure_editing():
+            return False
+        summary = []
+
+        def run(data):
+            result = pdfformdata.import_data(data, raw)
+            summary.append(result.summary())
+            return result.data
+        done = self._run(run)
+        if done and summary:
+            self.notice.emit(summary[0])
+        return done
+
+    def reset_form(self) -> bool:
+        if not self.fields or not self._ensure_editing():
+            return False
+        return self._run(pdffieldtypes.reset_values)
+
+    def collect_responses(self, sources: list | None = None, target: Path | str | None = None) -> Path | None:
+        """Mehrere ausgefüllte Kopien dieses Formulars → eine CSV-Tabelle (eine Zeile je Datei)."""
+        if sources is None:
+            from PySide6.QtWidgets import QFileDialog
+            chosen, _f = QFileDialog.getOpenFileNames(self, "Ausgefüllte PDFs wählen", str(self.path.parent),
+                                                      "PDF (*.pdf)")
+            if not chosen:
+                return None
+            sources = chosen
+        files = []
+        for source in sources:
+            try:
+                files.append((Path(source).name, Path(source).read_bytes()))
+            except OSError as error:
+                self.notice.emit(f"Nicht lesbar: {Path(source).name} ({error})")
+        text, problems = pdfformdata.collect(files)
+        if target is None:
+            from PySide6.QtWidgets import QFileDialog
+            chosen, _f = QFileDialog.getSaveFileName(self, "Antworten speichern",
+                                                     str(self.path.with_name(f"{self.path.stem}-antworten.csv")),
+                                                     "CSV (*.csv)")
+            if not chosen:
+                return None
+            target = chosen
+        target = Path(target)
+        try:
+            target.write_text(text, encoding="utf-8-sig", newline="")
+        except OSError as error:
+            self.notice.emit(f"Nicht gespeichert: {error}")
+            return None
+        rows = len(files) - len(problems)
+        self.notice.emit(f"{rows} Antworten gesammelt" + (f" – {len(problems)} Dateien übersprungen" if problems
+                                                         else ""))
+        return target
 
     # ---- Diagramme ---------------------------------------------------------------------------------------------
     def page_background(self, page: int, without: int | None = None, scale: float = 2.0):

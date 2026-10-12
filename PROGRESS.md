@@ -694,6 +694,16 @@ PDF/A wie vorgeschlagen, Noto statt Helvetica, Windows-Zertifikatsspeicher spät
   eigene Objekte. UI `ui/pdf_comments.py` (zweizeilige Liste, Filter, Kontextmenü, `R`/`Entf`), Sprechblase +
   `Ctrl+Shift+M`, Export MD/CSV(BOM)/PDF (über `export_service`)/XFDF, 6 Palette-Einträge. **Entscheidung:** XFDF
   ohne Formularfelder (kommt mit V5) und ohne Datei-Anhänge/Klänge. Doku `docs/pdf/kommentare.md`.
+- **V5 – erledigt.** `pdfforms.FieldInfo` um Pflicht, Standardwert, Größe, Ausrichtung, Tooltip, combo/editable und
+  Schaltflächen-Aktion erweitert; Listenfeld-Erscheinungsbild (Einträge, Auswahl hinterlegt), Dropdown mit Pfeil.
+  Neu `pdffieldtypes.py` (**Entscheidung:** eigenes Modul statt `pdfforms.py` zu vergrößern): Optionsgruppe
+  (Eltern-Feld + Widget je Option, NoToggleToOff), Dropdown/Listenfeld, Schaltfläche (nur `/ResetForm`, `/GoTo`),
+  `set_properties`, `reset_values`, Tab-Reihenfolge (eigene = `/Annots` umsortiert + `/Tabs` entfernt; Zeilen/
+  Spalten = `/Tabs /R|/C` + gleiche `/Annots`-Reihenfolge). Neu `pdfformdata.py`: JSON/XFDF(`<fields>`, verschachtelt)
+  /FDF-Export und -Import (eigener FDF-Leser ohne Streams/Verweise, Tiefe ≤ 32, 10 MB; **Grund:** pypdfs
+  `read_object` verliert ohne Dokument Daten), `collect` → CSV. `pdfcomments.csv_cell` öffentlich. UI: Werkzeug
+  „Weitere Felder“ (Menü), `ui/pdf_forms_ui.py` (NewFieldDialog, TabOrderDialog), `FieldDialog` erweitert,
+  Tab-Nummern auf den Feldern, Formulardaten-Menü, 12 Palette-Einträge. Doku `docs/pdf/formulare.md`.
 
 ## Offen
 
@@ -763,7 +773,7 @@ rdap, scanner, logs, pcap. Standardmäßig an: variables, hex, ports, ioc.
 ## Nächster Schritt
 
 **PDF-Ausbau (Blöcke V, W, X):** Roadmap `docs/ROADMAP-PDF.md`, vom Besitzer freigegeben („alles wie vorgeschlagen“).
-**V0–V4 erledigt** – nächster Block **V5 (Formulare)**. B- und C-Blöcke vor dem Start abstimmen.
+**V0–V5 erledigt** – nächster Block **V6 (Schutz: Passwort/Rechte und Muster-Schwärzen)**. B- und C-Blöcke vor dem Start abstimmen.
 
 **Block T (PDF: Objekte, Felderkennung, Diagramme, draw.io) abgeschlossen** auf dem Arbeitsbranch – wartet auf
 Merge/Release durch den Besitzer (Vorschlag 1.18.0). Offen beim Besitzer: Ausprobieren mit echten Arbeitsblättern
