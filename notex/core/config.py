@@ -58,6 +58,7 @@ DEFAULTS: dict[str, Any] = {
     "pdf_undo_budget_mb": 512,    # PDF: Speicher für Rückgängig-Schritte; mehr wird in cache/ ausgelagert
     "pdf_author": "",             # PDF: Name für Stempel (leer = Anmeldename des Systems)
     "pdf_redact_patterns": [],    # PDF: eigene Schwärz-Muster [{"name", "regex", "on"}] (keine Treffer, nur Muster)
+    "pdf_layer_templates": {"watermark": [], "header": [], "background": []},   # PDF: Vorlagen für Wasserzeichen/Kopf-Fußzeile/Hintergrund {art: [{"name", "spec", "image"}]}
     "theme": default_theme(), # das aktive Theme, komplett (Presets/Dateien sind nur Vorlagen)
     "spellcheck": {
         "enabled": True,

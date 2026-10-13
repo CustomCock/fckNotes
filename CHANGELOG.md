@@ -148,6 +148,17 @@ Alle nennenswerten Änderungen an fckNotes (bis 1.17.0: Notex). Format angelehnt
     außerhalb verschwinden aus der Datei, der Rest bleibt am Platz) und **löschen** (ganz aus der Datei, wenn es
     sonst nirgends vorkommt).
   - Neue Abhängigkeit **Pillow** (MIT-CMU, gepinnt) zum Lesen und Schreiben der Bilder.
+- **PDF-Ausbau, Block V8 (Wasserzeichen, Kopf-/Fußzeilen, Seitenzahlen, Hintergrund):**
+  - **Wasserzeichen** aus Text oder Bild: Deckkraft, Drehung, neun Positionen, Größe, vor oder hinter dem Inhalt,
+    Seitenbereich; Text in eingebetteter Noto Sans, durchsuchbar, als Artefakt markiert.
+  - **Kopf-/Fußzeilen** links/Mitte/rechts mit `{seite}`, `{seiten}`, `{datum}`, `{dateiname}`, `{titel}`;
+    Seitenzahl-Muster, Startnummer, Abstände.
+  - **Hintergrund** als Farbe oder Bild.
+  - Alles in **eigenen Ebenen (OCG)**: Vorschau im Dialog, **Vorlagen** speichern/laden, **Aktualisieren** (nach
+    neuen Seiten), **Entfernen** (Seiteninhalt danach byte-gleich), läuft im Hintergrund mit Fortschritt/Abbrechen.
+  - **Fremde Wasserzeichen** entfernen, wenn sie als Wasserzeichen markiert sind.
+  - Prüfung nach dem Schwärzen kennt den neuen Ablageort „Vorlagen von Wasserzeichen, Kopf-/Fußzeilen und
+    Hintergrund“.
 
 ### Behoben
 - PDF-Formulare: Der Eigenschaften-Dialog zeigte die eingestellte Schriftgröße nicht an (immer „passend“).

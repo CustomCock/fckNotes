@@ -105,3 +105,12 @@ Windows und Linux durchgehen.
 4. Ein PNG mit Transparenz einfügen, auf 30° drehen, Deckkraft 50 %, einbrennen: in Acrobat gleich, durchsichtig.
 5. „Überall ersetzen“ auf dem JPEG (3×): alle drei Stellen zeigen in Acrobat das neue Bild; Dateigröße passt.
 6. Ein Bild löschen, speichern, mit `qpdf --show-xref` bzw. der Suche nach dem Bild-Stream prüfen: weg.
+
+## V8 – Wasserzeichen, Kopf-/Fußzeilen, Hintergrund
+1. Ein mehrseitiges PDF: Wasserzeichen „ENTWURF“, Fußzeile „Seite {seite} von {seiten}“, Hintergrund hellgelb.
+   In Acrobat erscheinen drei Ebenen „fckNotes: …“ im Ebenen-Bedienfeld; ausblenden blendet jeweils genau das aus.
+2. Drucken (Acrobat, Browser): Wasserzeichen und Fußzeile sind auf dem Papier.
+3. Seite einfügen, „Ebenen aktualisieren“: die neue Seite hat Fußzeile und Wasserzeichen, die Zählung stimmt.
+4. „Ebenen entfernen › Alle“, speichern: Acrobat zeigt keine Ebenen mehr, der Inhalt ist unverändert.
+5. In Acrobat ein Wasserzeichen hinzufügen, in fckNotes „Fremde Wasserzeichen entfernen“: es ist weg.
+6. Text des Wasserzeichens in Acrobat suchen: wird gefunden; Bildschirmleser liest es nicht vor (Artefakt).

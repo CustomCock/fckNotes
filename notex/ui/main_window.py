@@ -3756,6 +3756,19 @@ class MainWindow(QMainWindow):
              lambda: self.pdf_command("rotate_image", None, -90), "Shift+R", "pdf bild drehen links rotieren 90"),
             ("pdf:image_properties", "PDF: Ausgewähltes Bild – Drehung und Deckkraft …",
              lambda: self.pdf_command("image_properties"), "", "pdf bild drehen winkel deckkraft transparenz"),
+            ("pdf:watermark", "PDF: Wasserzeichen …", lambda: self.pdf_command("page_layer", "watermark"), "",
+             "pdf wasserzeichen entwurf vertraulich kopie text bild watermark"),
+            ("pdf:header_footer", "PDF: Kopf-/Fußzeile und Seitenzahlen …",
+             lambda: self.pdf_command("page_layer", "header"), "",
+             "pdf kopfzeile fußzeile seitenzahlen nummerieren seite von datum dateiname titel"),
+            ("pdf:background", "PDF: Hintergrund (Farbe oder Bild) …",
+             lambda: self.pdf_command("page_layer", "background"), "", "pdf hintergrund farbe bild briefpapier"),
+            ("pdf:layers_update", "PDF: Ebenen aktualisieren (Seitenzahlen, Datum, neue Seiten)",
+             lambda: self.pdf_command("update_page_layers"), "", "pdf ebenen aktualisieren seitenzahlen neu"),
+            ("pdf:layers_remove", "PDF: Wasserzeichen, Kopf-/Fußzeilen und Hintergrund entfernen",
+             lambda: self.pdf_command("remove_page_layers"), "", "pdf ebenen entfernen wasserzeichen kopfzeile"),
+            ("pdf:foreign_watermarks", "PDF: Fremde Wasserzeichen entfernen …",
+             lambda: self.pdf_command("remove_foreign_watermarks"), "", "pdf wasserzeichen fremd acrobat entfernen"),
         ]
         for key, title, callback, shortcut, keywords in pdf_cmds:
             self.registry.add(key, title, callback, category="PDF", shortcut=shortcut, keywords=keywords)

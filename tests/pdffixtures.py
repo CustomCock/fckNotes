@@ -56,6 +56,18 @@ def audit_doc(location: str, secret: str) -> bytes:
         from notex.core import pdflinks as L
         return L.add_link(make_pdf(["Neutraler Text"], outline=False, title=""), 0, (72, 72, 200, 90),
                           L.LinkTarget("url", url=f"https://example.org/{secret}"))
+    if location == "page_layers":
+        import json
+        from notex.core import pdfstamp_layers as L
+        data = L.add_layer(make_pdf(["Neutraler Text"], outline=False, title=""), L.Watermark(text="Neutral"))
+        writer = PdfWriter(clone_from=io.BytesIO(data))
+        for ref in writer.pages[0]["/Resources"]["/XObject"].values():
+            info = ref.get_object().get(L.LAYER_KEY)
+            if info is not None:                              # Vorlage enthält das Geheimnis, die Seite nicht
+                spec = json.loads(str(info.get_object()["/Spec"]))
+                spec["footer_note"] = secret
+                info.get_object()[NameObject("/Spec")] = TextStringObject(json.dumps(spec))
+        return _out(writer)
     writer = _writer()
     root = writer._root_object
     if location == "form":

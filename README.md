@@ -555,6 +555,11 @@ Der Stift schaltet eine zweite Leiste und die **Seitenleiste** (Miniaturen) ein.
   ersetzen, exportieren, einbrennen. **Bilder im Seiteninhalt** (Scans, Fotos, Logos) auswählen und **exportieren**
   (JPEG unverändert, sonst PNG; alle auf einmal), **ersetzen** (nur hier oder überall), **zuschneiden** (die Pixel
   außerhalb verschwinden wirklich) und **löschen**. Details: `docs/pdf/bilder.md`.
+- **Wasserzeichen, Kopf-/Fußzeilen, Seitenzahlen, Hintergrund** (Ebenen-Symbol, Block V8): Text- oder
+  Bild-Wasserzeichen (Deckkraft, Drehung, Position, vor/hinter dem Inhalt), Kopf-/Fußzeilen mit `{seite}`, `{seiten}`,
+  `{datum}`, `{dateiname}`, `{titel}`, Hintergrund als Farbe oder Bild – mit Vorschau, Seitenbereich und Vorlagen.
+  Alles liegt in eigenen Ebenen und lässt sich **aktualisieren** (z. B. nach neuen Seiten) und **entfernen**;
+  fremde, als Wasserzeichen markierte Inhalte lassen sich ebenfalls entfernen. Details: `docs/pdf/ebenen.md`.
 
 **Kommentieren** – Werkzeuge in der Bearbeiten-Leiste (`Esc` = zurück zu „Auswählen“), Farbe über die Palette:
 
@@ -1411,6 +1416,9 @@ Alternativ per Docker: `docker run -d -p 8081:8010 erikvl87/languagetool` (dann 
 | Palette › PDF: Bilder im Seiteninhalt auswählen | Bilder umranden; Klick wählt, Rechtsklick = exportieren, ersetzen, zuschneiden |
 | Entf / Esc (Werkzeug „Bilder im Seiteninhalt“) | Ausgewähltes Bild löschen (Rückfrage) / Auswahl aufheben |
 | Palette › PDF: Bilder im Dokument / Alle Bilder exportieren | Liste aller Bilder bzw. alle in einen Ordner (nie überschreiben) |
+| Palette › PDF: Wasserzeichen / Kopf-/Fußzeile und Seitenzahlen / Hintergrund | Ebene mit Vorschau und Vorlagen anlegen |
+| Palette › PDF: Ebenen aktualisieren / entfernen | Seitenzahlen und Datum neu bzw. Wasserzeichen & Co. wieder entfernen |
+| Palette › PDF: Fremde Wasserzeichen entfernen | Als Wasserzeichen markierte Inhalte anderer Programme entfernen |
 | Palette › PDF: Auswahl markieren / unterstreichen / durchstreichen | Anmerkung über dem markierten PDF-Text |
 | Palette › PDF: Werkzeug Notiz / Text | Notiz bzw. Text auf der Seite platzieren (Esc beendet das Werkzeug) |
 | Palette › PDF: Formular ausfüllen | Feldliste rechts, „Übernehmen“ schreibt alle Werte (Ctrl+Z-fähig) |

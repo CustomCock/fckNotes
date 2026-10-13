@@ -31,6 +31,7 @@ LOCATIONS: dict[str, str] = {
     "outline": "Lesezeichen",
     "attachment": "Anhänge (Name, Beschreibung, Inhalt)",
     "layer": "Ebenen-Namen",
+    "page_layers": "Vorlagen von Wasserzeichen, Kopf-/Fußzeilen und Hintergrund",
     "metadata": "Metadaten (Info)",
     "xmp": "XMP-Metadaten",
     "structure": "Struktur-Tags (Alt-Text, ActualText, Titel)",
@@ -240,6 +241,21 @@ def _layer(reader, data: bytes) -> Iterable[tuple[str, str]]:
             continue
 
 
+def _page_layers(reader, data: bytes) -> Iterable[tuple[str, str]]:
+    """Gespeicherte Vorlagen (JSON) der Seiten-Ebenen aus Block V8 – sie enthalten den Text auch dann noch, wenn die
+    Ebene selbst geschwärzt wurde, und dienen „Aktualisieren“."""
+    for index, page in enumerate(reader.pages):
+        try:
+            resources = page.get("/Resources")
+            xobjects = resources.get_object().get("/XObject") if resources is not None else None
+            for ref in (xobjects.get_object().values() if xobjects is not None else []):
+                info = ref.get_object().get("/fckNotesLayer")
+                if info is not None:
+                    yield _str(info.get_object().get("/Spec")), f"in einer Ebenen-Vorlage auf Seite {index + 1}"
+        except Exception:                                 # noqa: BLE001
+            yield "\x00UNREADABLE", f"Ebenen auf Seite {index + 1} ließen sich nicht prüfen"
+
+
 def _metadata(reader, data: bytes) -> Iterable[tuple[str, str]]:
     meta = reader.metadata or {}
     yield " ".join(str(v) for v in meta.values()), "in den Metadaten"
@@ -375,7 +391,7 @@ def _raw(reader, data: bytes) -> Iterable[tuple[str, str]]:
 
 SCANNERS: dict[str, Callable] = {
     "page_text": _page_text, "appearance": _appearance, "annotation": _annotation, "link": _link, "form": _form,
-    "outline": _outline, "attachment": _attachment, "layer": _layer, "metadata": _metadata, "xmp": _xmp,
+    "outline": _outline, "attachment": _attachment, "layer": _layer, "page_layers": _page_layers, "metadata": _metadata, "xmp": _xmp,
     "structure": _structure, "names": _names, "javascript": _javascript, "objects": _objects, "raw": _raw,
 }
 assert set(SCANNERS) == set(LOCATIONS), "Jeder Ablageort braucht einen Scanner"

@@ -730,6 +730,20 @@ PDF/A wie vorgeschlagen, Noto statt Helvetica, Windows-Zertifikatsspeicher spät
   in Gruppen nur exportieren/überall ersetzen. UI `ui/pdf_images_ui.py` (Liste, Ersetzen, Zuschneiden,
   Eigenschaften), Werkzeuge „Bild einfügen“ und „Bilder im Seiteninhalt“ (Rahmen-Overlay, Entf/Esc, Zuschneiden per
   Rahmen), `R`/`Shift+R`, Shift-Ecke verzerrt, 7 Palette-Einträge, Fixture `bilder.pdf`. Doku `docs/pdf/bilder.md`.
+- **V8 – erledigt.** Neu `pdfstamp_layers.py` (gemeinsame Basis, später auch Bates in X6): Vorlagen
+  `Watermark`/`HeaderFooter`/`Background` (frozen Dataclasses, `checked`, `to_dict`/`from_dict` für Config und PDF).
+  Je Seite ein Form-XObject (`/OC` → OCG je Art mit `/fckNotesLayerKind`, `/fckNotesLayer` mit Art, Id und Vorlage
+  als JSON; `/Matrix` = aufrechte Ansicht → Benutzerkoordinaten, auch für gedrehte Seiten), gezeichnet aus eigenen,
+  markierten Content-Streams (`/Artifact … BDC … EMC`). **Entscheidung:** Ebenen über dem Inhalt fassen das Original
+  in eigene `q`/`Q`-Streams (offener Grafikzustand des Originals darf die Ebene nicht verschieben); Entfernen nimmt
+  nur eigene Streams/Ressourcen/OCGs heraus → Original byte-gleich; zusammengelegte Streams: Befehle einzeln suchen.
+  **Entscheidung:** eine Ebene je Art (neu = ersetzen), `{seiten}` = letzte vergebene Nummer im Bereich. Aktualisieren
+  = aus der gespeicherten Vorlage neu (Bild-XObject wird wiederverwendet, Id bleibt). Fremde Wasserzeichen nur, wenn
+  als `/Artifact /Watermark` markiert oder `/Watermark`-Anmerkung. Audit-Ort `page_layers` (Vorlagen-JSON) + Fixture.
+  UI `ui/pdf_layers_ui.py` (Dialog mit Vorschau über `pdfstamp_layers.preview` + PDFium, Vorlagen in Config
+  `pdf_layer_templates`, Bilder in `stamps/`), Ebenen-Menü, Hintergrund-Ausführung `_background_change` (ein
+  Rückgängig-Schritt, verwirft das Ergebnis, wenn das PDF inzwischen geändert wurde), 6 Palette-Einträge.
+  Doku `docs/pdf/ebenen.md`.
 
 ## Offen
 
@@ -799,8 +813,8 @@ rdap, scanner, logs, pcap. Standardmäßig an: variables, hex, ports, ioc.
 ## Nächster Schritt
 
 **PDF-Ausbau (Blöcke V, W, X):** Roadmap `docs/ROADMAP-PDF.md`, vom Besitzer freigegeben („alles wie vorgeschlagen“).
-**V0–V7 erledigt** – nächster Block **V8 (Wasserzeichen, Kopf-/Fußzeilen, Seitenzahlen, Hintergrund)**. B- und
-C-Blöcke vor dem Start abstimmen.
+**V0–V8 erledigt** – nächster Block **V9 (Komprimieren und Konvertieren)**. B- und C-Blöcke vor dem Start
+abstimmen.
 
 **Block T (PDF: Objekte, Felderkennung, Diagramme, draw.io) abgeschlossen** auf dem Arbeitsbranch – wartet auf
 Merge/Release durch den Besitzer (Vorschlag 1.18.0). Offen beim Besitzer: Ausprobieren mit echten Arbeitsblättern

@@ -22,7 +22,7 @@ from PySide6.QtWidgets import (QAbstractScrollArea, QApplication, QComboBox, QDi
 
 from notex import APP_NAME
 from notex.core import (pdfannot, pdfattach, pdfcomments, pdfdetect, pdfdiagram, pdfdoc, pdfdraw, pdffieldtypes,
-                        pdfformdata, pdfforms, pdfimages, pdflinks, pdfobjects, pdfoutline, pdfpages, pdfredact, pdfsecurity,
+                        pdfformdata, pdfforms, pdfimages, pdflinks, pdfobjects, pdfstamp_layers, pdfoutline, pdfpages, pdfredact, pdfsecurity,
                         pdfstamps, redact_patterns, xfdf)
 from notex.core.pdfdoc import PageLayout
 from notex.theme.theme import style_menu
@@ -1462,7 +1462,10 @@ class PdfPage(ViewerPage):
         images = IconButton("images", "Bilder im Dokument: Liste – exportieren (einzeln/alle), ersetzen, zuschneiden, "
                             "löschen")
         images.clicked.connect(lambda: self.show_images())
-        group(t["image"], t["pickimage"], images)
+        layers = IconButton("layers", "Seiten-Ebenen: Wasserzeichen, Kopf-/Fußzeile und Seitenzahlen, Hintergrund – "
+                            "hinzufügen, aktualisieren, entfernen")
+        layers.clicked.connect(lambda: self._layers_menu(layers))
+        group(t["image"], t["pickimage"], images, layers)
         self.taborder_button = IconButton("list-ordered", "Tab-Reihenfolge: Nummern einblenden, bearbeiten, "
                                           "nach Zeilen/Spalten")
         self.taborder_button.setCheckable(True)
@@ -2668,6 +2671,162 @@ class PdfPage(ViewerPage):
         self.selected_image = image
         self.canvas.go_to(page, QPointF(image.rect[0], max(image.rect[1], 0.1)))
         self.canvas.viewport().update()
+
+    # ---- Seiten-Ebenen (Block V8) ------------------------------------------------------------------------------
+    def _layers_menu(self, anchor) -> None:
+        menu = self.build_layers_menu()
+        menu.exec(anchor.mapToGlobal(anchor.rect().bottomLeft()))
+
+    def build_layers_menu(self) -> QMenu:
+        menu = style_menu(QMenu(self))
+        for kind in ("watermark", "header", "background"):
+            from notex.ui.pdf_layers_ui import TITLES
+            menu.addAction(TITLES[kind] + " …", lambda k=kind: self.page_layer(k))
+        menu.addSeparator()
+        try:
+            present = pdfstamp_layers.list_layers(self.data) if self.data else []
+        except Exception:                               # noqa: BLE001
+            present = []
+        for layer in present:
+            info = menu.addAction(layer.describe())
+            info.setEnabled(False)
+        update = menu.addAction("Ebenen aktualisieren (Seitenzahlen, Datum, neue Seiten)",
+                                lambda: self.update_page_layers())
+        update.setEnabled(bool(present))
+        remove = menu.addMenu("Ebenen entfernen")
+        style_menu(remove)
+        for layer in present:
+            remove.addAction(layer.label, lambda k=layer.kind: self.remove_page_layers(k))
+        remove.addAction("Alle", lambda: self.remove_page_layers())
+        remove.setEnabled(bool(present))
+        menu.addAction("Fremde Wasserzeichen entfernen …", lambda: self.remove_foreign_watermarks())
+        return menu
+
+    def _layer_templates(self, kind: str) -> list[dict]:
+        config = getattr(self.window(), "config", None)
+        saved = config.get("pdf_layer_templates", {}) if config is not None else {}
+        entries = saved.get(kind, []) if isinstance(saved, dict) else []
+        return [e for e in entries if isinstance(e, dict) and e.get("name")]
+
+    def _store_layer_templates(self, kind: str, entries: list[dict]) -> None:
+        config = getattr(self.window(), "config", None)
+        if config is None:
+            return
+        saved = dict(config.get("pdf_layer_templates", {}) or {})
+        saved[kind] = entries
+        config["pdf_layer_templates"] = saved
+
+    def layer_preview(self, spec, image: bytes | None = None, page: int = 0):
+        """Vorschau einer Seite mit der Ebene als QImage (PDFium, ohne den Tab zu ändern)."""
+        from PySide6.QtGui import QImage
+        import pypdfium2 as pdfium
+        single = pdfstamp_layers.preview(self.data, spec, page, image, self.path.name)
+        document = pdfium.PdfDocument(single)
+        try:
+            first = document[0]
+            width = first.get_width() or 1
+            picture = first.render(scale=520 / width).to_pil().convert("RGB")
+        finally:
+            document.close()
+        raw = picture.tobytes()
+        return QImage(raw, picture.width, picture.height, picture.width * 3, QImage.Format.Format_RGB888).copy()
+
+    def _background_change(self, title: str, change, wait: bool = False) -> bool:
+        """Änderung über alle Seiten im Hintergrund (Fortschritt, Abbrechen); Ergebnis = ein Rückgängig-Schritt."""
+        if self.data is None or self.edit_block_reason():
+            self.notice.emit(self.edit_block_reason() or "Kein PDF geladen")
+            return False
+        from notex.ui.tasks import run_task
+        data, result = self.data, {}
+
+        def work(ctx):
+            return change(data, lambda done, total: ctx.step(done, total, f"{round(100 * done / max(total, 1))} % …"))
+
+        def done(new) -> None:
+            if self.data is not data:                   # inzwischen anders geändert: nichts überschreiben
+                self.notice.emit("Das PDF wurde inzwischen geändert – bitte noch einmal ausführen")
+                result["ok"] = False
+                return
+            self.apply(new)
+            result["ok"] = True
+
+        def failed(message: str) -> None:
+            result["ok"] = False
+            from notex.ui import dialogs
+            dialogs.warn(self, title, message)
+
+        worker = run_task(self, title, work, on_done=done, on_error=failed,
+                          on_cancel=lambda: result.setdefault("ok", False), show_dialog=not wait)
+        if wait:                                        # Tests: synchron abwarten
+            worker.wait()
+            from PySide6.QtCore import QCoreApplication
+            for _ in range(100):
+                QCoreApplication.processEvents()
+                if "ok" in result:
+                    break
+        return bool(result.get("ok", not wait))
+
+    def page_layer(self, kind: str, spec=None, image: bytes | None = None, wait: bool = False) -> bool:
+        """Wasserzeichen, Kopf-/Fußzeile oder Hintergrund hinzufügen (ersetzt eine vorhandene Ebene derselben Art)."""
+        if self.data is None:
+            return False
+        if spec is None:
+            from notex.paths import stamps_dir
+            from notex.ui.pdf_layers_ui import PageLayerDialog
+            existing = next((layer for layer in pdfstamp_layers.list_layers(self.data) if layer.kind == kind), None)
+            current = None
+            if existing is not None:
+                try:
+                    current = pdfstamp_layers.from_dict(existing.spec)
+                except pdfpages.PdfEditError:
+                    current = None
+            dialog = PageLayerDialog(self, kind, self.doc.pageCount(), self.canvas.current_page, current,
+                                     self.layer_preview, self._layer_templates(kind), stamps_dir())
+            accepted = dialog.exec() == QDialog.DialogCode.Accepted
+            if dialog.saved_templates is not None:
+                self._store_layer_templates(kind, dialog.saved_templates)
+            if not accepted:
+                return False
+            spec, image = dialog.spec(), dialog.image
+        if not self._ensure_editing():
+            return False
+        from notex.ui.pdf_layers_ui import TITLES
+        name = self.path.name
+        return self._background_change(
+            TITLES[kind], lambda data, progress: pdfstamp_layers.add_layer(data, spec, image, name, progress), wait)
+
+    def update_page_layers(self, wait: bool = False) -> bool:
+        if not self._ensure_editing():
+            return False
+        name = self.path.name
+        return self._background_change("Ebenen aktualisieren",
+                                       lambda data, progress: pdfstamp_layers.update_layers(data, name, progress), wait)
+
+    def remove_page_layers(self, kind: str | None = None) -> bool:
+        if not self._ensure_editing():
+            return False
+        return self._run(pdfstamp_layers.remove_layers, kind)
+
+    def remove_foreign_watermarks(self, confirmed: bool | None = None) -> bool:
+        """Als Wasserzeichen markierte Inhalte anderer Programme entfernen (nach Rückfrage)."""
+        try:
+            found = pdfstamp_layers.foreign_watermarks(self.data) if self.data else {}
+        except Exception:                               # noqa: BLE001
+            found = {}
+        if not found:
+            self.notice.emit("Keine als Wasserzeichen markierten Inhalte gefunden (nur markierte lassen sich erkennen)")
+            return False
+        if confirmed is None:
+            from notex.ui import dialogs
+            total = sum(found.values())
+            confirmed = dialogs.confirm(self, "Fremde Wasserzeichen entfernen?",
+                                        f"{total} Wasserzeichen auf {len(found)} Seite(n) gefunden. Entfernen?",
+                                        yes="Entfernen", danger=True,
+                                        informative="Erkannt werden nur Inhalte, die als Wasserzeichen markiert "
+                                                    "sind. Rückgängig mit Ctrl+Z, solange nicht gespeichert ist.")
+        if not confirmed or not self._ensure_editing():
+            return False
+        return self._run(pdfstamp_layers.remove_foreign_watermarks)
 
     # ---- Eingefügtes anfassen (Objekte) ------------------------------------------------------------------------
     def set_object_rect(self, obj, rect: tuple) -> bool:
