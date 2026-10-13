@@ -124,3 +124,11 @@ Windows und Linux durchgehen.
 5. Ein Artikel-PDF als Markdown: Überschriften, Absätze und Listen stimmen; die Notiz öffnet sich.
 6. Drei Handyfotos (hoch und quer) zu einem A4-PDF: Ausrichtung je Seite passend, Fotos aufrecht.
 7. Windows-Build: Komprimieren funktioniert in der gepackten Anwendung (pikepdf wird mitgeliefert).
+
+## V10 – Ordnerweite PDF-Suche
+1. Ordner mit ~200 echten PDFs (Rechnungen, Skripte): Chip „PDF“ an, Suchbegriff eingeben – Fortschritt
+   „PDF-Index … / …“ läuft, danach Treffer mit Seite. Zweite Suche: sofort (Index).
+2. Ein PDF ändern (in Acrobat speichern): nur dieses wird neu gelesen; neuer Text wird gefunden.
+3. Klick auf einen Treffer: richtige Seite, Begriff markiert.
+4. Passwort-PDF und Scan im Ordner: stehen unter „nicht durchsucht“ mit Grund.
+5. Windows: Dateinamen mit Umlauten und Leerzeichen, Endung `.PDF` großgeschrieben – werden gefunden.

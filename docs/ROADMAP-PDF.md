@@ -1,6 +1,6 @@
 # Roadmap: PDF-Funktionen vervollständigen (Blöcke V, W, X)
 
-Stand: Vom Besitzer freigegeben (11.10.2026, „alles wie vorgeschlagen“). **V0–V9 erledigt.** Fortschritt pro Block
+Stand: Vom Besitzer freigegeben (11.10.2026, „alles wie vorgeschlagen“). **V0–V10 erledigt.** Fortschritt pro Block
 steht in `PROGRESS.md`.
 Block U bleibt für den KI-Assistenten reserviert. Die Benennung setzt die bestehenden Blöcke fort:
 

@@ -201,6 +201,7 @@ class MainWindow(QMainWindow):
         tree.path_deleted.connect(lambda p: (self.links.remove(self.tabs.relative(p)), self.file_index.request_rescan()))
 
         self.tabs.status_changed.connect(self._update_status)
+        self.tabs.file_saved.connect(self._forget_pdf_index)
         self.tabs.file_opened.connect(self._on_file_opened)
         self.tabs.link_activated.connect(self._on_link_activated)
         self.tabs.preview_link.connect(self._on_preview_link)
@@ -735,7 +736,13 @@ class MainWindow(QMainWindow):
         self.sidebar.focus_search()
 
     def _open_from_sidebar(self, path: Path, location) -> None:
-        """Öffnet eine Datei aus Baum oder Trefferliste; `location` = (Zeile, Spalte, Länge) oder None."""
+        """Öffnet eine Datei aus Baum oder Trefferliste; `location` = (Zeile, Spalte, Länge), bei PDF-Treffern
+        {"page", "text"} oder None."""
+        if isinstance(location, dict) and "page" in location:
+            viewer = self.tabs.open_viewer(path, "pdf")
+            if viewer is not None and hasattr(viewer, "show_hit"):
+                viewer.show_hit(int(location["page"]), str(location.get("text", "")))
+            return
         if location is None:
             self.tabs.open_file(path)
         else:
@@ -2494,6 +2501,21 @@ class MainWindow(QMainWindow):
                     break
         return result.get("path")
 
+    def _forget_pdf_index(self, path: Path) -> None:
+        """Gespeichertes PDF (z. B. geschwärzt): alten Text sofort aus dem Suchindex nehmen."""
+        if Path(path).suffix.lower() != ".pdf":
+            return
+        from notex.core.pdfindex import PdfIndex
+        try:
+            PdfIndex(self.sidebar.pdf_index_path()).forget(path)
+        except Exception:                                 # noqa: BLE001 – Index ist nur ein Cache
+            pass
+
+    def clear_pdf_index(self) -> None:
+        from notex.core.pdfindex import PdfIndex
+        PdfIndex(self.sidebar.pdf_index_path()).clear()
+        self.toast.show_message("PDF-Suchindex gelöscht – er wird bei der nächsten PDF-Suche neu aufgebaut", "info")
+
     def toggle_pdf_outline(self) -> None:
         viewer = self._current_pdf()
         if viewer is not None and viewer.outline_button.isEnabled():
@@ -3655,6 +3677,10 @@ class MainWindow(QMainWindow):
             ("pdf:merge", "PDFs zusammenfügen …", lambda: self.merge_pdfs(), "", "pdf merge zusammenfügen kombinieren"),
             ("pdf:images_to_pdf", "Bilder zu PDF …", lambda: self.images_to_pdf(), "",
              "pdf bilder fotos scans jpg png zu pdf umwandeln konvertieren"),
+            ("search:pdf_toggle", "Suche: PDF-Inhalte durchsuchen ein/aus", lambda: self.sidebar.pdf.toggle(), "",
+             "suche pdf inhalte ordner durchsuchen volltext index"),
+            ("search:pdf_index_clear", "Suche: PDF-Suchindex löschen", lambda: self.clear_pdf_index(), "",
+             "suche pdf index cache löschen neu aufbauen"),
             ("pdf:split", "PDF: Aufteilen …", lambda: self.pdf_command("split_pdf"), "", "pdf split teilen trennen"),
             ("pdf:rotate_right", "PDF: Seite(n) nach rechts drehen", lambda: self.pdf_command("rotate_pages", 90), "",
              "pdf drehen rotieren uhrzeigersinn"),

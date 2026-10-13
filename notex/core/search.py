@@ -84,6 +84,8 @@ class SearchOptions:
     case_sensitive: bool = False
     variable_values: dict | None = None      # „auch in Variablenwerten suchen“: Name → Wert (Modul Variablen)
     variable_prefix: str = "§"
+    pdf: bool = False                        # PDF-Inhalte durchsuchen (Index in pdf_index, Block V10)
+    pdf_index: Path | None = None
 
 
 @dataclass
@@ -94,6 +96,8 @@ class SearchResult:
     skipped_large: int = 0
     error: str | None = None       # ungültige Regex oder Timeout – die UI zeigt den Text an
     timed_out: bool = False
+    pdfs: list = field(default_factory=list)                         # pdfindex.PdfFileMatch
+    pdf_skipped: list[tuple[str, str]] = field(default_factory=list)  # (relativer Pfad, Grund) – nicht durchsucht
 
 
 # ---- Abfrage --------------------------------------------------------------------------------
@@ -258,20 +262,22 @@ def search(
     cancel: threading.Event | None = None,
     on_name: Callable[[NameMatch], None] | None = None,
     on_file: Callable[[FileMatch], None] | None = None,
+    on_pdf: Callable | None = None,
+    on_progress: Callable[[int, int, str], None] | None = None,
 ) -> SearchResult:
     result = SearchResult()
     query = parse_query(query_text, options.regex, options.whole_word, options.case_sensitive)
     if query.error:
         result.error = query.error
         return result
-    if not query.needles or not (options.by_name or options.full_text):
+    if not query.needles or not (options.by_name or options.full_text or options.pdf):
         return result
     extensions = [e for e in options.extensions if query.allows_extension(e)] if query.extensions else list(options.extensions)
     if query.extensions:   # ext:-Filter darf auch Endungen nennen, die nicht im Baum stehen
         extensions = sorted(set(extensions) | set(query.extensions))
 
     try:
-        for path in iter_files(root, extensions):
+        for path in (iter_files(root, extensions) if (options.by_name or options.full_text) else ()):
             if cancel is not None and cancel.is_set():
                 result.cancelled = True
                 break
@@ -300,10 +306,30 @@ def search(
                     result.files.append(file_match)
                     if on_file:
                         on_file(file_match)
+        if options.pdf and options.pdf_index is not None and not result.cancelled and query.allows_extension(".pdf"):
+            _search_pdfs(root, query, options, result, cancel, on_pdf, on_progress)
     except RegexTimeout:
         result.timed_out = True
         result.error = "Regex zu langsam (Timeout) – Muster vereinfachen, z. B. verschachtelte Wiederholungen vermeiden"
     return result
+
+
+def _search_pdfs(root: Path, query: Query, options: SearchOptions, result: SearchResult,
+                 cancel: threading.Event | None, on_pdf, on_progress) -> None:
+    """PDF-Inhalte über den Index (erst aktualisieren, dann suchen)."""
+    from notex.core import pdfindex
+    every = pdfindex.pdf_files(root)
+    files = [p for p in every if query.allows_path(_relative(p, root))]
+    index = pdfindex.PdfIndex(options.pdf_index)
+    index.prune({str(p) for p in every}, under=root)
+    stats = index.update(files, root, cancel, on_progress)
+    result.pdf_skipped = stats.skipped
+    if stats.cancelled:
+        result.cancelled = True
+        return
+    result.pdfs = index.search(files, query, root, cancel, on_pdf)
+    if cancel is not None and cancel.is_set():
+        result.cancelled = True
 
 
 # ---- Ersetzen über Dateien ---------------------------------------------------------------------

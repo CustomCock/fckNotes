@@ -759,6 +759,16 @@ PDF/A wie vorgeschlagen, Noto statt Helvetica, Windows-Zertifikatsspeicher spät
   (pikepdf + libqpdf ≈ 8 MB entpackt; Pillow aus V7 ≈ 18 MB entpackt). UI `ui/pdf_convert_ui.py` (CompressDialog, PageImagesDialog, ImagesToPdfDialog auf
   Basis von MergeDialog), Knöpfe Komprimieren/Exportieren, `_task`-Helfer, `EditorTabs._open_requested_path` öffnet
   Text-Dateien im Editor (vorher immer als PDF-Viewer), 6 Palette-Einträge. Doku `docs/pdf/komprimieren-konvertieren.md`.
+- **V10 – erledigt.** Neu `pdfindex.py`: `PdfIndex` (SQLite, Tabellen docs/pages, `user_version`-Schema, WAL,
+  `secure_delete` + Checkpoint, damit gelöschter Text nicht in Datei/WAL bleibt), `update` (mtime+Größe → nichts;
+  sonst SHA-256 → gleicher Inhalt irgendwo = Text übernehmen; sonst PDFium), `search` je Zeile einer Seite mit
+  `search.match_spans`/`_line_match`, `prune`, `forget`, `clear`, Status ok/encrypted/notext/error/large.
+  `search.py`: `SearchOptions.pdf`/`pdf_index`, `SearchResult.pdfs`/`pdf_skipped`, Callbacks `on_pdf`/`on_progress`.
+  UI: Chip „PDF“ (Config `search.pdf`), Treffer „S. n“ unter „PDF-Inhalte“, „nicht durchsucht“-Gruppe, Fortschritt
+  im Info-Text, Klick → `PdfPage.show_hit` (Seite + Suchbegriff; wartet auf die schrittweise gelieferten Treffer
+  der Seite). **Entscheidung:** gespeicherte PDFs werden über `file_saved` sofort aus dem Index genommen (z. B. nach
+  dem Schwärzen). **Fix:** Such-Chips in `FlowLayout` (brechen um statt „Vo…xt“). 2 Palette-Einträge.
+  Doku `docs/pdf/suche.md`.
 
 ## Offen
 
@@ -828,7 +838,7 @@ rdap, scanner, logs, pcap. Standardmäßig an: variables, hex, ports, ioc.
 ## Nächster Schritt
 
 **PDF-Ausbau (Blöcke V, W, X):** Roadmap `docs/ROADMAP-PDF.md`, vom Besitzer freigegeben („alles wie vorgeschlagen“).
-**V0–V9 erledigt** – nächster Block **V10 (Ordnerweite PDF-Suche)**. B- und C-Blöcke vor dem Start abstimmen.
+**V0–V10 erledigt** – nächster Block **V11 (Drucken und Vorlesen)**. B- und C-Blöcke vor dem Start abstimmen.
 
 **Block T (PDF: Objekte, Felderkennung, Diagramme, draw.io) abgeschlossen** auf dem Arbeitsbranch – wartet auf
 Merge/Release durch den Besitzer (Vorschlag 1.18.0). Offen beim Besitzer: Ausprobieren mit echten Arbeitsblättern

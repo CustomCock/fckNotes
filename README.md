@@ -47,7 +47,8 @@ Standardschrift ist Inter; mit SF Pro in `fonts/user/` sieht die Oberfläche ent
 
 - **Verzeichnisbaum** von `data/` links, Dateien per Klick im Editor öffnen, mehrere Tabs
 - **Suche** (Ctrl+Shift+F): rekursiv, case-insensitive, nach Dateiname und/oder Volltext,
-  läuft im Hintergrund-Thread, Klick auf einen Treffer springt in die Zeile. Filter, Regex und
+  läuft im Hintergrund-Thread, Klick auf einen Treffer springt in die Zeile. Chip **„PDF“**: auch PDF-Inhalte
+  (Treffer mit Seite, Klick öffnet die Seite mit Markierung; Index in `cache/`, siehe `docs/pdf/suche.md`). Filter, Regex und
   „Ganzes Wort“ siehe [Suche und Ersetzen in Dateien](#suche-und-ersetzen-in-dateien)
 - **Editor**: weißes Blatt auf dunklem Tisch, Zeilennummern, aktuelle Zeile hervorgehoben,
   Suchen/Ersetzen (Ctrl+F / Ctrl+H), Zoom (Ctrl+Mausrad, Ctrl+Plus/Minus)
@@ -1428,6 +1429,8 @@ Alternativ per Docker: `docker run -d -p 8081:8010 erikvl87/languagetool` (dann 
 | Palette › PDF: Reparieren | PDF neu schreiben (Querverweise und Struktur) |
 | Palette › PDF: Seiten als Bilder / Als Text / Als Markdown | PNG/JPG-Export bzw. Text; Markdown öffnet sich als Notiz |
 | Palette › Bilder zu PDF | Mehrere Bilder in gewählter Reihenfolge zu einem PDF |
+| Chip „PDF“ in der Suche / Palette › Suche: PDF-Inhalte durchsuchen ein/aus | PDF-Inhalte im ganzen Ordner durchsuchen |
+| Palette › Suche: PDF-Suchindex löschen | Index entfernen (wird bei der nächsten PDF-Suche neu aufgebaut) |
 | Palette › PDF: Auswahl markieren / unterstreichen / durchstreichen | Anmerkung über dem markierten PDF-Text |
 | Palette › PDF: Werkzeug Notiz / Text | Notiz bzw. Text auf der Seite platzieren (Esc beendet das Werkzeug) |
 | Palette › PDF: Formular ausfüllen | Feldliste rechts, „Übernehmen“ schreibt alle Werte (Ctrl+Z-fähig) |

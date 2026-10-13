@@ -346,6 +346,10 @@ class FlowLayout(QLayout):
     def addItem(self, item) -> None:                       # noqa: N802 – Qt-API
         self._items.append(item)
 
+    def setSpacing(self, spacing: int) -> None:            # noqa: N802
+        self._spacing = spacing
+        self.invalidate()
+
     def count(self) -> int:
         return len(self._items)
 

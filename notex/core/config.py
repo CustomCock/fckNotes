@@ -121,6 +121,7 @@ DEFAULTS: dict[str, Any] = {
         "regex": False,       # Chip „.*“: regulärer Ausdruck
         "whole_word": False,  # Chip „Wort“: nur ganze Wörter
         "variable_values": False,   # Chip „§“: auch in Variablenwerten suchen (Modul Variablen)
+        "pdf": False,         # Chip „PDF“: PDF-Inhalte durchsuchen (Index in cache/pdf-index.sqlite)
     },
     "ip_conflicts": {         # Modul IP-Konflikte: zuletzt ausgewertetes Subnetz und Ausschlussbereiche
         "network": "",

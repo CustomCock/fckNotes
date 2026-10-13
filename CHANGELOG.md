@@ -168,6 +168,13 @@ Alle nennenswerten Änderungen an fckNotes (bis 1.17.0: Notex). Format angelehnt
     (Überschriften, Absätze, Listen, Silbentrennung; öffnet sich als Notiz).
   - **Bilder zu PDF** (Palette): Reihenfolge, Seitengröße wie Bild oder A4/Letter, Rand.
   - **pikepdf** (MPL-2.0, mit libqpdf) ist jetzt Laufzeit-Abhängigkeit statt nur Test-Werkzeug.
+- **PDF-Ausbau, Block V10 (Ordnerweite PDF-Suche):**
+  - Chip **„PDF“** in der Suche: PDF-Inhalte im ganzen Ordner mit derselben Abfragesprache (Phrase, ext:/path:,
+    ganze Wörter, Regex), Treffer mit Datei, Seite und Ausschnitt; ein Klick öffnet die Seite mit Markierung.
+  - Index in `cache/pdf-index.sqlite`: inkrementell (Änderungsdatum, Größe, Prüfwert), Fortschritt und Abbruch beim
+    ersten Aufbau; gelöschte Dateien fallen heraus, gespeicherte PDFs werden sofort vergessen (überschrieben).
+  - Passwort-PDFs, Scans ohne Text und sehr große Dateien werden als „nicht durchsucht“ mit Grund gelistet.
+  - Die Such-Chips brechen bei schmaler Seitenleiste um, statt gekürzt zu werden.
 
 ### Behoben
 - PDF-Formulare: Der Eigenschaften-Dialog zeigte die eingestellte Schriftgröße nicht an (immer „passend“).

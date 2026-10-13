@@ -753,7 +753,8 @@ class PdfPage(ViewerPage):
         self.search_field = QLineEdit()
         self.search_field.setPlaceholderText("Im PDF suchen …")
         self.search_field.setClearButtonEnabled(True)
-        self.search_field.textChanged.connect(lambda _t: self._search_timer.start())
+        self.search_field.textChanged.connect(lambda _t: (setattr(self, "_pending_hit_page", None),
+                                                          self._search_timer.start()))
         self.search_field.returnPressed.connect(lambda: self.next_result(1))
         prev_hit = IconButton("chevron-left", "Vorheriger Treffer  Shift+F3")
         prev_hit.clicked.connect(lambda: self.next_result(-1))
@@ -3992,6 +3993,28 @@ class PdfPage(ViewerPage):
         self.search_field.setFocus()
         self.search_field.selectAll()
 
+    def show_hit(self, page: int, text: str) -> None:
+        """Treffer aus der Ordnersuche: Seite anspringen und den Begriff markieren (PDF-Suche im Tab)."""
+        self._pending_hit_page = page
+        self.canvas.go_to(page)
+        if text:
+            self.search_field.blockSignals(True)
+            self.search_field.setText(text)
+            self.search_field.blockSignals(False)
+            self._run_search()
+
+    def _jump_to_pending_hit(self, count: int) -> bool:
+        page = getattr(self, "_pending_hit_page", None)
+        if page is None or not count:
+            return False
+        for index in range(count):
+            if self.search.resultAtIndex(index).page() == page:
+                self._pending_hit_page = None
+                self.search_index = index - 1
+                self.next_result(1)
+                return True
+        return False
+
     def _run_search(self) -> None:
         self.search_index = -1
         self.search.setSearchString(self.search_field.text())
@@ -4010,7 +4033,9 @@ class PdfPage(ViewerPage):
             self.hits_label.setText(f"{self.search_index + 1} / {count}")
         else:
             self.hits_label.setText(f"{count} Treffer" if count else "Keine Treffer")
-        if count and self.search_index < 0:
+        if count and getattr(self, "_pending_hit_page", None) is not None:
+            self._jump_to_pending_hit(count)                # Treffer kommen schrittweise: auf die Seite warten
+        elif count and self.search_index < 0:
             self.next_result(1)
         self.canvas.viewport().update()
 
