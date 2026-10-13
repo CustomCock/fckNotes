@@ -31,6 +31,8 @@ und werden mit in den Build-Ordner kopiert (`_internal/notex/assets/...`,
 | pypdfium2 (mit PDFium) | 5.14.0 | Apache License 2.0 oder BSD 3-Clause; PDFium BSD 3-Clause (Bestandteile: FreeType, libjpeg-turbo, OpenJPEG, lcms2, ICU u. a., Texte in der Datei) | https://github.com/pypdfium2-team/pypdfium2 | `licenses/LICENSE-pypdfium2.txt` |
 | fontTools | 4.66.1 | MIT | https://github.com/fonttools/fonttools | `licenses/LICENSE-fonttools.txt` |
 | Pillow (mit libjpeg-turbo, libpng, libwebp, zlib, OpenJPEG u. a.) | 12.3.0 | MIT-CMU (HPND); Bestandteile mit eigenen freien Lizenzen, Texte in der Datei | https://python-pillow.github.io | `licenses/LICENSE-Pillow.txt` |
+| pikepdf | 10.16.0 | Mozilla Public License 2.0 (unverändert genutzt; Quelle: Link) | https://github.com/pikepdf/pikepdf | `licenses/LICENSE-pikepdf.txt`, Bestandteile in `licenses/pikepdf-third-party/` |
+| qpdf (libqpdf, in pikepdf enthalten) | 12.x | Apache License 2.0 | https://github.com/qpdf/qpdf | Apache-Text: `licenses/LICENSE-cryptography.txt` |
 | Noto Sans (Schrift, wird als Untermenge in PDFs eingebettet) | 2.x | SIL Open Font License 1.1 | https://github.com/notofonts/latin-greek-cyrillic | `notex/assets/fonts/noto/OFL.txt` |
 | Inter (Schrift) | 4.1 | SIL Open Font License 1.1 | https://rsms.me/inter | `notex/assets/fonts/LICENSE-Inter.txt` |
 | JetBrains Mono (Schrift) | 2.304 | SIL Open Font License 1.1 | https://www.jetbrains.com/lp/mono | `notex/assets/fonts/LICENSE-JetBrainsMono.txt` |

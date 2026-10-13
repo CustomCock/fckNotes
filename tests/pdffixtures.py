@@ -261,3 +261,44 @@ def images_doc() -> bytes:
         content.set_data(old + b"\n" + drawing)
         page[NameObject("/Contents")] = writer._add_object(content)
     return _out(writer)
+
+
+# ---- Komprimieren und Konvertieren (V9) ---------------------------------------------------------------------------
+def photo_doc(pages: int = 2, size: tuple[int, int] = (1600, 1200)) -> bytes:
+    """Seiten mit einem „Foto“ (Rauschen + Verlauf, Flate, ≈ 576 dpi auf 200 × 150 pt) und Text darunter."""
+    import random
+    rng = random.Random(7)
+    w, h = size
+    raw = bytes(min(255, (x * 255 // w + rng.randrange(60))) if c == 0 else
+                min(255, (y * 255 // h + rng.randrange(60))) if c == 1 else rng.randrange(256)
+                for y in range(h) for x in range(w) for c in range(3))
+    writer = _writer([f"Fotoseite {i + 1}" for i in range(pages)])
+    ref = _image_xobject(writer, zlib.compress(raw, 6), w, h, "/FlateDecode")
+    for page in writer.pages:
+        resources = page["/Resources"].get_object()
+        resources[NameObject("/XObject")] = DictionaryObject({NameObject("/Foto"): ref})
+        old = page["/Contents"].get_object().get_data()
+        content = DecodedStreamObject()
+        content.set_data(old + b"\nq 200 0 0 150 72 500 cm /Foto Do Q\n")
+        page[NameObject("/Contents")] = writer._add_object(content)
+    return _out(writer)
+
+
+def article_doc() -> bytes:
+    """Eine Seite wie ein Artikel: Überschrift (20 pt), Unterüberschrift (14 pt), Absatz über zwei Zeilen mit
+    Silbentrennung, Aufzählung mit „•“, nummerierte Liste."""
+    writer = PdfWriter()
+    font = writer._add_object(DictionaryObject({
+        NameObject("/Type"): NameObject("/Font"), NameObject("/Subtype"): NameObject("/Type1"),
+        NameObject("/BaseFont"): NameObject("/Helvetica"), NameObject("/Encoding"): NameObject("/WinAnsiEncoding")}))
+    page = writer.add_blank_page(595, 842)
+    lines = [(20, 780, "Jahresbericht"), (14, 740, "Einleitung"),
+             (11, 715, "Dies ist der erste Absatz mit einem getrenn-"), (11, 701, "ten Wort und mehr Text."),
+             (11, 670, "Zweiter Absatz."), (11, 640, "\x95 Punkt eins"), (11, 626, "\x95 Punkt zwei"),
+             (11, 600, "1. Erstens"), (11, 586, "2. Zweitens"), (14, 550, "Ergebnis"), (11, 525, "# kein Titel")]
+    ops = "".join(f"BT /F1 {size} Tf 72 {y} Td ({text}) Tj ET\n" for size, y, text in lines)
+    stream = DecodedStreamObject()
+    stream.set_data(ops.encode("latin-1"))
+    page[NameObject("/Contents")] = writer._add_object(stream)
+    page[NameObject("/Resources")] = DictionaryObject({NameObject("/Font"): DictionaryObject({NameObject("/F1"): font})})
+    return _out(writer)

@@ -246,10 +246,18 @@ class EditorTabs(QTabWidget):
             connect(page.dirty_changed, lambda dirty, pg=page: self._viewer_dirty(pg, dirty))
             connect(page.saved, lambda old, new, pg=page: self._viewer_saved(pg, old, new))
             connect(page.notice, self.viewer_notice.emit)
-            connect(page.open_requested, lambda path: self.open_viewer(path, self.viewer_kind_for(path) or "pdf"))
+            connect(page.open_requested, self._open_requested_path)
             if hasattr(page, "quote_requested"):
                 connect(page.quote_requested, lambda text, pg=page: self.pdf_quote.emit(pg, text))
         page._wiring = links
+
+    def _open_requested_path(self, path) -> None:
+        """Von einem Viewer angefordert (neues PDF, exportierter Text …): passender Viewer oder Texteditor."""
+        kind = self.viewer_kind_for(Path(path))
+        if kind is None:
+            self.open_file(Path(path))
+        else:
+            self.open_viewer(Path(path), kind)
 
     def unwire_page(self, page) -> None:
         for signal, slot in getattr(page, "_wiring", []):

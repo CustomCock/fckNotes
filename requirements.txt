@@ -14,3 +14,4 @@ dpkt==1.9.8   # Modul PCAP-Übersicht: .pcap/.pcapng lesen, reines Python, py3-n
 pypdfium2==5.14.0   # PDF-Ausbau: Text mit Positionen/Schriftgröße und Seitenobjekte ohne Qt (Apache-2.0 / PDFium BSD-3); exakt gepinnt
 fonttools==4.66.1   # PDF-Ausbau: eingebettete Schrift-Untermengen (Noto Sans) für alles, was fckNotes auf Seiten schreibt (MIT); exakt gepinnt
 Pillow==12.3.0   # PDF-Bilder (V7): PNG/JPG/WebP einfügen, Bilder aus PDFs dekodieren/zuschneiden/exportieren (MIT-CMU); exakt gepinnt
+pikepdf==10.16.0   # PDF komprimieren (Objekt-Streams, Bilder neu kodieren), kaputte PDFs reparieren (MPL-2.0, libqpdf Apache-2.0; lxml kommt mit, ist im Build ausgeschlossen); exakt gepinnt

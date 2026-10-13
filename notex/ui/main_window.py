@@ -2433,6 +2433,67 @@ class MainWindow(QMainWindow):
         self.tabs.open_viewer(target, "pdf")
         return target
 
+    def images_to_pdf(self, paths: list[Path] | None = None, target: Path | None = None, page_size: str = "image",
+                      margin_mm: float = 0.0, wait: bool = False) -> Path | None:
+        """Bilder (Reihenfolge im Dialog) zu einem neuen PDF – im Hintergrund – und öffnen."""
+        from PySide6.QtWidgets import QDialog, QFileDialog
+        from notex.ui.pdf_convert_ui import ImagesToPdfDialog
+        from notex.ui.pdf_images_ui import IMAGE_FILTER
+        start = self.root
+        if paths is None:
+            chosen, _ = QFileDialog.getOpenFileNames(self, "Bilder zu PDF", str(start), IMAGE_FILTER)
+            if not chosen:
+                return None
+            dialog = ImagesToPdfDialog(self, [Path(c) for c in sorted(chosen, key=str.lower)], start)
+            if dialog.exec() != QDialog.DialogCode.Accepted:
+                return None
+            paths = dialog.paths()
+            page_size, margin_mm = dialog.options()
+        if not paths:
+            return None
+        if target is None:
+            suggestion = Path(paths[0]).with_name(f"{Path(paths[0]).stem}.pdf")
+            chosen_target, _ = QFileDialog.getSaveFileName(self, "PDF speichern", str(suggestion), "PDF (*.pdf)")
+            if not chosen_target:
+                return None
+            target = Path(chosen_target)
+        try:
+            images = [(Path(p).name, Path(p).read_bytes()) for p in paths]
+        except OSError as error:
+            dialogs.warn(self, "Bilder zu PDF", str(error))
+            return None
+        from notex.core import pdfconvert
+        from notex.ui.pdf_edit import write_pdf
+        from notex.ui.tasks import run_task
+        result: dict = {}
+
+        def done(data: bytes) -> None:
+            try:
+                note = write_pdf(target, data, backup=True)   # vorhandene Datei landet im Papierkorb
+            except OSError as error:
+                dialogs.warn(self, "Bilder zu PDF", str(error))
+                result["path"] = None
+                return
+            self.toast.show_message(f"{len(images)} Bild(er) → {target.name}" + (f" – {note}" if note else ""))
+            self.tabs.open_viewer(target, "pdf")
+            result["path"] = target
+
+        def failed(message: str) -> None:
+            result["path"] = None
+            dialogs.warn(self, "Bilder zu PDF", message)
+
+        worker = run_task(self, "Bilder zu PDF", lambda ctx: pdfconvert.images_to_pdf(
+            images, page_size, margin_mm, lambda d, t: ctx.step(d, t, f"Bild {d} von {t} …")),
+            on_done=done, on_error=failed, show_dialog=not wait)
+        if wait:
+            worker.wait()
+            from PySide6.QtCore import QCoreApplication
+            for _ in range(100):
+                QCoreApplication.processEvents()
+                if "path" in result:
+                    break
+        return result.get("path")
+
     def toggle_pdf_outline(self) -> None:
         viewer = self._current_pdf()
         if viewer is not None and viewer.outline_button.isEnabled():
@@ -3592,6 +3653,8 @@ class MainWindow(QMainWindow):
             ("pdf:edit", "PDF: Bearbeiten ein/aus", lambda: self.pdf_command("set_editing", not (self._current_pdf()
              and self._current_pdf().editing), edit=False), "", "pdf bearbeiten edit stift seiten anmerkungen"),
             ("pdf:merge", "PDFs zusammenfügen …", lambda: self.merge_pdfs(), "", "pdf merge zusammenfügen kombinieren"),
+            ("pdf:images_to_pdf", "Bilder zu PDF …", lambda: self.images_to_pdf(), "",
+             "pdf bilder fotos scans jpg png zu pdf umwandeln konvertieren"),
             ("pdf:split", "PDF: Aufteilen …", lambda: self.pdf_command("split_pdf"), "", "pdf split teilen trennen"),
             ("pdf:rotate_right", "PDF: Seite(n) nach rechts drehen", lambda: self.pdf_command("rotate_pages", 90), "",
              "pdf drehen rotieren uhrzeigersinn"),
@@ -3769,6 +3832,18 @@ class MainWindow(QMainWindow):
              lambda: self.pdf_command("remove_page_layers"), "", "pdf ebenen entfernen wasserzeichen kopfzeile"),
             ("pdf:foreign_watermarks", "PDF: Fremde Wasserzeichen entfernen …",
              lambda: self.pdf_command("remove_foreign_watermarks"), "", "pdf wasserzeichen fremd acrobat entfernen"),
+            ("pdf:compress", "PDF: Komprimieren …", lambda: self.pdf_command("compress"), "",
+             "pdf komprimieren verkleinern kleiner dateigröße bilder dpi jpeg optimieren"),
+            ("pdf:repair", "PDF: Reparieren (neu schreiben)", lambda: self.pdf_command("repair_pdf"), "",
+             "pdf reparieren kaputt beschädigt xref neu schreiben"),
+            ("pdf:to_images", "PDF: Seiten als Bilder (PNG/JPG) …",
+             lambda: self.pdf_command("export_page_images", edit=False), "",
+             "pdf seiten bilder png jpg exportieren konvertieren rendern"),
+            ("pdf:to_text", "PDF: Als Text (.txt) …", lambda: self.pdf_command("export_text", "txt", edit=False), "",
+             "pdf text txt exportieren konvertieren"),
+            ("pdf:to_markdown", "PDF: Als Markdown (.md) – als Notiz öffnen …",
+             lambda: self.pdf_command("export_text", "md", edit=False), "",
+             "pdf markdown md notiz exportieren konvertieren überschriften"),
         ]
         for key, title, callback, shortcut, keywords in pdf_cmds:
             self.registry.add(key, title, callback, category="PDF", shortcut=shortcut, keywords=keywords)

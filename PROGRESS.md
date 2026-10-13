@@ -744,6 +744,21 @@ PDF/A wie vorgeschlagen, Noto statt Helvetica, Windows-Zertifikatsspeicher spät
   `pdf_layer_templates`, Bilder in `stamps/`), Ebenen-Menü, Hintergrund-Ausführung `_background_change` (ein
   Rückgängig-Schritt, verwirft das Ergebnis, wenn das PDF inzwischen geändert wurde), 6 Palette-Einträge.
   Doku `docs/pdf/ebenen.md`.
+- **V9 – erledigt.** Neu `pdfconvert.py`: `compress` (pikepdf; Bildgröße aus der größten Darstellung über
+  `pdfimages.all_images`, verkleinern ab 15 % Überschuss, Fotos → JPEG, Strichbilder bleiben Flate, nur ersetzen wenn
+  kleiner; Masken/JPX/JBIG2/CCITT/`/Decode`/exotische Farbräume bleiben; `remove_unreferenced_resources`,
+  Objekt-Streams, `recompress_flate`), `repair` (**Fix:** qpdf übernahm einen Trailer ohne `/Size` – Platzhalter
+  setzen, dann rechnet qpdf neu), `images_to_pdf`, `export_page_images` (PDFium, nie überschreiben), `to_text`,
+  `to_markdown` (Zeilen mit Schriftgröße, Überschriften-Ebenen, Absätze, Listen; PDFium markiert Trennstellen mit
+  U+FFFE – entfernt). **Entscheidung:** Komprimieren ist ein Rückgängig-Schritt im Tab mit Rückfrage
+  (Vorher/Nachher), kein direktes Schreiben; mit Schwärz-Begriffen im Tab wird das Ergebnis vorher auditiert.
+  **Entscheidung:** Reparatur beim Laden nur, wenn QtPdf die Datei nicht öffnet; Ergebnis = ungespeicherte Änderung.
+  pikepdf 10.16.0 jetzt in `requirements.txt` (Build: Hidden-Import + `--copy-metadata pikepdf`; Lizenzen
+  pikepdf/qpdf). **Entscheidung:** lxml (kommt mit pikepdf) wird aus dem Build ausgeschlossen – pikepdf braucht es nur
+  für XMP über `open_metadata`, das wir nicht nutzen (−9 MB entpackt). Lokaler Linux-Build: ZIP ≈ 153 MB
+  (pikepdf + libqpdf ≈ 8 MB entpackt; Pillow aus V7 ≈ 18 MB entpackt). UI `ui/pdf_convert_ui.py` (CompressDialog, PageImagesDialog, ImagesToPdfDialog auf
+  Basis von MergeDialog), Knöpfe Komprimieren/Exportieren, `_task`-Helfer, `EditorTabs._open_requested_path` öffnet
+  Text-Dateien im Editor (vorher immer als PDF-Viewer), 6 Palette-Einträge. Doku `docs/pdf/komprimieren-konvertieren.md`.
 
 ## Offen
 
@@ -813,8 +828,7 @@ rdap, scanner, logs, pcap. Standardmäßig an: variables, hex, ports, ioc.
 ## Nächster Schritt
 
 **PDF-Ausbau (Blöcke V, W, X):** Roadmap `docs/ROADMAP-PDF.md`, vom Besitzer freigegeben („alles wie vorgeschlagen“).
-**V0–V8 erledigt** – nächster Block **V9 (Komprimieren und Konvertieren)**. B- und C-Blöcke vor dem Start
-abstimmen.
+**V0–V9 erledigt** – nächster Block **V10 (Ordnerweite PDF-Suche)**. B- und C-Blöcke vor dem Start abstimmen.
 
 **Block T (PDF: Objekte, Felderkennung, Diagramme, draw.io) abgeschlossen** auf dem Arbeitsbranch – wartet auf
 Merge/Release durch den Besitzer (Vorschlag 1.18.0). Offen beim Besitzer: Ausprobieren mit echten Arbeitsblättern

@@ -114,3 +114,13 @@ Windows und Linux durchgehen.
 4. „Ebenen entfernen › Alle“, speichern: Acrobat zeigt keine Ebenen mehr, der Inhalt ist unverändert.
 5. In Acrobat ein Wasserzeichen hinzufügen, in fckNotes „Fremde Wasserzeichen entfernen“: es ist weg.
 6. Text des Wasserzeichens in Acrobat suchen: wird gefunden; Bildschirmleser liest es nicht vor (Artefakt).
+
+## V9 – Komprimieren und Konvertieren
+1. Ein PDF mit Fotos (z. B. Handy-Scan) mit „Standard“ komprimieren: Vorher/Nachher stimmt mit der Dateigröße nach
+   dem Speichern überein; in Acrobat sind Fotos noch gut lesbar, Text bleibt durchsuchbar.
+2. Dasselbe mit „Nur verlustfrei“: Bilder in Acrobat (Bildeigenschaften) unverändert.
+3. Ein abgeschnittenes PDF öffnen: wird repariert angezeigt, nach dem Speichern öffnet Acrobat es ohne Warnung.
+4. Seiten als PNG mit 300 dpi: Bildgröße passt zur Seitengröße (A4 ≈ 2480 × 3508 px).
+5. Ein Artikel-PDF als Markdown: Überschriften, Absätze und Listen stimmen; die Notiz öffnet sich.
+6. Drei Handyfotos (hoch und quer) zu einem A4-PDF: Ausrichtung je Seite passend, Fotos aufrecht.
+7. Windows-Build: Komprimieren funktioniert in der gepackten Anwendung (pikepdf wird mitgeliefert).

@@ -16,3 +16,4 @@ die Haupt-README im Abschnitt „PDF“.
 - [Passwortschutz und Schwärzen nach Muster (V6)](schutz.md): Passwörter, Rechte, AES-256, Muster mit Prüfziffern.
 - [Bilder (V7)](bilder.md): einfügen, drehen, skalieren; Bilder im Inhalt exportieren, ersetzen, zuschneiden, löschen.
 - [Wasserzeichen, Kopf-/Fußzeilen, Seitenzahlen, Hintergrund (V8)](ebenen.md): eigene Ebenen, Vorschau, Vorlagen, Aktualisieren, Entfernen.
+- [Komprimieren, Reparieren, Konvertieren (V9)](komprimieren-konvertieren.md): Profile, Vorher/Nachher, Reparatur, PNG/JPG, Text/Markdown, Bilder zu PDF.

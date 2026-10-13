@@ -159,6 +159,15 @@ Alle nennenswerten Änderungen an fckNotes (bis 1.17.0: Notex). Format angelehnt
   - **Fremde Wasserzeichen** entfernen, wenn sie als Wasserzeichen markiert sind.
   - Prüfung nach dem Schwärzen kennt den neuen Ablageort „Vorlagen von Wasserzeichen, Kopf-/Fußzeilen und
     Hintergrund“.
+- **PDF-Ausbau, Block V9 (Komprimieren und Konvertieren):**
+  - **Komprimieren** mit Profilen (Hohe Qualität, Standard, Klein, Nur verlustfrei, eigene Werte: Bild-DPI,
+    JPEG-Qualität, Ungenutztes entfernen, Objekt-Streams), Vorher/Nachher-Größe und Rückfrage; Hinweis, wenn das
+    Ergebnis verlustbehaftet ist; Schutz gegen zurückkehrende geschwärzte Begriffe.
+  - **Reparieren**: kaputte PDFs werden beim Öffnen automatisch repariert; Befehl „PDF reparieren“.
+  - **Exportieren**: Seiten als PNG/JPG (DPI, Seitenbereich, nie überschreiben), als Text und als Markdown
+    (Überschriften, Absätze, Listen, Silbentrennung; öffnet sich als Notiz).
+  - **Bilder zu PDF** (Palette): Reihenfolge, Seitengröße wie Bild oder A4/Letter, Rand.
+  - **pikepdf** (MPL-2.0, mit libqpdf) ist jetzt Laufzeit-Abhängigkeit statt nur Test-Werkzeug.
 
 ### Behoben
 - PDF-Formulare: Der Eigenschaften-Dialog zeigte die eingestellte Schriftgröße nicht an (immer „passend“).

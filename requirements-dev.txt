@@ -1,4 +1,3 @@
 -r requirements.txt
 pytest>=8
 pyinstaller>=6
-pikepdf==10.16.0   # Tests: Prüfung wie „qpdf --check“ (libqpdf, MPL-2.0); nur Test, nicht im Build

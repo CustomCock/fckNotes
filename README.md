@@ -560,6 +560,11 @@ Der Stift schaltet eine zweite Leiste und die **Seitenleiste** (Miniaturen) ein.
   `{datum}`, `{dateiname}`, `{titel}`, Hintergrund als Farbe oder Bild – mit Vorschau, Seitenbereich und Vorlagen.
   Alles liegt in eigenen Ebenen und lässt sich **aktualisieren** (z. B. nach neuen Seiten) und **entfernen**;
   fremde, als Wasserzeichen markierte Inhalte lassen sich ebenfalls entfernen. Details: `docs/pdf/ebenen.md`.
+- **Komprimieren** (Symbol „Komprimieren“, Block V9): Profile Hohe Qualität / Standard / Klein / Nur verlustfrei oder
+  eigene Werte, mit Vorher/Nachher-Größe und Rückfrage; Bilder werden passend zur Darstellung verkleinert, Objekt-Streams
+  und das Entfernen von Ungenutztem machen die Datei zusätzlich kleiner. **Kaputte PDFs** werden beim Öffnen
+  repariert. **Exportieren**: Seiten als PNG/JPG, Text (.txt), Markdown (.md, öffnet sich als Notiz);
+  **Bilder zu PDF** über die Palette. Details: `docs/pdf/komprimieren-konvertieren.md`.
 
 **Kommentieren** – Werkzeuge in der Bearbeiten-Leiste (`Esc` = zurück zu „Auswählen“), Farbe über die Palette:
 
@@ -1419,6 +1424,10 @@ Alternativ per Docker: `docker run -d -p 8081:8010 erikvl87/languagetool` (dann 
 | Palette › PDF: Wasserzeichen / Kopf-/Fußzeile und Seitenzahlen / Hintergrund | Ebene mit Vorschau und Vorlagen anlegen |
 | Palette › PDF: Ebenen aktualisieren / entfernen | Seitenzahlen und Datum neu bzw. Wasserzeichen & Co. wieder entfernen |
 | Palette › PDF: Fremde Wasserzeichen entfernen | Als Wasserzeichen markierte Inhalte anderer Programme entfernen |
+| Palette › PDF: Komprimieren | Profil wählen, Vorher/Nachher sehen, übernehmen (Ctrl+Z macht es rückgängig) |
+| Palette › PDF: Reparieren | PDF neu schreiben (Querverweise und Struktur) |
+| Palette › PDF: Seiten als Bilder / Als Text / Als Markdown | PNG/JPG-Export bzw. Text; Markdown öffnet sich als Notiz |
+| Palette › Bilder zu PDF | Mehrere Bilder in gewählter Reihenfolge zu einem PDF |
 | Palette › PDF: Auswahl markieren / unterstreichen / durchstreichen | Anmerkung über dem markierten PDF-Text |
 | Palette › PDF: Werkzeug Notiz / Text | Notiz bzw. Text auf der Seite platzieren (Esc beendet das Werkzeug) |
 | Palette › PDF: Formular ausfüllen | Feldliste rechts, „Übernehmen“ schreibt alle Werte (Ctrl+Z-fähig) |

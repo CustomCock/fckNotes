@@ -21,9 +21,9 @@ from PySide6.QtWidgets import (QAbstractScrollArea, QApplication, QComboBox, QDi
                                QLabel, QLineEdit, QMenu, QPushButton, QSplitter, QTreeView, QVBoxLayout, QWidget)
 
 from notex import APP_NAME
-from notex.core import (pdfannot, pdfattach, pdfcomments, pdfdetect, pdfdiagram, pdfdoc, pdfdraw, pdffieldtypes,
-                        pdfformdata, pdfforms, pdfimages, pdflinks, pdfobjects, pdfstamp_layers, pdfoutline, pdfpages, pdfredact, pdfsecurity,
-                        pdfstamps, redact_patterns, xfdf)
+from notex.core import (pdfannot, pdfattach, pdfcomments, pdfconvert, pdfdetect, pdfdiagram, pdfdoc, pdfdraw,
+                        pdffieldtypes, pdfformdata, pdfforms, pdfimages, pdflinks, pdfobjects, pdfoutline, pdfpages,
+                        pdfredact, pdfsecurity, pdfstamp_layers, pdfstamps, redact_patterns, xfdf)
 from notex.core.pdfdoc import PageLayout
 from notex.theme.theme import style_menu
 from notex.theme.tokens import COLORS, SPACING
@@ -848,6 +848,7 @@ class PdfPage(ViewerPage):
     # ---- Laden ------------------------------------------------------------------------------------
     def _load(self, password: str = "", retry: bool = False) -> None:
         self.doc.close()
+        self.repaired_on_load = False
         self.encrypted = False
         size = self.path.stat().st_size
         if size <= IN_MEMORY_LIMIT:
@@ -896,11 +897,31 @@ class PdfPage(ViewerPage):
                 self._load(text)
                 return
             self.error = "Passwortgeschützt – nicht geöffnet"
-        elif self.doc.error() != QPdfDocument.Error.None_:
+        elif self.doc.error() != QPdfDocument.Error.None_ and not self._repair_on_load():
             self.error = f"PDF lässt sich nicht öffnen ({self.doc.error().name})"
         else:
             self.error = ""
         self._finish_load()
+        if self.repaired_on_load:
+            from PySide6.QtCore import QTimer
+            QTimer.singleShot(0, lambda: (self._set_dirty(True), self.notice.emit(
+                "Beschädigtes PDF repariert – mit Ctrl+S speichern (das Original kommt in den Papierkorb)")))
+
+    def _repair_on_load(self) -> bool:
+        """Kaputte Datei (z. B. abgeschnitten): qpdf baut sie im Speicher neu; das Original bleibt, bis gespeichert
+        wird."""
+        if self.data is None:
+            return False
+        try:
+            repaired = pdfconvert.repair(self.data)
+        except pdfpages.PdfEditError:
+            return False
+        self._set_buffer(self._display_bytes(repaired))
+        if self.doc.error() != QPdfDocument.Error.None_:
+            return False
+        self.data = repaired
+        self.repaired_on_load = True
+        return True
 
     def _ask_password(self, retry: bool = False) -> str:
         """Passwort abfragen (nur hier und nur in einer lokalen Variablen – nie im Log, nie gespeichert)."""
@@ -1491,7 +1512,11 @@ class PdfPage(ViewerPage):
         self.protect_button = IconButton("lock", "Passwortschutz: Öffnen-/Rechte-Passwort setzen, ändern, entfernen "
                                          "(AES-256)")
         self.protect_button.clicked.connect(lambda: self.edit_protection())
-        group(self.undo_button, self.redo_button, self.save_button, save_as, self.protect_button)
+        compress = IconButton("minimize-2", "Komprimieren: Bilder verkleinern, Struktur packen – mit Vorher/Nachher-Größe")
+        compress.clicked.connect(lambda: self.compress())
+        convert = IconButton("file-type", "Exportieren: Seiten als PNG/JPG, Text (.txt), Markdown (.md)")
+        convert.clicked.connect(lambda: self._convert_menu(convert))
+        group(self.undo_button, self.redo_button, self.save_button, save_as, self.protect_button, compress, convert)
         return bar_frame
 
     # ---- Seitenwerkzeuge (Block V1) --------------------------------------------------------------------------
@@ -2827,6 +2852,156 @@ class PdfPage(ViewerPage):
         if not confirmed or not self._ensure_editing():
             return False
         return self._run(pdfstamp_layers.remove_foreign_watermarks)
+
+    # ---- Komprimieren und Konvertieren (Block V9) --------------------------------------------------------------
+    def _convert_menu(self, anchor) -> None:
+        menu = style_menu(QMenu(self))
+        menu.addAction("Seiten als Bilder (PNG/JPG) …", lambda: self.export_page_images())
+        menu.addAction("Als Text (.txt) …", lambda: self.export_text("txt"))
+        menu.addAction("Als Markdown (.md) …", lambda: self.export_text("md"))
+        menu.addSeparator()
+        menu.addAction("PDF reparieren", lambda: self.repair_pdf())
+        menu.exec(anchor.mapToGlobal(anchor.rect().bottomLeft()))
+
+    def _task(self, title: str, work, wait: bool = False):
+        """Hintergrundaufgabe mit Fortschritt/Abbrechen; `wait` (Tests) wartet synchron. Liefert das Ergebnis oder
+        None (Fehler/Abbruch – Fehler als Meldung)."""
+        from notex.ui.tasks import run_task
+        result: dict = {}
+
+        def failed(message: str) -> None:
+            result["error"] = message
+            from notex.ui import dialogs
+            dialogs.warn(self, title, message)
+        worker = run_task(self, title, lambda ctx: work(lambda d, t: ctx.step(d, t, f"{round(100 * d / max(t, 1))} % …")),
+                          on_done=lambda value: result.setdefault("value", value), on_error=failed,
+                          on_cancel=lambda: result.setdefault("cancelled", True), show_dialog=not wait)
+        if not wait:
+            return worker
+        worker.wait()
+        from PySide6.QtCore import QCoreApplication
+        for _ in range(100):
+            QCoreApplication.processEvents()
+            if result:
+                break
+        return result.get("value")
+
+    def compress(self, profile=None, accept: bool | None = None, wait: bool = False) -> bool:
+        """Komprimieren (Hintergrund); danach Vorher/Nachher und „Übernehmen?“ – ein Rückgängig-Schritt."""
+        if self.data is None or self.edit_block_reason():
+            self.notice.emit(self.edit_block_reason() or "Kein PDF geladen")
+            return False
+        if profile is None:
+            from notex.ui.pdf_convert_ui import CompressDialog
+            dialog = CompressDialog(self, len(self.data))
+            if dialog.exec() != QDialog.DialogCode.Accepted:
+                return False
+            profile = dialog.value()
+        data = self.data
+        outcome = {}
+
+        def finish(result) -> None:
+            outcome["done"] = self._take_compressed(data, result, accept)
+
+        if wait:
+            result = self._task("Komprimieren", lambda progress: pdfconvert.compress(data, profile, progress), True)
+            return bool(result is not None and self._take_compressed(data, result, accept))
+        worker = self._task("Komprimieren", lambda progress: pdfconvert.compress(data, profile, progress))
+        worker.done.connect(finish)
+        return True
+
+    def _take_compressed(self, before: bytes, result, accept: bool | None) -> bool:
+        if self.data is not before:
+            self.notice.emit("Das PDF wurde inzwischen geändert – bitte noch einmal komprimieren")
+            return False
+        if result.after >= result.before:
+            self.notice.emit(f"Nicht kleiner geworden ({result.summary()}) – nichts geändert")
+            return False
+        if self.redact_terms:                           # Komprimieren darf nie eine Schwärzung rückgängig machen
+            from notex.core import pdfaudit
+            if pdfaudit.audit(result.data, list(self.redact_terms)):
+                from notex.ui import dialogs
+                dialogs.warn(self, "Komprimieren", "Nach dem Komprimieren wären geschwärzte Begriffe wieder "
+                             "auffindbar – Ergebnis verworfen.")
+                return False
+        if accept is None:
+            from notex.ui import dialogs
+            accept = dialogs.confirm(self, "Komprimiertes PDF übernehmen?", result.summary(), yes="Übernehmen",
+                                     informative="Gespeichert wird erst mit Ctrl+S; Rückgängig mit Ctrl+Z.")
+        if not accept or not self._ensure_editing():
+            return False
+        self.apply(result.data)
+        self.notice.emit(f"Komprimiert: {result.summary()}")
+        return True
+
+    def repair_pdf(self) -> bool:
+        if not self._ensure_editing():
+            return False
+        done = self._run(pdfconvert.repair)
+        if done:
+            self.notice.emit("Neu geschrieben (Querverweise und Struktur repariert)")
+        return done
+
+    def export_page_images(self, pages: list[int] | None = None, folder: Path | str | None = None, dpi: int = 150,
+                           fmt: str = "png", quality: int = 90, wait: bool = False) -> list[Path]:
+        if self.data is None:
+            return []
+        if pages is None or folder is None:
+            from notex.ui.pdf_convert_ui import PageImagesDialog
+            dialog = PageImagesDialog(self, self.doc.pageCount(), self.path.parent, self.canvas.current_page)
+            if dialog.exec() != QDialog.DialogCode.Accepted:
+                return []
+            values = dialog.values()
+            pages, folder, dpi, fmt, quality = (values["pages"], values["folder"], values["dpi"], values["fmt"],
+                                                values["quality"])
+        data, stem, folder = self.data, self.path.stem, Path(folder)
+
+        def report(paths) -> None:
+            self.notice.emit(f"{len(paths)} Bild(er) gespeichert in {folder.name}")
+
+        def work(progress):
+            return pdfconvert.export_page_images(data, pages, folder, stem, dpi, fmt, quality, progress)
+        if wait:
+            paths = self._task("Seiten als Bilder", work, True) or []
+            if paths:
+                report(paths)
+            return paths
+        self._task("Seiten als Bilder", work).done.connect(report)
+        return []
+
+    def export_text(self, kind: str = "md", target: Path | str | None = None, open_after: bool = True,
+                    wait: bool = False) -> Path | None:
+        """Text (.txt) oder Markdown (.md) – danach auf Wunsch gleich als Notiz öffnen."""
+        if self.data is None:
+            return None
+        if target is None:
+            from PySide6.QtWidgets import QFileDialog
+            filters = {"md": "Markdown (*.md)", "txt": "Text (*.txt)"}
+            chosen, _f = QFileDialog.getSaveFileName(self, "Als Text speichern",
+                                                     str(self.path.with_suffix(f".{kind}")), filters[kind])
+            if not chosen:
+                return None
+            target = chosen
+        target = Path(target)
+        data = self.data
+        convert = pdfconvert.to_markdown if kind == "md" else pdfconvert.to_text
+
+        def write(text) -> Path | None:
+            try:
+                from notex.core import fileops
+                fileops.atomic_write_bytes(target, text.encode("utf-8"))
+            except OSError as error:
+                self.notice.emit(f"Nicht gespeichert: {error}")
+                return None
+            self.notice.emit(f"Gespeichert: {target.name}")
+            if open_after:
+                self.open_requested.emit(target)
+            return target
+        if wait:
+            text = self._task("Text auslesen", lambda progress: convert(data, progress), True)
+            return write(text) if text is not None else None
+        self._task("Text auslesen", lambda progress: convert(data, progress)).done.connect(write)
+        return None
 
     # ---- Eingefügtes anfassen (Objekte) ------------------------------------------------------------------------
     def set_object_rect(self, obj, rect: tuple) -> bool:
