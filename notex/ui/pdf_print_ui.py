@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from PySide6.QtCore import QRectF, QSizeF
 from PySide6.QtGui import QImage, QPageLayout, QPageSize, QPainter
-from PySide6.QtWidgets import (QButtonGroup, QCheckBox, QComboBox, QDialog, QFormLayout, QHBoxLayout, QLabel,
+from PySide6.QtWidgets import (QCheckBox, QComboBox, QDialog, QFormLayout, QHBoxLayout, QLabel,
                                QLineEdit, QPushButton, QRadioButton, QSpinBox, QVBoxLayout, QWidget)
 
 from notex.core import pdfprint as P
@@ -53,10 +53,7 @@ class PrintDialog(QDialog):
         self.range = QLineEdit()
         self.range.setPlaceholderText("z. B. 1-3, 5, 8-")
         self.range.textEdited.connect(lambda _t: self.range_button.setChecked(True))
-        group = QButtonGroup(self)
-        for button in (self.all_pages, self.this_page, self.range_button):
-            group.addButton(button)
-        self.all_pages.setChecked(True)
+        self.all_pages.setChecked(True)               # gleiche Eltern → schließen sich ohne QButtonGroup aus
         pages_row = QHBoxLayout()
         for widget in (self.all_pages, self.this_page, self.range_button):
             pages_row.addWidget(widget)

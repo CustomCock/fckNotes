@@ -101,11 +101,12 @@ def test_print_to_pdf_refuses_own_file(win):
 
 
 def test_print_dialog_options_and_validation(win):
-    dialog = PrintDialog(None, 5, current=1, names=["Büro-Drucker"])
+    dialog = PrintDialog(win, 5, current=1, names=["Büro-Drucker"])
     assert dialog.destination() == "Büro-Drucker" and dialog.setup.isEnabled()
     dialog.target.setCurrentIndex(dialog.target.findData(TO_PDF))
     assert dialog.destination() is None and not dialog.setup.isEnabled()
     dialog.this_page.setChecked(True)
+    assert not dialog.all_pages.isChecked()                              # schließen sich gegenseitig aus
     dialog.copies.setValue(3)
     dialog.collate.setChecked(False)
     dialog.fit.setCurrentIndex(dialog.fit.findData("actual"))
