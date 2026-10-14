@@ -479,6 +479,11 @@ PDFs öffnen als eigener Tab – zum Lesen und, mit dem **Stift** rechts oben, z
   ```
 
   Ohne Teilung landet das Zitat in der Zwischenablage. Teilen geht jetzt auch aus einem PDF-Tab heraus (`Ctrl+\`).
+- **Drucken** (Drucker-Knopf): Drucker oder „In PDF-Datei speichern“, Seitenbereich, Kopien (sortiert oder nicht),
+  „An Seite anpassen“/Originalgröße, Papier, Hoch/Quer automatisch, mit oder ohne Kommentare und Formularinhalte.
+- **Vorlesen** (Lautsprecher-Knopf oder `F8`): ab dieser Seite oder die Markierung, Satz für Satz mit Hervorhebung;
+  in Notizen ab Cursor, Markierung oder Anfang. Pause, Satz vor/zurück, Tempo, Stimme – offline über die
+  Sprachausgabe des Systems (Linux: speech-dispatcher). Anleitung: [docs/pdf/drucken-vorlesen.md](docs/pdf/drucken-vorlesen.md).
 - Keine Skripte, keine Link-Aktionen. Die Datei wird in den Speicher gelesen und gleich wieder geschlossen –
   umbenennen/verschieben geht auch, während der Tab offen ist. Passwortgeschützte PDFs fragen nach dem Passwort (es
   wird nirgends gespeichert) und lassen sich danach auch bearbeiten (siehe „Passwortschutz“).
@@ -1431,6 +1436,11 @@ Alternativ per Docker: `docker run -d -p 8081:8010 erikvl87/languagetool` (dann 
 | Palette › Bilder zu PDF | Mehrere Bilder in gewählter Reihenfolge zu einem PDF |
 | Chip „PDF“ in der Suche / Palette › Suche: PDF-Inhalte durchsuchen ein/aus | PDF-Inhalte im ganzen Ordner durchsuchen |
 | Palette › Suche: PDF-Suchindex löschen | Index entfernen (wird bei der nächsten PDF-Suche neu aufgebaut) |
+| Palette › PDF: Drucken / Drucker-Knopf im PDF-Tab | Drucker oder In PDF-Datei, Seiten, Kopien, Größe, Papier, Anmerkungen |
+| F8 | Vorlesen ab Cursor (Notiz) bzw. ab dieser Seite/Markierung (PDF); läuft es schon: Pause/Weiter |
+| Shift+F8 / Esc in der Vorlese-Leiste | Vorlesen beenden |
+| ← / → in der Vorlese-Leiste | Satz zurück / vor |
+| Palette › Vorlesen: Markierung / ab Anfang der Notiz | Nur die Markierung bzw. die ganze Notiz vorlesen |
 | Palette › PDF: Auswahl markieren / unterstreichen / durchstreichen | Anmerkung über dem markierten PDF-Text |
 | Palette › PDF: Werkzeug Notiz / Text | Notiz bzw. Text auf der Seite platzieren (Esc beendet das Werkzeug) |
 | Palette › PDF: Formular ausfüllen | Feldliste rechts, „Übernehmen“ schreibt alle Werte (Ctrl+Z-fähig) |

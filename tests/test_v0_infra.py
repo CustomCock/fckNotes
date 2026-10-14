@@ -125,6 +125,14 @@ def test_platform_components_report_availability():
         assert result.ok or result.hint                        # fehlt etwas, steht dabei, was
 
 
+def test_speech_hints_name_the_missing_part(monkeypatch):
+    from notex import APP_NAME
+    monkeypatch.setattr(speech, "_module", lambda: None)              # Qt-Sprachausgabe lädt nicht (libpulse …)
+    result = speech.available()
+    assert not result.ok and "nicht laden" in result.hint and speech.engines() == []
+    assert APP_NAME in speech.LINUX_HINT and "fckNotes" not in speech.LINUX_HINT.replace(APP_NAME, "")
+
+
 def test_external_refuses_executables(tmp_path):
     for name, content in (("tool.exe", b"MZ\x90"), ("run.sh", b"#!/bin/sh"), ("x.PDF.lnk", b"x"),
                           ("noext", b"\x7fELF...")):

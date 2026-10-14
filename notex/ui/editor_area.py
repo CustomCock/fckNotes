@@ -28,7 +28,7 @@ SHARED_ATTRS = {"font_size", "paper_mode", "resolve_link", "open_font_settings",
                 "context_menu_hook", "image_hook", "tools_menu_builder"}
 FORWARDED_SIGNALS = ("status_changed", "file_saved", "file_opened", "font_size_changed", "text_font_changed",
                      "files_dropped", "link_activated", "completion_requested", "preview_link", "view_mode_changed", "pdf_quote",
-                     "viewer_notice")
+                     "viewer_notice", "pdf_read_aloud")
 
 
 class EditorArea(QWidget):
@@ -45,6 +45,7 @@ class EditorArea(QWidget):
     view_mode_changed = Signal(str)
     pdf_quote = Signal(object, str)       # PDF-Viewer, Markdown-Zitat
     viewer_notice = Signal(str)           # kurze Meldung eines Viewers (Toast)
+    pdf_read_aloud = Signal(object, str)  # PDF-Viewer, "page" | "selection" (Block V11)
     currentChanged = Signal(int)          # aktiver Tab oder aktive Gruppe hat gewechselt
     split_changed = Signal(bool)          # Teilung an/aus
 

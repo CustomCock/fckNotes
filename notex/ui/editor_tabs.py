@@ -74,6 +74,7 @@ class EditorTabs(QTabWidget):
     view_mode_changed = Signal(str)             # "edit" | "preview" | "split" des aktuellen Tabs
     pdf_quote = Signal(object, str)             # PDF-Viewer, Markdown-Zitat für die Notiz im anderen Teil
     viewer_notice = Signal(str)                 # kurze Meldung eines Viewers (Toast)
+    pdf_read_aloud = Signal(object, str)        # PDF-Viewer, "page" | "selection" (Vorlesen, Block V11)
     completion_requested = Signal(object, str, str)   # Editor, Art, Text
     dirty_changed = Signal(int, bool)   # Tab-Index, dirty
     tabs_emptied = Signal()             # letzter Tab dieser Gruppe geschlossen
@@ -249,6 +250,8 @@ class EditorTabs(QTabWidget):
             connect(page.open_requested, self._open_requested_path)
             if hasattr(page, "quote_requested"):
                 connect(page.quote_requested, lambda text, pg=page: self.pdf_quote.emit(pg, text))
+            if hasattr(page, "read_aloud"):
+                connect(page.read_aloud, lambda mode, pg=page: self.pdf_read_aloud.emit(pg, mode))
         page._wiring = links
 
     def _open_requested_path(self, path) -> None:

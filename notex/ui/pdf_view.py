@@ -23,7 +23,7 @@ from PySide6.QtWidgets import (QAbstractScrollArea, QApplication, QComboBox, QDi
 from notex import APP_NAME
 from notex.core import (pdfannot, pdfattach, pdfcomments, pdfconvert, pdfdetect, pdfdiagram, pdfdoc, pdfdraw,
                         pdffieldtypes, pdfformdata, pdfforms, pdfimages, pdflinks, pdfobjects, pdfoutline, pdfpages,
-                        pdfredact, pdfsecurity, pdfstamp_layers, pdfstamps, redact_patterns, xfdf)
+                        pdfprint, pdfredact, pdfsecurity, pdfstamp_layers, pdfstamps, redact_patterns, xfdf)
 from notex.core.pdfdoc import PageLayout
 from notex.theme.theme import style_menu
 from notex.theme.tokens import COLORS, SPACING
@@ -651,6 +651,7 @@ class PdfPage(ViewerPage):
     kind = "pdf"
     icon_name = "file-type"
     quote_requested = Signal(str)          # fertiges Markdown-Zitat
+    read_aloud = Signal(str)               # Vorlesen anstoßen: "page" | "selection" (Hauptfenster liest vor)
     backup_to_trash = True                 # Einstellung: vor dem ersten Überschreiben Original in den Papierkorb
     highlight_fields = True                # Einstellung: Formularfelder in der Ansicht hinterlegen
     undo_budget_mb = 512                   # Einstellung: Speicher für Rückgängig-Schritte (Rest → cache/)
@@ -777,6 +778,11 @@ class PdfPage(ViewerPage):
         self.comments_panel.setVisible(False)
         self.attach_button = IconButton("paperclip", "Anhänge: speichern, öffnen, hinzufügen, entfernen")
         self.attach_button.clicked.connect(lambda: self.show_attachments())
+        self.print_button = IconButton("printer", "Drucken (Drucker oder in PDF-Datei) …")
+        self.print_button.clicked.connect(lambda: self.print_pdf())
+        self.read_button = IconButton("volume-2", "Vorlesen ab dieser Seite (oder die Markierung)  F8")
+        self.read_button.clicked.connect(lambda: self.read_aloud.emit("selection" if self.canvas.selected_text()
+                                                                      else "page"))
         self.quote_button = IconButton("quote", "Markierten Text als Zitat in die Notiz im anderen Teil einfügen")
         self.quote_button.clicked.connect(self.quote)
         self.quote_button.setEnabled(False)
@@ -810,8 +816,8 @@ class PdfPage(ViewerPage):
             bar.addWidget(widget)
         bar.addSpacing(SPACING.md)
         bar.addWidget(self.search_field, 1)
-        for widget in (prev_hit, next_hit, self.hits_label, self.comments_button, self.attach_button, self.quote_button,
-                       self.edit_button):
+        for widget in (prev_hit, next_hit, self.hits_label, self.comments_button, self.attach_button, self.print_button,
+                       self.read_button, self.quote_button, self.edit_button):
             bar.addWidget(widget)
         self.splitter = QSplitter(Qt.Orientation.Horizontal)
         self.splitter.setObjectName("PreviewSplitter")
@@ -2853,6 +2859,85 @@ class PdfPage(ViewerPage):
         if not confirmed or not self._ensure_editing():
             return False
         return self._run(pdfstamp_layers.remove_foreign_watermarks)
+
+    # ---- Drucken (Block V11) -----------------------------------------------------------------------------------
+    def print_pdf(self, options=None, destination: str | None = "", target: Path | str | None = None,
+                  printer=None, wait: bool = False) -> bool:
+        """Drucken: ohne Angaben mit Dialog. `destination` = Druckername oder None für „In PDF-Datei“."""
+        data = self.data if self.data is not None else (self.path.read_bytes() if self.path.exists() else None)
+        if data is None:
+            self.notice.emit("Kein PDF geladen")
+            return False
+        if options is None:
+            from notex.platform import printing
+            from notex.ui.pdf_print_ui import PrintDialog
+            availability = printing.available()
+            dialog = PrintDialog(self, self.doc.pageCount(), self.canvas.current_page,
+                                 "" if availability.ok else availability.hint)
+            if dialog.exec() != QDialog.DialogCode.Accepted:
+                return False
+            options, destination, printer = dialog.options(), dialog.destination(), dialog.printer
+        if destination is None:
+            return self._print_to_file(data, options, target, wait)
+        return self._print_on_printer(data, options, destination, printer)
+
+    def _print_to_file(self, data: bytes, options, target, wait: bool) -> bool:
+        if target is None:
+            from PySide6.QtWidgets import QFileDialog
+            chosen, _f = QFileDialog.getSaveFileName(self, "In PDF-Datei drucken",
+                                                     str(self.path.with_name(f"{self.path.stem}-Druck.pdf")),
+                                                     "PDF (*.pdf)")
+            if not chosen:
+                return False
+            target = chosen
+        target = Path(target)
+        if target.resolve() == self.path.resolve():
+            self.notice.emit("Bitte einen anderen Dateinamen wählen – das Original bleibt unverändert")
+            return False
+
+        def write(result) -> bool:
+            from notex.ui.pdf_edit import write_pdf
+            try:
+                note = write_pdf(target, result, backup=True)    # vorhandene Datei kommt in den Papierkorb
+            except OSError as error:
+                self.notice.emit(f"Nicht gespeichert: {error}")
+                return False
+            self.notice.emit(f"Gedruckt in {target.name}" + (f" – {note}" if note else ""))
+            return True
+        work = lambda progress: pdfprint.print_to_pdf(data, options, progress)   # noqa: E731
+        if wait:
+            result = self._task("In PDF drucken", work, True)
+            return result is not None and write(result)
+        self._task("In PDF drucken", work).done.connect(write)
+        return True
+
+    def _print_on_printer(self, data: bytes, options, name: str, printer=None) -> bool:
+        """Auf einen echten Drucker (UI-Thread, mit Fortschritt und Abbrechen)."""
+        from PySide6.QtWidgets import QProgressDialog
+        from notex.ui.pdf_print_ui import print_on
+        if printer is None:
+            from PySide6.QtPrintSupport import QPrinter
+            printer = QPrinter(QPrinter.PrinterMode.HighResolution)
+            printer.setPrinterName(name)
+        progress = QProgressDialog("Drucken …", "Abbrechen", 0, 0, self)
+        progress.setWindowTitle("Drucken")
+        progress.setMinimumDuration(400)
+
+        def step(done: int, total: int) -> bool:
+            progress.setMaximum(total)
+            progress.setValue(done)
+            QApplication.processEvents()
+            return not progress.wasCanceled()
+        try:
+            count = print_on(printer, data, options, step)
+        except pdfpages.PdfEditError as error:
+            from notex.ui import dialogs
+            dialogs.warn(self, "Drucken", str(error))
+            return False
+        finally:
+            progress.close()
+        self.notice.emit(f"{count} Blatt an „{name}“ geschickt")
+        return count > 0
 
     # ---- Komprimieren und Konvertieren (Block V9) --------------------------------------------------------------
     def _convert_menu(self, anchor) -> None:

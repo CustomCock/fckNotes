@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import shutil
 
+from notex import APP_NAME
 from notex.platform import WINDOWS, Availability
 
 
@@ -10,7 +11,7 @@ def available() -> Availability:
     if WINDOWS:
         if shutil.which("powershell") or shutil.which("powershell.exe"):
             return Availability(True)
-        return Availability(False, "PowerShell fehlt – ohne sie erreicht fckNotes die Windows-Scanschnittstelle (WIA) nicht.")
+        return Availability(False, f"PowerShell fehlt – ohne sie erreicht {APP_NAME} die Windows-Scanschnittstelle (WIA) nicht.")
     if shutil.which("scanimage"):
         return Availability(True)
     return Availability(False, "SANE fehlt. Installieren z. B. mit „sudo apt install sane-utils“.")

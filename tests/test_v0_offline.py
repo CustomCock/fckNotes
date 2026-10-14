@@ -22,7 +22,8 @@ PURE_STRING_MODULES = {"urllib.parse"}          # nur Zeichenketten (quote/unquo
 OFFLINE_FILES = sorted([*ROOT.glob("core/pdf*.py"), ROOT / "core/xfdf.py", ROOT / "core/redact_patterns.py", *ROOT.glob("core/diagram/*.py"),
                         *ROOT.glob("platform/*.py"),
                         *ROOT.glob("ui/pdf*.py"), *ROOT.glob("ui/diagram*.py"), ROOT / "core/undo.py",
-                        ROOT / "core/tasks.py", ROOT / "ui/tasks.py"])
+                        ROOT / "core/tasks.py", ROOT / "ui/tasks.py",
+                        ROOT / "core/sentences.py", ROOT / "ui/read_aloud.py"])
 
 
 @pytest.mark.parametrize("path", OFFLINE_FILES, ids=lambda p: str(p.relative_to(ROOT)))

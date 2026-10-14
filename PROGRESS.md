@@ -769,6 +769,19 @@ PDF/A wie vorgeschlagen, Noto statt Helvetica, Windows-Zertifikatsspeicher spät
   der Seite). **Entscheidung:** gespeicherte PDFs werden über `file_saved` sofort aus dem Index genommen (z. B. nach
   dem Schwärzen). **Fix:** Such-Chips in `FlowLayout` (brechen um statt „Vo…xt“). 2 Palette-Einträge.
   Doku `docs/pdf/suche.md`.
+- **V11 – erledigt.** Neu `pdfprint.py` (Qt-frei): `PrintOptions` (Seiten, Kopien, Sortieren, Einpassen, Papier,
+  Hoch/Quer, Anmerkungen, Formular), `prepare` (nur /F-Drucken-Anmerkungen, ausgeblendete/Popups/Links nie; Wahl
+  einbrennen per `pdfforms.flatten`), `placement`, `page_order`, `print_to_pdf` (Vektor, `merge_transformed_page`).
+  Neu `sentences.py` (Qt-frei): `split` → (Anfang, Ende) mit Abkürzungen, Initialen, Ordnungszahlen/Datum, Listen,
+  Überschriften, Teilung > 400 Zeichen; `sentence_at`. UI: `ui/pdf_print_ui.py` (PrintDialog, `print_on` →
+  QPrinter, Seiten als PDFium-Bild ≤ 300 dpi, Ausrichtung je Seite), `ui/read_aloud.py` (QtEngine, EditorTarget,
+  PdfTarget mit Zeichen-Rechtecken von PDFium, Reader Satz für Satz, ReadAloudBar), `Editor.set_read_mark`
+  (Extra-Selection, Cursor bleibt), Knöpfe Drucken/Vorlesen im PDF-Tab, F8/Shift+F8, Config `speech` {rate, voice},
+  5 Palette-Einträge. `platform/speech.py`: eigener Hinweis, wenn QtTextToSpeech nicht lädt (Linux: libpulse);
+  Plattform-Hinweise nutzen `APP_NAME`. **Entscheidung:** echter Drucker bekommt Rasterbilder (gleiches Ergebnis
+  mit jedem Treiber, Kopien/Sortierung macht fckNotes), „In PDF“ bleibt Vektor. **Entscheidung:** Satz- statt
+  Wort-Hervorhebung (Roadmap). Nicht getestet: echte Drucker und echte Stimmen (CI: QPrinter-PDF-Ausgabe und
+  Fake-Engine). Doku `docs/pdf/drucken-vorlesen.md`.
 
 ## Offen
 
@@ -838,7 +851,8 @@ rdap, scanner, logs, pcap. Standardmäßig an: variables, hex, ports, ioc.
 ## Nächster Schritt
 
 **PDF-Ausbau (Blöcke V, W, X):** Roadmap `docs/ROADMAP-PDF.md`, vom Besitzer freigegeben („alles wie vorgeschlagen“).
-**V0–V10 erledigt** – nächster Block **V11 (Drucken und Vorlesen)**. B- und C-Blöcke vor dem Start abstimmen.
+**V0–V11 erledigt (alle A-Blöcke).** Nächster Schritt: Block **W1 (Korrekturzeichen)** – B-Blöcke (W1–W9) und
+C-Blöcke (X1–X14) vor dem Start mit dem Besitzer abstimmen; Block U (KI) bleibt reserviert.
 
 **Block T (PDF: Objekte, Felderkennung, Diagramme, draw.io) abgeschlossen** auf dem Arbeitsbranch – wartet auf
 Merge/Release durch den Besitzer (Vorschlag 1.18.0). Offen beim Besitzer: Ausprobieren mit echten Arbeitsblättern

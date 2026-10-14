@@ -132,3 +132,15 @@ Windows und Linux durchgehen.
 3. Klick auf einen Treffer: richtige Seite, Begriff markiert.
 4. Passwort-PDF und Scan im Ordner: stehen unter „nicht durchsucht“ mit Grund.
 5. Windows: Dateinamen mit Umlauten und Leerzeichen, Endung `.PDF` großgeschrieben – werden gefunden.
+
+## V11 – Drucken und Vorlesen
+1. Windows: echten Drucker wählen, Seiten „2-3“, 2 Kopien sortiert – Reihenfolge 2 3 2 3; quer liegende Seite wird
+   quer gedruckt; „Druckereinstellungen …“ (Duplex) wird übernommen.
+2. Linux mit CUPS: dasselbe; ohne CUPS steht der Hinweis im Dialog, „In PDF-Datei speichern“ geht.
+3. „In PDF-Datei speichern“ mit „Ohne Kommentare“: Ergebnis in Acrobat ohne Notizen/Markierungen, Text durchsuchbar,
+   Original unverändert.
+4. Formular mit ausgefüllten Feldern, „Formularfelder“ aus: Felder fehlen im Ausdruck.
+5. Vorlesen Windows: deutsche Stimme auswählbar, Tempo ändern, Pause/Weiter mit F8, Satz-Hervorhebung läuft mit,
+   auch über Seitenwechsel im PDF.
+6. Vorlesen Linux mit speech-dispatcher + espeak-ng: Stimmen erscheinen; ohne speech-dispatcher kommt der Hinweis.
+7. Notiz mit „z. B.“, „Dr. Meier“, „am 3. Oktober“, nummerierter Liste: Sätze werden nicht mitten drin getrennt.

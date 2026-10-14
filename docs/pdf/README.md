@@ -18,3 +18,4 @@ die Haupt-README im Abschnitt „PDF“.
 - [Wasserzeichen, Kopf-/Fußzeilen, Seitenzahlen, Hintergrund (V8)](ebenen.md): eigene Ebenen, Vorschau, Vorlagen, Aktualisieren, Entfernen.
 - [Komprimieren, Reparieren, Konvertieren (V9)](komprimieren-konvertieren.md): Profile, Vorher/Nachher, Reparatur, PNG/JPG, Text/Markdown, Bilder zu PDF.
 - [PDF-Inhalte ordnerweit durchsuchen (V10)](suche.md): Chip „PDF“, Treffer mit Seite, Index, nicht durchsuchte PDFs.
+- [Drucken und Vorlesen (V11)](drucken-vorlesen.md): Druckdialog, In PDF drucken, Vorlesen mit Satz-Hervorhebung.

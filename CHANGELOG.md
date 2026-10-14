@@ -175,6 +175,15 @@ Alle nennenswerten Änderungen an fckNotes (bis 1.17.0: Notex). Format angelehnt
     ersten Aufbau; gelöschte Dateien fallen heraus, gespeicherte PDFs werden sofort vergessen (überschrieben).
   - Passwort-PDFs, Scans ohne Text und sehr große Dateien werden als „nicht durchsucht“ mit Grund gelistet.
   - Die Such-Chips brechen bei schmaler Seitenleiste um, statt gekürzt zu werden.
+- **PDF-Ausbau, Block V11 (Drucken und Vorlesen):**
+  - **Druckdialog** im PDF-Tab: Drucker oder „In PDF-Datei speichern“ (Vektor-PDF), Seitenbereich, Kopien
+    (sortiert/ungeordnet), An Seite anpassen / Nur zu große verkleinern / Originalgröße, Papier A4/Letter/A3/wie
+    Seite, Hoch/Quer automatisch, mit/ohne Kommentare und Formularinhalte; Fortschritt mit Abbrechen; das Original
+    bleibt unverändert. Fehlt CUPS oder ein Drucker, sagt der Dialog es.
+  - **Vorlesen** (`F8`, `Shift+F8`) für Notizen (ab Cursor, Markierung, Anfang) und PDFs (ab Seite oder Markierung,
+    über Seiten hinweg): Satz für Satz mit Hervorhebung, Leiste mit Pause, Satz vor/zurück, Stopp, Tempo, Stimme
+    (gemerkt). Offline über die Sprachausgabe des Systems; ohne sie ein Hinweis, was fehlt.
+  - Satz-Zerlegung kennt Abkürzungen, Initialen, Ordnungszahlen, Datumsangaben, Listen und Überschriften.
 
 ### Behoben
 - PDF-Formulare: Der Eigenschaften-Dialog zeigte die eingestellte Schriftgröße nicht an (immer „passend“).
