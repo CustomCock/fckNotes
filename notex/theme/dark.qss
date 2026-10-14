@@ -210,6 +210,10 @@ QWidget#FindBar {
     background: @sidebar;
     border-top: 1px solid @border;
 }
+QFrame#ReadAloudBar {
+    background: @sidebar;
+    border-top: 1px solid @border;
+}
 QWidget#FindBar QLineEdit {
     font-family: @editor_font;
     font-size: @fs_uipx;

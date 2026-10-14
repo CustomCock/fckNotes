@@ -5,7 +5,7 @@ import math
 import pytest
 from pypdf.generic import ContentStream
 
-from notex.core import pdfdiagram, pdfforms, pdfobjects
+from notex.core import pdfdiagram, pdffont, pdfforms, pdfobjects
 from notex.core.diagram import pdf as dpdf, render, templates
 from notex.core.diagram.model import Diagram, End, Shape, boundary_point, midpoint, nearest_port, orthogonal, route
 from notex.core.pdfpages import PdfEditError
@@ -145,7 +145,9 @@ def test_pdf_content_parses_and_contains_text():
     d, *_ = _uml()
     content = dpdf.content(d)
     assert content.startswith("q") and content.rstrip().endswith("Q")
-    assert "(Person) Tj" in content and "/HeBO" in content and "(Sch\\374ler) Tj" in content
+    enc = lambda text, bold=False, italic=False: pdffont.face(bold, italic).encode(text)   # noqa: E731
+    assert "/FnBI 11 Tf" in content and f"{enc('Person', True, True)} Tj" in content       # fett + kursiv (abstrakt)
+    assert f"{enc('Schüler', True)} Tj" in content
     assert "[4 3] 0 d" not in content
     d.connectors[0].dashed = True
     assert "[4 3] 0 d" in dpdf.content(d)
@@ -164,7 +166,9 @@ def test_add_read_update_diagram_in_pdf():
     annot = reader(data).pages[0]["/Annots"][0].get_object()
     form = annot["/AP"]["/N"].get_object()
     ContentStream(form, reader(data)).operations                         # gültiger Inhalt
-    assert set(form["/Resources"]["/Font"].keys()) == {"/Helv", "/HeBo", "/HeOb", "/HeBO"}
+    fonts = form["/Resources"]["/Font"]
+    assert set(fonts.keys()) == {"/FnR", "/FnB", "/FnBI"}                 # nur benutzte Schnitte
+    assert all(fonts[k].get_object()["/Subtype"] == "/Type0" for k in fonts)
     d.shapes[0].text = "Neu"
     d.width = 300
     updated = pdfdiagram.update_diagram(data, 0, 0, d)
@@ -279,7 +283,7 @@ def test_class_family_stereotypes_and_object_underline():
     name = next(p for p in prims if p[0] == "text" and p[3] == "objekt : Klasse")
     assert name[7] is False                                                 # nicht fett
     assert any(p[0] == "path" and abs(p[1][0][1] - (name[2] + 1.5)) < 0.01 for p in prims)    # unterstrichen
-    assert "(\\253interface\\273) Tj" in dpdf.content(Diagram(400, 300, [iface], []))       # « » in WinAnsi
+    assert pdffont.face().encode("«interface»") in dpdf.content(Diagram(400, 300, [iface], []))
 
 
 def test_new_arrow_heads_and_relations():

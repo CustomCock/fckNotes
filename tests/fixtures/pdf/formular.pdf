@@ -1,0 +1,255 @@
+%PDF-1.3
+%‚„œ”
+1 0 obj
+<<
+/Type /Catalog
+/Pages 2 0 R
+/AcroForm <<
+/Fields [ 7 0 R 10 0 R 11 0 R 18 0 R 19 0 R ]
+/NeedAppearances true
+>>
+>>
+endobj
+2 0 obj
+<<
+/Type /Pages
+/Count 1
+/Kids [ 3 0 R ]
+>>
+endobj
+3 0 obj
+<<
+/Type /Page
+/Resources <<
+/Font <<
+/F1 4 0 R
+>>
+>>
+/MediaBox [ 0.0 0.0 595 842 ]
+/Parent 2 0 R
+/Contents 5 0 R
+/Annots [ 7 0 R 10 0 R 14 0 R 17 0 R 18 0 R 19 0 R ]
+>>
+endobj
+4 0 obj
+<<
+/Type /Font
+/Subtype /Type1
+/BaseFont /Helvetica
+/Encoding /WinAnsiEncoding
+>>
+endobj
+5 0 obj
+<<
+/Length 37
+>>
+stream
+BT /F1 24 Tf 72 742 Td (Antrag) Tj ET
+endstream
+endobj
+6 0 obj
+<<
+/Producer (pypdf)
+/Title (Test)
+>>
+endobj
+7 0 obj
+<<
+/Type /Annot
+/Subtype /Widget
+/F 4
+/P 3 0 R
+/FT /Tx
+/T (Ort)
+/Rect [ 72 700 272 720 ]
+/DA (\057Helv 10 Tf 0 g)
+/V (Berlin)
+>>
+endobj
+8 0 obj
+<<
+/Type /XObject
+/Subtype /Form
+/BBox [ 0.0 0.0 12 12 ]
+/Length 14
+>>
+stream
+0 0 12 12 re f
+endstream
+endobj
+9 0 obj
+<<
+/Type /XObject
+/Subtype /Form
+/BBox [ 0.0 0.0 12 12 ]
+/Length 1
+>>
+stream
+ 
+endstream
+endobj
+10 0 obj
+<<
+/Type /Annot
+/Subtype /Widget
+/F 4
+/P 3 0 R
+/FT /Btn
+/T (Zustimmung)
+/Rect [ 72 670 84 682 ]
+/V /Off
+/AS /Off
+/AP <<
+/N <<
+/Ja 8 0 R
+/Off 9 0 R
+>>
+>>
+>>
+endobj
+11 0 obj
+<<
+/FT /Btn
+/T (Farbe)
+/Ff 32768
+/V /A
+/Kids [ 14 0 R 17 0 R ]
+>>
+endobj
+12 0 obj
+<<
+/Type /XObject
+/Subtype /Form
+/BBox [ 0.0 0.0 12 12 ]
+/Length 14
+>>
+stream
+0 0 12 12 re f
+endstream
+endobj
+13 0 obj
+<<
+/Type /XObject
+/Subtype /Form
+/BBox [ 0.0 0.0 12 12 ]
+/Length 1
+>>
+stream
+ 
+endstream
+endobj
+14 0 obj
+<<
+/Type /Annot
+/Subtype /Widget
+/F 4
+/P 3 0 R
+/Parent 11 0 R
+/Rect [ 72 640 84 652 ]
+/AS /A
+/AP <<
+/N <<
+/A 12 0 R
+/Off 13 0 R
+>>
+>>
+>>
+endobj
+15 0 obj
+<<
+/Type /XObject
+/Subtype /Form
+/BBox [ 0.0 0.0 12 12 ]
+/Length 14
+>>
+stream
+0 0 12 12 re f
+endstream
+endobj
+16 0 obj
+<<
+/Type /XObject
+/Subtype /Form
+/BBox [ 0.0 0.0 12 12 ]
+/Length 1
+>>
+stream
+ 
+endstream
+endobj
+17 0 obj
+<<
+/Type /Annot
+/Subtype /Widget
+/F 4
+/P 3 0 R
+/Parent 11 0 R
+/Rect [ 100 640 112 652 ]
+/AS /Off
+/AP <<
+/N <<
+/B 15 0 R
+/Off 16 0 R
+>>
+>>
+>>
+endobj
+18 0 obj
+<<
+/Type /Annot
+/Subtype /Widget
+/F 4
+/P 3 0 R
+/FT /Ch
+/T (Land)
+/Ff 131072
+/Rect [ 72 600 272 620 ]
+/Opt [ (Deutschland) (\326sterreich) ]
+/DA (\057Helv 10 Tf 0 g)
+/V (Deutschland)
+>>
+endobj
+19 0 obj
+<<
+/Type /Annot
+/Subtype /Widget
+/F 4
+/P 3 0 R
+/FT /Tx
+/T (Aktenzeichen)
+/Ff 1
+/Rect [ 72 570 272 590 ]
+/V (AZ\0551)
+>>
+endobj
+xref
+0 20
+0000000000 65535 f 
+0000000015 00000 n 
+0000000148 00000 n 
+0000000207 00000 n 
+0000000392 00000 n 
+0000000489 00000 n 
+0000000576 00000 n 
+0000000629 00000 n 
+0000000773 00000 n 
+0000000891 00000 n 
+0000000995 00000 n 
+0000001167 00000 n 
+0000001249 00000 n 
+0000001368 00000 n 
+0000001473 00000 n 
+0000001626 00000 n 
+0000001745 00000 n 
+0000001850 00000 n 
+0000002007 00000 n 
+0000002208 00000 n 
+trailer
+<<
+/Size 20
+/Root 1 0 R
+/Info 6 0 R
+>>
+startxref
+2344
+%%EOF

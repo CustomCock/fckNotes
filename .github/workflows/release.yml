@@ -1,6 +1,6 @@
 name: Release
 
-# Bei einem Tag wie v1.4.0: Tests laufen lassen, portable App für Windows (ZIP) und Linux (tar.gz) bauen
+# Bei einem Tag wie v1.4.0: Tests laufen lassen, portable App für Windows (ZIP) und Linux (tar.gz + AppImage) bauen
 # und an ein GitHub-Release hängen.
 # Build-Check: Ändert ein Push auf einem Branch den Build (build.py, requirements, dieser Workflow), laufen
 # beide Builds ebenfalls – aber ohne Release, nur mit Artefakten. So fällt ein kaputter Build vor dem Tag auf.
@@ -13,6 +13,7 @@ on:
       - requirements.txt
       - requirements-dev.txt
       - .github/workflows/release.yml
+      - tools/make_appdir.py
   workflow_dispatch:
 
 permissions:
@@ -74,7 +75,7 @@ jobs:
           cache: pip
 
       - name: Systempakete (Enchant für die Rechtschreibung, Qt-Laufzeit für den Build-Check)
-        run: sudo apt-get update && sudo apt-get install -y libenchant-2-2 hunspell-de-de libxcb-cursor0 libegl1
+        run: sudo apt-get update && sudo apt-get install -y libenchant-2-2 hunspell-de-de libxcb-cursor0 libegl1 qpdf
 
       - name: Abhängigkeiten installieren
         run: pip install -r requirements-dev.txt
@@ -92,16 +93,31 @@ jobs:
           tar -czf "$name" -C dist "$app"
           echo "ASSET=$name" >> "$GITHUB_ENV"
 
+      - name: AppImage packen
+        # Ein Klick-Start ohne Entpacken. Daten liegen portabel in „<App>-Daten“ neben der .AppImage-Datei.
+        run: |
+          app=$(python -c "from notex import EXE_NAME; print(EXE_NAME)")
+          name="$app-${GITHUB_REF_NAME//\//-}-linux-x86_64.AppImage"
+          python tools/make_appdir.py dist/"$app" AppDir
+          wget -q -O appimagetool https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
+          chmod +x appimagetool
+          ARCH=x86_64 ./appimagetool --appimage-extract-and-run AppDir "$name"
+          echo "APPIMAGE_ASSET=$name" >> "$GITHUB_ENV"
+
       - name: Artefakt ablegen (manueller Lauf)
         if: github.ref_type != 'tag'
         uses: actions/upload-artifact@v4
         with:
           name: notex-linux
-          path: ${{ env.ASSET }}
+          path: |
+            ${{ env.ASSET }}
+            ${{ env.APPIMAGE_ASSET }}
 
-      - name: Release erstellen und tar.gz anhängen
+      - name: Release erstellen und tar.gz + AppImage anhängen
         if: github.ref_type == 'tag'
         uses: softprops/action-gh-release@v2
         with:
-          files: ${{ env.ASSET }}
+          files: |
+            ${{ env.ASSET }}
+            ${{ env.APPIMAGE_ASSET }}
           generate_release_notes: true

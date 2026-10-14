@@ -74,6 +74,7 @@ class EditorTabs(QTabWidget):
     view_mode_changed = Signal(str)             # "edit" | "preview" | "split" des aktuellen Tabs
     pdf_quote = Signal(object, str)             # PDF-Viewer, Markdown-Zitat für die Notiz im anderen Teil
     viewer_notice = Signal(str)                 # kurze Meldung eines Viewers (Toast)
+    pdf_read_aloud = Signal(object, str)        # PDF-Viewer, "page" | "selection" (Vorlesen, Block V11)
     completion_requested = Signal(object, str, str)   # Editor, Art, Text
     dirty_changed = Signal(int, bool)   # Tab-Index, dirty
     tabs_emptied = Signal()             # letzter Tab dieser Gruppe geschlossen
@@ -196,6 +197,8 @@ class EditorTabs(QTabWidget):
             if kind == "pdf":
                 factory.backup_to_trash = bool(self.config.get("pdf_backup_trash", True))
                 factory.highlight_fields = bool(self.config.get("pdf_highlight_fields", True))
+                factory.undo_budget_mb = int(self.config.get("pdf_undo_budget_mb", 512))
+                factory.author = str(self.config.get("pdf_author", "") or "")
             try:
                 page = factory(path)
             except OSError as error:
@@ -244,10 +247,20 @@ class EditorTabs(QTabWidget):
             connect(page.dirty_changed, lambda dirty, pg=page: self._viewer_dirty(pg, dirty))
             connect(page.saved, lambda old, new, pg=page: self._viewer_saved(pg, old, new))
             connect(page.notice, self.viewer_notice.emit)
-            connect(page.open_requested, lambda path: self.open_viewer(path, self.viewer_kind_for(path) or "pdf"))
+            connect(page.open_requested, self._open_requested_path)
             if hasattr(page, "quote_requested"):
                 connect(page.quote_requested, lambda text, pg=page: self.pdf_quote.emit(pg, text))
+            if hasattr(page, "read_aloud"):
+                connect(page.read_aloud, lambda mode, pg=page: self.pdf_read_aloud.emit(pg, mode))
         page._wiring = links
+
+    def _open_requested_path(self, path) -> None:
+        """Von einem Viewer angefordert (neues PDF, exportierter Text …): passender Viewer oder Texteditor."""
+        kind = self.viewer_kind_for(Path(path))
+        if kind is None:
+            self.open_file(Path(path))
+        else:
+            self.open_viewer(Path(path), kind)
 
     def unwire_page(self, page) -> None:
         for signal, slot in getattr(page, "_wiring", []):
@@ -989,9 +1002,13 @@ class EditorTabs(QTabWidget):
         if pdf_viewer is not None:
             pdf_viewer.backup_to_trash = bool(self.config.get("pdf_backup_trash", True))
             pdf_viewer.highlight_fields = bool(self.config.get("pdf_highlight_fields", True))
+            pdf_viewer.undo_budget_mb = int(self.config.get("pdf_undo_budget_mb", 512))
+            pdf_viewer.author = str(self.config.get("pdf_author", "") or "")
             for page in self.viewers():
                 if page.kind == "pdf":
+                    page.author = pdf_viewer.author
                     page.objects.highlight_fields = pdf_viewer.highlight_fields
+                    page.history.budget = pdf_viewer.undo_budget_mb * 1024 * 1024
                     page.canvas.viewport().update()
         mermaid = bool(self.config.get("preview_mermaid", True))
         changed = mermaid != MarkdownPreview.mermaid_enabled

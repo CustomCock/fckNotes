@@ -1,13 +1,12 @@
-"""Zeichen-Grundelemente → PDF-Inhalt (Qt-frei). Koordinaten werden gespiegelt (PDF: y nach oben), Text in
-Helvetica / Helvetica-Bold / -Oblique / -BoldOblique (Standardschriften, nichts eingebettet), WinAnsi."""
+"""Zeichen-Grundelemente → PDF-Inhalt (Qt-frei). Koordinaten werden gespiegelt (PDF: y nach oben), Text in der
+mitgelieferten Noto Sans (vier Schnitte), eingebettet als Untermenge über `pdffont.FontUsage`."""
 from __future__ import annotations
 
-from notex.core.diagram.render import primitives, text_width
+from notex.core import pdffont
 from notex.core.diagram.model import Diagram
+from notex.core.diagram.render import primitives, text_width
 
 K = 0.5522847498            # Bézier-Näherung für Viertelkreise
-FONTS = {(False, False): ("/Helv", "Helvetica"), (True, False): ("/HeBo", "Helvetica-Bold"),
-         (False, True): ("/HeOb", "Helvetica-Oblique"), (True, True): ("/HeBO", "Helvetica-BoldOblique")}
 
 
 def _n(value: float) -> str:
@@ -36,9 +35,10 @@ def _paint(fill: str, stroke: str, width: float, dashed: bool) -> tuple[list[str
     return ops, op
 
 
-def content(diagram: Diagram) -> str:
-    """PDF-Content-Stream für ein Formular-XObject mit BBox [0 0 width height]."""
-    from notex.core.pdfannot import pdf_string
+def content(diagram: Diagram, use: pdffont.FontUsage | None = None) -> str:
+    """PDF-Content-Stream für ein Formular-XObject mit BBox [0 0 width height]. `use` sammelt die Zeichen für die
+    eingebettete Schrift (danach `font_resources(writer, use)`)."""
+    use = use if use is not None else pdffont.FontUsage()
     height = diagram.height
 
     def P(x, y):
@@ -88,20 +88,15 @@ def content(diagram: Diagram) -> str:
             _k, x, y, text, size, color, anchor, bold, italic = prim
             if not text:
                 continue
-            width = text_width(text, size, bold)
+            width = text_width(text, size, bold, italic)
             left = x - width / 2 if anchor == "middle" else x - width if anchor == "end" else x
-            font = FONTS[(bool(bold), bool(italic))][0]
-            out.append(f"BT {font} {_n(size)} Tf {_rgb(color, 'rg')} {P(left, y)} Td {pdf_string(text)} Tj ET")
+            font = use.name(bold, italic)
+            out.append(f"BT {font} {_n(size)} Tf {_rgb(color, 'rg')} {P(left, y)} Td {use.encode(text, bold, italic)} "
+                       f"Tj ET")
     out.append("Q")
     return "\n".join(out)
 
 
-def font_resources(writer):
-    """Ressourcen-Dictionary mit den vier Helvetica-Schnitten (für das Formular-XObject)."""
-    from pypdf.generic import DictionaryObject, NameObject
-    fonts = DictionaryObject()
-    for key, base in FONTS.values():
-        fonts[NameObject(key)] = writer._add_object(DictionaryObject({
-            NameObject("/Type"): NameObject("/Font"), NameObject("/Subtype"): NameObject("/Type1"),
-            NameObject("/BaseFont"): NameObject("/" + base), NameObject("/Encoding"): NameObject("/WinAnsiEncoding")}))
-    return DictionaryObject({NameObject("/Font"): fonts})
+def font_resources(writer, use: pdffont.FontUsage):
+    """Ressourcen-Dictionary mit den benutzten Noto-Schnitten (Untermengen) für das Formular-XObject."""
+    return use.resources(writer)

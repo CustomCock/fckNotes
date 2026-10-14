@@ -60,6 +60,7 @@ class Editor(QTextEdit):
         self._search_selections: list[QTextEdit.ExtraSelection] = []
         self._problem_selections: list[QTextEdit.ExtraSelection] = []   # JSON/YAML-Fehler
         self._module_marks: dict[str, list[QTextEdit.ExtraSelection]] = {}   # Module (z. B. IP-Konflikte)
+        self._read_selections: list[QTextEdit.ExtraSelection] = []   # Vorlesen: der gerade gelesene Satz
         self._font_size = font_size
         self._font_family = STANDARD   # "" = Standardschrift; Ansichts-Einstellung, ändert nichts an der Datei
         self.language: str | None = None   # Rechtschreib-Sprache nur für diesen Tab (None = global)
@@ -577,6 +578,27 @@ class Editor(QTextEdit):
             self._module_marks.pop(key, None)
         self._refresh_extra_selections()
 
+    def set_read_mark(self, start: int | None, end: int = 0) -> None:
+        """Vorlesen: den gerade gelesenen Satz hinterlegen und sichtbar halten (None = Markierung weg).
+        Cursor und Auswahl des Nutzers bleiben unverändert."""
+        self._read_selections = []
+        if start is not None:
+            last = max(0, self.document().characterCount() - 1)
+            cursor = QTextCursor(self.document())
+            cursor.setPosition(max(0, min(start, last)))
+            cursor.setPosition(max(0, min(end, last)), QTextCursor.MoveMode.KeepAnchor)
+            selection = QTextEdit.ExtraSelection()
+            selection.cursor = cursor
+            selection.format.setBackground(QColor(COLORS.paper_match_current))
+            self._read_selections.append(selection)
+            probe = QTextCursor(self.document())
+            probe.setPosition(cursor.selectionStart())
+            rect = self.cursorRect(probe)
+            if rect.top() < 0 or rect.bottom() > self.viewport().height():
+                bar = self.verticalScrollBar()
+                bar.setValue(bar.value() + rect.top() - self.viewport().height() // 3)
+        self._refresh_extra_selections()
+
     def _refresh_extra_selections(self) -> None:
         current_line = QTextEdit.ExtraSelection()
         current_line.format.setBackground(QColor(COLORS.paper_line))
@@ -584,7 +606,8 @@ class Editor(QTextEdit):
         current_line.cursor = self.textCursor()
         current_line.cursor.clearSelection()
         marks = [sel for group in self._module_marks.values() for sel in group]
-        selections = [current_line, *marks, *self._problem_selections, *self._search_selections]
+        selections = [current_line, *marks, *self._problem_selections, *self._search_selections,
+                      *self._read_selections]
         # Der Treffer unter dem Cursor wird etwas kräftiger markiert
         cursor = self.textCursor()
         if cursor.hasSelection():

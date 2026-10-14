@@ -11,3 +11,7 @@ pypdf==6.19.0   # Modul Metadaten: PDF-Info/XMP lesen und entfernen, reines Pyth
 yara-python==4.5.4   # Modul YARA: Regeln testen; Wheels für Windows und Linux (Apache-2.0, libyara BSD-3); exakt gepinnt
 evtx==0.13.1   # Modul Log-Auswertung: Windows-.evtx lesen; Rust-Wheels (abi3) für Win/Linux, keine Build-Schritte (MIT)
 dpkt==1.9.8   # Modul PCAP-Übersicht: .pcap/.pcapng lesen, reines Python, py3-none-any-Wheel (BSD-3)
+pypdfium2==5.14.0   # PDF-Ausbau: Text mit Positionen/Schriftgröße und Seitenobjekte ohne Qt (Apache-2.0 / PDFium BSD-3); exakt gepinnt
+fonttools==4.66.1   # PDF-Ausbau: eingebettete Schrift-Untermengen (Noto Sans) für alles, was fckNotes auf Seiten schreibt (MIT); exakt gepinnt
+Pillow==12.3.0   # PDF-Bilder (V7): PNG/JPG/WebP einfügen, Bilder aus PDFs dekodieren/zuschneiden/exportieren (MIT-CMU); exakt gepinnt
+pikepdf==10.16.0   # PDF komprimieren (Objekt-Streams, Bilder neu kodieren), kaputte PDFs reparieren (MPL-2.0, libqpdf Apache-2.0; lxml kommt mit, ist im Build ausgeschlossen); exakt gepinnt

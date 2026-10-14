@@ -2,11 +2,11 @@
 
 Ein Objekt ist eine Anmerkung oder ein Formularfeld-Widget auf einer Seite, adressiert über seine Position im
 /Annots-Array der Seite. Markierungen (Markieren/Unterstreichen/Durchstreichen) hängen am Text: sie lassen sich
-löschen und kommentieren, aber nicht verschieben. Links und Popups sind keine Objekte.
+löschen und kommentieren, aber nicht verschieben. Links sind Objekte (verschieben, Größe, Ziel ändern); Popups nicht.
 
 Verschieben/Größe ändern zeichnet das Erscheinungsbild neu, wo eine Verzerrung stören würde (Text auf der Seite,
-Textfelder, Kontrollkästchen); Stempel (Unterschrift, Diagramm, Bild) werden einfach in den neuen Rahmen gesetzt –
-die Oberfläche behält dafür das Seitenverhältnis bei.
+Textfelder, Kontrollkästchen, eingefügte Bilder samt Drehung); Stempel (Unterschrift, Diagramm) werden einfach in den
+neuen Rahmen gesetzt – die Oberfläche behält dafür das Seitenverhältnis bei.
 """
 from __future__ import annotations
 
@@ -15,18 +15,22 @@ from dataclasses import dataclass
 from pypdf.generic import DictionaryObject, NameObject
 
 from notex.core import pdfannot as A
+from notex.core import pdfdraw as D
 from notex.core import pdfforms as F
+from notex.core import pdfimages as I
+from notex.core import pdflinks as L
 from notex.core.pdfpages import PdfEditError, open_reader
 
 DIAGRAM_KEY = "/fckNotesDiagram"
-MOVABLE = {"text", "note", "stamp", "signature", "diagram", "field"}
+MOVABLE = {"text", "note", "stamp", "signature", "diagram", "image", "field", "link", "ink", "square", "circle",
+           "line", "polygon", "polyline"}
 
 
 @dataclass(frozen=True)
 class PdfObject:
     page: int
     index: int              # Position in /Annots
-    kind: str               # text | note | stamp | signature | diagram | field | highlight | underline | …
+    kind: str               # text | note | stamp | signature | diagram | image | field | highlight | underline | …
     rect: A.Rect            # Ansichts-Punkte
     label: str
     contents: str = ""
@@ -34,6 +38,7 @@ class PdfObject:
     field: str = ""         # voll qualifizierter Feldname (nur kind == "field")
     field_kind: str = ""    # text | checkbox | radio | choice | signature | button
     state: str = ""         # „an“-Zustand dieses Widgets (Kontrollkästchen/Optionsfeld)
+    angle: float = 0.0      # Drehung eines eingefügten Bilds (Grad, im Uhrzeigersinn)
 
     @property
     def movable(self) -> bool:
@@ -41,7 +46,12 @@ class PdfObject:
 
     @property
     def keep_aspect(self) -> bool:
-        return self.kind in ("signature", "diagram", "stamp") or self.field_kind in ("checkbox", "radio")
+        return self.kind in ("signature", "diagram", "stamp", "image") or self.field_kind in ("checkbox", "radio")
+
+    @property
+    def free_aspect(self) -> bool:
+        """Darf (mit Shift) verzerrt werden: eingefügte Bilder, solange sie gerade stehen (0/90/180/270 Grad)."""
+        return self.kind == "image" and I.is_right_angle(self.angle)
 
     def contains(self, x: float, y: float, tolerance: float = 2.0) -> bool:
         x0, y0, x1, y1 = self.rect
@@ -52,7 +62,11 @@ def _kind_of(annot) -> str:
     subtype = str(annot.get("/Subtype", ""))
     if subtype == "/Widget":
         return "field"
+    if subtype == "/Link":
+        return "link"
     if subtype == "/Stamp":
+        if I.IMAGE_KEY in annot:
+            return "image"
         if DIAGRAM_KEY in annot:
             return "diagram"
         if str(annot.get("/Name", "")) == "/fckNotesSignature":
@@ -61,8 +75,7 @@ def _kind_of(annot) -> str:
     return A.KIND_NAMES.get(subtype, subtype.lstrip("/").lower())
 
 
-LABELS = {"text": "Text", "note": "Notiz", "stamp": "Stempel", "signature": "Unterschrift", "diagram": "Diagramm",
-          "highlight": "Markierung", "underline": "Unterstreichung", "strikeout": "Durchstreichung"}
+LABELS = {**A.LABELS, "link": "Link", "signature": "Unterschrift", "diagram": "Diagramm", "image": "Bild"}
 
 
 def list_objects(data: bytes, page_index: int) -> list[PdfObject]:
@@ -76,7 +89,7 @@ def list_objects(data: bytes, page_index: int) -> list[PdfObject]:
         try:
             annot = ref.get_object()
             subtype = str(annot.get("/Subtype", ""))
-            if subtype in ("/Link", "/Popup") or "/Rect" not in annot:
+            if subtype == "/Popup" or "/Rect" not in annot or "/IRT" in annot:   # Antworten gehören zum Thread
                 continue
             x0, y0, x1, y1 = (float(v) for v in annot["/Rect"])
         except Exception:                                  # noqa: BLE001 – kaputte Einträge überspringen
@@ -84,13 +97,20 @@ def list_objects(data: bytes, page_index: int) -> list[PdfObject]:
         rect = geom.rect_to_view((min(x0, x1), min(y0, y1), max(x0, x1), max(y0, y1)))
         kind = _kind_of(annot)
         ours = str(annot.get("/NM", "")).startswith(A.ID_PREFIX)
-        if kind == "field":
+        if kind == "link":
+            target = L._target_of(reader, annot)
+            out.append(PdfObject(page_index, position, "link", rect, f"Link → {target.describe()}",
+                                 target.describe(), ours))
+        elif kind == "field":
             field_obj = F._field_of(annot)
             name = F._qualified(field_obj)
             field_kind = F._kind(field_obj)
             states = F._states(annot)
             out.append(PdfObject(page_index, position, "field", rect, f"Feld „{name}“", "", ours, name, field_kind,
                                  states[0] if states else ""))
+        elif kind == "image":
+            out.append(PdfObject(page_index, position, kind, rect, LABELS["image"], "", ours,
+                                 angle=I.meta_of(annot).angle))
         else:
             out.append(PdfObject(page_index, position, kind, rect, LABELS.get(kind, kind.capitalize()),
                                  str(annot.get("/Contents", "") or ""), ours))
@@ -122,6 +142,16 @@ def set_rect(data: bytes, page_index: int, position: int, rect_view: A.Rect) -> 
     if kind not in MOVABLE:
         raise PdfEditError("Markierungen hängen am Text – löschen und neu markieren")
     geom = A.geometry_of(page)
+    if kind == "link":
+        L.set_link_rect(writer, page, annot, (x0, y0, x1, y1))
+        return A.finish(writer)
+    if kind == "image":
+        I.reframe(writer, page, annot, (x0, y0, x1, y1))
+        return A.finish(writer)
+    if kind in D.DRAW_KINDS:
+        old = geom.rect_to_view(sorted_rect(annot["/Rect"]))
+        D.transform(writer, page, annot, old, (x0, y0, x1, y1))
+        return A.finish(writer)
     if kind == "text":
         size, color, border = A.freetext_style(annot)
         text = str(annot.get("/Contents", "") or "")
@@ -179,3 +209,8 @@ def fit_aspect(old: A.Rect, new: A.Rect, anchor: str = "") -> A.Rect:
     nx0 = x1 - w if left else x0
     ny0 = y1 - h if top else y0
     return nx0, ny0, nx0 + w, ny0 + h
+
+
+def sorted_rect(rect) -> A.Rect:
+    x0, y0, x1, y1 = (float(v) for v in rect)
+    return min(x0, x1), min(y0, y1), max(x0, x1), max(y0, y1)

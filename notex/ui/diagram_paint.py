@@ -8,7 +8,20 @@ from PySide6.QtGui import QBrush, QColor, QFont, QIcon, QPainter, QPainterPath, 
 from notex.core.diagram import render
 from notex.core.diagram.model import Diagram
 
-FONT_FAMILY = "Helvetica"
+FONT_FAMILY = "Noto Sans"   # dieselbe mitgelieferte Schrift wie im PDF (siehe pdffont)
+_registered = False
+
+
+def _register_fonts() -> None:
+    """Noto Sans (vier Schnitte) einmal bei Qt anmelden – Editor und PDF zeigen dann dieselben Glyphen."""
+    global _registered
+    if _registered:
+        return
+    from PySide6.QtGui import QFontDatabase
+    from notex.core.pdffont import FILES, FONT_DIR
+    for name in FILES.values():
+        QFontDatabase.addApplicationFont(str(FONT_DIR / name))
+    _registered = True
 SUPERSAMPLE = 4.0           # Text in 4-facher Größe setzen und herunterskalieren → Bruchteil-Punktgrößen
 
 
@@ -28,6 +41,7 @@ def _brush(color: str) -> QBrush:
 
 
 def paint_primitives(painter: QPainter, prims: list) -> None:
+    _register_fonts()
     painter.save()
     painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
     painter.setRenderHint(QPainter.RenderHint.TextAntialiasing, True)
@@ -62,7 +76,7 @@ def paint_primitives(painter: QPainter, prims: list) -> None:
             _k, x, y, text, size, color, anchor, bold, italic = prim
             if not text:
                 continue
-            width = render.text_width(text, size, bold)
+            width = render.text_width(text, size, bold, italic)
             left = x - width / 2 if anchor == "middle" else x - width if anchor == "end" else x
             font = QFont(FONT_FAMILY)
             font.setPixelSize(max(1, round(size * SUPERSAMPLE)))

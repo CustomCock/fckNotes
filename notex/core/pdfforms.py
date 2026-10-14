@@ -26,7 +26,10 @@ from notex.core.pdfpages import PdfEditError, open_reader
 
 PLACEHOLDER_KEY = "/fckNotesKind"     # eigene Markierung: Feld ist Platzhalter (z. B. für die Unterschrift)
 FF_READONLY = 1
+FF_REQUIRED = 1 << 1
 FF_MULTILINE = 1 << 12
+FF_NOTOGGLETOOFF = 1 << 14
+FF_EDIT = 1 << 18
 FF_RADIO = 1 << 15
 FF_PUSHBUTTON = 1 << 16
 FF_COMBO = 1 << 17
@@ -46,6 +49,14 @@ class FieldInfo:
     on_state: str = ""              # Kontrollkästchen: Name des „an“-Zustands (z. B. Yes)
     widgets: list[tuple[int, int]] = field(default_factory=list)   # (Seite, Position in /Annots)
     placeholder: str = ""           # "signature": Platzhalter, ein Klick in fckNotes setzt die Unterschrift
+    required: bool = False
+    default: str = ""               # Standardwert (/DV) – „Formular zurücksetzen“ stellt ihn wieder her
+    size: float = 0.0               # Schriftgröße aus /DA (0 = passend)
+    quadding: int = 0               # 0 links, 1 Mitte, 2 rechts
+    tooltip: str = ""               # /TU
+    combo: bool = False             # Auswahl: Dropdown (True) oder Listenfeld (False)
+    editable: bool = False          # Dropdown mit eigener Eingabe
+    action: str = ""                # Schaltfläche: "reset" | "goto:<Seite>" | "" (fremde/keine Aktion)
 
     @property
     def checked(self) -> bool:
@@ -155,6 +166,19 @@ def list_fields(data: bytes) -> list[FieldInfo]:
                                  bool(flags & FF_MULTILINE), bool(flags & FF_READONLY))
                 marker = field_obj.get(PLACEHOLDER_KEY)
                 info.placeholder = str(marker).lstrip("/").lower() if marker is not None else ""
+                info.required = bool(flags & FF_REQUIRED)
+                info.default = _value_text(_inherited(field_obj, "/DV"))
+                if kind in ("checkbox", "radio") and info.default == "Off":
+                    info.default = ""
+                da = str(_inherited(widget, "/DA") or _inherited(field_obj, "/DA") or "")
+                size = re.search(r"([\d.]+)\s+Tf", da)
+                info.size = float(size.group(1)) if size else 0.0
+                info.quadding = int(_inherited(field_obj, "/Q") or 0)
+                info.tooltip = str(field_obj.get("/TU", "") or "")
+                info.combo = kind == "choice" and bool(flags & FF_COMBO)
+                info.editable = kind == "choice" and bool(flags & FF_EDIT)
+                if kind == "button":
+                    info.action = _button_action(reader, widget)
                 fields[name] = info
             info.widgets.append((page_index, position))
             states = _states(widget)
@@ -163,6 +187,25 @@ def list_fields(data: bytes) -> list[FieldInfo]:
             if info.kind == "radio":
                 info.options += [s for s in states if s not in info.options]
     return list(fields.values())
+
+
+def _button_action(reader, widget) -> str:
+    action = widget.get("/A")
+    if action is None:
+        return ""
+    try:
+        action = action.get_object()
+        kind = str(action.get("/S", ""))
+        if kind == "/ResetForm":
+            return "reset"
+        if kind == "/GoTo" and action.get("/D") is not None:
+            dest = action["/D"]
+            target = dest[0]
+            page = int(target) if isinstance(target, int) else reader.get_page_number(target)
+            return f"goto:{page}"
+    except Exception:                                     # noqa: BLE001 – fremde Aktion: nicht deuten
+        pass
+    return ""
 
 
 # ---- Erscheinungsbilder ------------------------------------------------------------------------------------------
@@ -218,6 +261,31 @@ def text_appearance(value: str, width: float, height: float, size: float = 0.0, 
     return "\n".join(ops)
 
 
+def list_appearance(options: list[str], value: str, width: float, height: float, size: float = 0.0,
+                    border: str | None = BORDER, background: str | None = None) -> str:
+    """Listenfeld: Einträge untereinander, der gewählte blau hinterlegt; was nicht passt, wird abgeschnitten."""
+    size = size or 11.0
+    leading = size * 1.2
+    ops = []
+    if background:
+        ops.append(f"q {A._rgb_op(background, 'rg')} 0 0 {A._num(width)} {A._num(height)} re f Q")
+    if border:
+        ops.append(f"q {A._rgb_op(border, 'RG')} 1 w 0.5 0.5 {A._num(width - 1)} {A._num(height - 1)} re S Q")
+    ops.append("/Tx BMC q")
+    ops.append(f"1 1 {A._num(max(0, width - 2))} {A._num(max(0, height - 2))} re W n")
+    top = height - 1
+    for option in options:
+        y = top - leading
+        if y + leading < 0:
+            break
+        if option == value:
+            ops.append(f"q 0.6 0.75 0.95 rg 1 {A._num(y)} {A._num(width - 2)} {A._num(leading)} re f Q")
+        ops.append(f"BT /Helv {A._num(size)} Tf 0 g 2 {A._num(y + leading * 0.25)} Td {A.pdf_string(option)} Tj ET")
+        top = y
+    ops.append("Q EMC")
+    return "\n".join(ops)
+
+
 def checkbox_appearance(width: float, height: float, on: bool, border: str | None = BORDER) -> str:
     ops = []
     if border:
@@ -249,8 +317,20 @@ def _set_text_appearance(writer, widget, field_obj, value: str) -> None:
     flags = int(_inherited(field_obj, "/Ff") or 0)
     quadding = int(_inherited(field_obj, "/Q") or 0)
     mk = _mk(widget)
-    content = text_appearance(value, w, h, size, quadding, bool(flags & FF_MULTILINE), mk["border"],
-                              mk["background"])
+    if _kind(field_obj) == "choice" and not flags & FF_COMBO:
+        content = list_appearance(_options(field_obj), value, w, h, size, mk["border"], mk["background"])
+    else:
+        combo = _kind(field_obj) == "choice"
+        content = text_appearance(value, w - (h * 0.8 if combo else 0), h, size, quadding,
+                                  bool(flags & FF_MULTILINE), None if combo else mk["border"], mk["background"])
+        if combo:                                           # Dropdown: Rahmen über die volle Breite + Pfeil rechts
+            a = min(h * 0.28, 5.0)
+            cx, cy = w - h * 0.4, h / 2
+            border = mk["border"]
+            frame = (f"q {A._rgb_op(border, 'RG')} 1 w 0.5 0.5 {A._num(w - 1)} {A._num(h - 1)} re S Q\n"
+                     if border else "")
+            content += (f"\n{frame}q 0.3 g {A._num(cx - a)} {A._num(cy + a / 2)} m {A._num(cx + a)} "
+                        f"{A._num(cy + a / 2)} l {A._num(cx)} {A._num(cy - a / 2)} l h f Q")
     appearance = A._form(writer, content, [0, 0, w, h], A.helvetica_resources(writer), _matrix(rotate))
     widget[NameObject("/AP")] = DictionaryObject({NameObject("/N"): appearance})
 

@@ -99,11 +99,12 @@ def test_note_and_text():
     out = A.add_text(out, 0, (72, 300, 300, 310), "Zeile eins und noch viel mehr Text zum Umbrechen", 14, "#d03030")
     text = _annots(out)[1]
     assert text["/Subtype"] == "/FreeText"
-    assert text["/DA"].startswith("/Helv 14 Tf")
+    assert text["/DA"].startswith("/Helv 14 Tf")                          # für Betrachter, die neu zeichnen
     ap = text["/AP"]["/N"].get_object()
-    assert "/Helv" in ap["/Resources"]["/Font"]
+    font = ap["/Resources"]["/Font"]["/FnR"].get_object()
+    assert font["/Subtype"] == "/Type0" and font["/BaseFont"].endswith("+NotoSans-Regular")   # eingebettet
     content = ap.get_data()
-    assert b"BT /Helv 14 Tf" in content and content.count(b"Tj") >= 2      # umbrochen
+    assert b"BT /FnR 14 Tf" in content and content.count(b"Tj") >= 2      # umbrochen
     with pytest.raises(PdfEditError):
         A.add_text(DOC, 0, (0, 0, 100, 10), "   ")
     with pytest.raises(PdfEditError):
@@ -134,7 +135,9 @@ def test_list_hit_update_delete():
     assert A.list_annotations(changed, 0)[1].contents == "Geänderte Notiz"
     retext = A.update_text(out, 0, 2, "Neuer längerer Text auf der Seite")
     assert A.list_annotations(retext, 0)[2].contents == "Neuer längerer Text auf der Seite"
-    assert b"Neuer" in _annots(retext)[2]["/AP"]["/N"].get_object().get_data()
+    from notex.core import pdffont
+    hexed = pdffont.face().encode("Neuer")[1:-1].encode("ascii")
+    assert hexed in _annots(retext)[2]["/AP"]["/N"].get_object().get_data()
     gone = A.delete_annotation(out, 0, 1)
     assert [i.kind for i in A.list_annotations(gone, 0)] == ["highlight", "text"]
     assert contains_anywhere(out, "GEHEIMWORT") and not contains_anywhere(gone, "GEHEIMWORT")

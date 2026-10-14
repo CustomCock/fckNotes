@@ -630,12 +630,15 @@ def render_redacted(doc: QPdfDocument, index: int, boxes: list, dpi: int):
 
 
 class FieldDialog(QDialog):
-    """Eigenschaften eines Formularfelds: Name, mehrzeilig, Schriftgröße (0 = passt sich an)."""
+    """Eigenschaften eines Formularfelds: Name, mehrzeilig, Schriftgröße (0 = passt sich an), Pflicht, nur lesen,
+    Standardwert, Einträge (Dropdown/Liste), Ausrichtung, Tooltip; bei Schaltflächen Beschriftung und Aktion."""
 
-    def __init__(self, parent: QWidget, info) -> None:
+    def __init__(self, parent: QWidget, info, page_count: int = 1) -> None:
         super().__init__(parent)
-        from PySide6.QtWidgets import QCheckBox, QFormLayout
+        from PySide6.QtWidgets import QCheckBox, QComboBox, QFormLayout, QPlainTextEdit
         self.setWindowTitle(f"Feld „{info.name}“")
+        self._kind = info.kind
+        self.info = info
         self.name = QLineEdit(info.name.split(".")[-1])
         self.multiline = QCheckBox("Mehrzeilig (Umbruch)")
         self.multiline.setChecked(info.multiline)
@@ -644,18 +647,95 @@ class FieldDialog(QDialog):
         self.size.setRange(0, 72)
         self.size.setSpecialValueText("passend")
         self.size.setSuffix(" pt")
+        self.size.setValue(round(getattr(info, "size", 0) or 0))
         self.size.setEnabled(info.kind in ("text", "choice"))
+        self.required = QCheckBox("Pflichtfeld")
+        self.required.setChecked(getattr(info, "required", False))
+        self.read_only = QCheckBox("Nur lesen (nicht ausfüllbar)")
+        self.read_only.setChecked(info.read_only)
+        self.default = QComboBox() if info.kind in ("radio", "choice") else QLineEdit()
+        default = getattr(info, "default", "")
+        if isinstance(self.default, QComboBox):
+            self.default.addItem("(keiner)", "")
+            for option in info.options:
+                self.default.addItem(option, option)
+            self.default.setCurrentIndex(max(0, self.default.findData(default)))
+        else:
+            self.default.setText(default)
+            self.default.setPlaceholderText("leer" if info.kind != "checkbox" else "Haken: Ja / leer")
+        self.options = QPlainTextEdit("\n".join(info.options))
+        self.options.setPlaceholderText("Ein Eintrag pro Zeile")
+        self.options.setFixedHeight(90)
+        self.align = QComboBox()
+        for label, value in (("Links", 0), ("Mitte", 1), ("Rechts", 2)):
+            self.align.addItem(label, value)
+        self.align.setCurrentIndex(max(0, self.align.findData(getattr(info, "quadding", 0))))
+        self.tooltip = QLineEdit(getattr(info, "tooltip", ""))
+        self.tooltip.setPlaceholderText("Hinweis beim Überfahren (z. B. „Vorname wie im Ausweis“)")
+        self.label = QLineEdit()
+        self.action = QComboBox()
+        self.action.addItem("Formular zurücksetzen", "reset")
+        self.action.addItem("Seite anspringen", "goto")
+        self.target = QSpinBox()
+        self.target.setRange(1, max(1, page_count))
+        action = getattr(info, "action", "")
+        if action.startswith("goto:"):
+            self.action.setCurrentIndex(1)
+            self.target.setValue(int(action.split(":")[1]) + 1)
         form = QFormLayout()
         form.addRow("Name", self.name)
-        form.addRow("", self.multiline)
-        form.addRow("Schriftgröße", self.size)
+        if info.kind == "button":
+            form.addRow("Beschriftung", self.label)
+            form.addRow("Aktion", self.action)
+            form.addRow("Seite", self.target)
+        else:
+            form.addRow("", self.multiline)
+            form.addRow("Schriftgröße", self.size)
+            form.addRow("Ausrichtung", self.align)
+            if info.kind == "choice":
+                form.addRow("Einträge", self.options)
+            form.addRow("Standardwert", self.default)
+            form.addRow("", self.required)
+            form.addRow("", self.read_only)
+        form.addRow("Tooltip", self.tooltip)
+        self.align.setEnabled(info.kind == "text")
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         layout = QVBoxLayout(self)
         layout.addLayout(form)
         layout.addWidget(buttons)
-        self._kind = info.kind
+
+    def properties(self) -> dict:
+        """Weitere Eigenschaften für `pdffieldtypes.set_properties` (nur Geändertes)."""
+        info = self.info
+        out: dict = {}
+        if info.kind == "button":
+            if self.label.text().strip():
+                out["label"] = self.label.text().strip()
+            out["action"] = self.action.currentData()
+            out["target_page"] = self.target.value() - 1
+        else:
+            if self.required.isChecked() != getattr(info, "required", False):
+                out["required"] = self.required.isChecked()
+            if self.read_only.isChecked() != info.read_only:
+                out["read_only"] = self.read_only.isChecked()
+            default = (self.default.currentData() if hasattr(self.default, "currentData")
+                       else self.default.text().strip())
+            if info.kind == "checkbox":
+                default = bool(default)
+            if default != (bool(getattr(info, "default", "")) if info.kind == "checkbox"
+                           else getattr(info, "default", "")):
+                out["default"] = default
+            if info.kind == "choice":
+                options = [line.strip() for line in self.options.toPlainText().splitlines() if line.strip()]
+                if options != info.options:
+                    out["options"] = options
+            if info.kind == "text" and self.align.currentData() != getattr(info, "quadding", 0):
+                out["quadding"] = self.align.currentData()
+        if self.tooltip.text().strip() != getattr(info, "tooltip", ""):
+            out["tooltip"] = self.tooltip.text().strip()
+        return out
 
     def values(self) -> tuple[str, bool | None, float | None]:
         multiline = self.multiline.isChecked() if self._kind == "text" else None

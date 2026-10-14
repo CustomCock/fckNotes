@@ -635,6 +635,154 @@ Plan: T1 Objekte bearbeiten + direkt ausfüllen → T2 Felderkennung → T3 Diag
   **Bewusst nicht:** Timing-Diagramm-Verläufe, Kommunikationsdiagramm-Nummerierung, Profile/Metaklassen als eigene
   Formen (mit Rechteck/Klasse + Stereotyp-Text darstellbar).
 
+### Block V: PDF-Ausbau Priorität A (ab 11.10.2026, Besitzer)
+Auftrag: alle PDF-Funktionen, die fckNotes gegenüber Acrobat fehlen (Roadmap `docs/ROADMAP-PDF.md`, Regeln dort und im
+Auftrag: portabel, offline, kein PDF-JavaScript, Originale heilig, Schrift eingebettet, AES-256, Schwärzen deckt
+jeden Ablageort ab). Freigegeben: Linux-Release auf ubuntu-22.04, Tesseract (Größe bei W5), ≈ +25 MB, PDF/X-4 nein,
+PDF/A wie vorgeschlagen, Noto statt Helvetica, Windows-Zertifikatsspeicher später.
+- **V0 – erledigt.** `pdffont.py` (Noto Sans Type0/CIDFontType2-Untermengen über fontTools, `retain_gids`,
+  ToUnicode, deterministischer Tag; `FontUsage` sammelt Zeichen je Schnitt), FreeText-AP und Diagramme umgestellt
+  (Editor malt ebenfalls Noto → gleiche Breiten); **Entscheidung:** Formularfelder bleiben Helvetica (/DA, fremde
+  Viewer zeichnen beim Tippen neu – Untermenge hätte Lücken). `pdfaudit.py` mit Register `LOCATIONS` (14 Orte inkl.
+  PDFium-Flatten für Erscheinungsbilder, Objekt-Walk über alle xref-Einträge, Rohbytes + Flate-Streams für frühere
+  Speicherstände); allgemeine Restsuche nur, wenn kein bestimmter Ort traf; `pdfredact.leftovers` nutzt es.
+  `core/undo.SnapshotStack` (Budget, Auslagern nach `cache/undo`, max. 200 Schritte) statt `MAX_UNDO`.
+  `core/tasks.TaskContext` + `ui/tasks.run_task` (QThread, Fortschritt, Abbrechen). `paths`: Ausweichordner
+  (`fallback_root`, `using_fallback`, `cache_dir`, AppImage → `<App>-Daten` neben der Datei), Statusleisten-Hinweis.
+  `notex/platform/` (printing/speech/scanner/external mit `available()`; `external.is_executable` sperrt Programme).
+  Tests: `pdffixtures.py` + `tests/fixtures/pdf/` (kaputt, AES-256/AES-128/RC4, gescannt; groß zur Laufzeit),
+  `assert_valid_pdf` (pikepdf `check_pdf_syntax`), echtes `qpdf --check` wenn vorhanden (CI Linux), Netzwerk-Wächter
+  (conftest, Socket gesperrt) + AST-Importprüfung. Build: pypdfium2/fontTools/Qt-Druck/Sprachausgabe im Bundle,
+  `tools/make_appdir.py` + appimagetool im Release-Workflow. Größe Linux-tar.gz 104,2 → 113,7 MB.
+- **V1 – erledigt.** `pdfpages`: `insert_blank` (Nachbar/A4/Letter), `replace_pages`, `pages_for`
+  (aktuell/Bereich/gerade/ungerade/alle), `crop`/`reset_crop` (nur CropBox, mind. 10 pt, auf MediaBox begrenzt),
+  `detect_margins` (PDFium-Graustufen, Schwelle einstellbar), Seitenbeschriftungen (`LabelRange`, `read_labels`,
+  `set_labels`, `label_list`). **Fix:** `PdfWriter.append` verlor `/PageLabels` → `_carry_labels` in
+  rearrange/insert/merge (Bereiche wandern mit ihren Seiten). Neu `pdfoutline.py`: `read_outline` (Kreis-Schutz,
+  benannte Ziele, XYZ/FitH), `write_outline` (ganzer Baum, fremde Aktionen geklont, `PageMode /UseOutlines`),
+  `find_headings` (Schriftgröße je Zeichen über PDFium, Ebenen nach Größengruppen), `headings_to_outline`.
+  UI: `ui/pdf_pages_ui.py` (Dialoge leer/ersetzen/zuschneiden/Beschriftungen), `ui/pdf_outline.py`
+  (Lesezeichen-Leiste mit Ziehen, F2, Entf, Ein-/Ausrücken; Überschriften-Vorschau), Werkzeug „Zuschneiden“,
+  `Ctrl+Shift+B`, 8 Palette-Einträge. **Entscheidung:** Zuschneide-Dialog statt eigener Leiste; Lesezeichen-Editor
+  ersetzt im Bearbeiten-Modus die Nur-Lese-Leiste. Doku `docs/pdf/seiten-lesezeichen.md`.
+- **V2 – erledigt.** Neu `pdfattach.py` (Namensbaum inkl. `/Kids` und `/AF`, Datei-Anmerkungen; `risky` nach Endung
+  und Dateikopf, `safe_filename` gegen Pfadteile/reservierte Namen; Entfernen löscht auch den Inhalt) und
+  `pdflinks.py` (Ziele Seite/XYZ, URI nur http/https/mailto, GoToR nur auf `.pdf` – **Entscheidung:** kein
+  `/Launch`; fremde Aktionen bleiben beim Verschieben/Rahmen ändern). Links sind jetzt Objekte (`pdfobjects`, kind
+  „link“: verschieben, Größe, Doppelklick, Entf; im Lesemodus Klick = Seitenziel folgen, Webadresse nur Hinweis).
+  Audit-Register: neuer Ort `link`. UI `ui/pdf_links_ui.py` (LinkDialog, AttachmentsDialog nicht modal),
+  Büroklammer im PDF-Tab, Werkzeug „Link“, 3 Palette-Einträge; geöffnete Anhänge landen in
+  `cache/anhaenge/<zufall>/` (älter als ein Tag wird beim nächsten Öffnen gelöscht). Doku `docs/pdf/anhaenge-links.md`.
+- **V3 – erledigt.** Neu `pdfdraw.py` (Ink mit RDP-Vereinfachung + Catmull-Rom-Glättung, ein Strich je Anmerkung;
+  `erase_at` entfernt nur ganze Striche aus `/InkList`; Square/Circle/Line(+`/LE` OpenArrow)/Polygon, Wolke über
+  `/BE /S /C` mit eigenem Bogen-Pfad; `/BS` mit Strichelung, `/CA` + ExtGState; `transform` hält den Rand konstant,
+  `restyle`) und `pdfstamps.py` (5 Standardstempel, eigene Text/Bild-Stempel in `<App>/stamps/stamps.json`,
+  Datum/Name-Zeile, Noto Sans Bold eingebettet, Form-Matrix für gedrehte Seiten). **Entscheidung:** eigenes Modul
+  statt `pdfannot.py` (schon über 600 Zeilen). `pdfannot.valid_color` (rgb() schluckte ungültige Farben).
+  Objekte: ink/square/circle/line/polygon verschieb-/skalierbar, kommentierbar. Canvas: `PATH_TOOLS` (Stift,
+  Radierer, Linie, Pfeil, Polygon mit Klicks/Enter/Rücktaste/Esc), Vorschau. UI `ui/pdf_draw_ui.py`
+  (DrawStyleDialog, CustomStampDialog), Formen- und Stempel-Menü, Einstellung `pdf_author`, 11 Palette-Einträge.
+  **Fix nebenbei:** Bearbeiten-Leiste erzwang 1581 px (V2) bzw. 1766 px Fensterbreite → `widgets.FlowLayout`,
+  Gruppen brechen um (Mindestbreite jetzt ~420 px), Regressionstest. Doku `docs/pdf/zeichnen-stempel.md`.
+- **V4 – erledigt.** Neu `pdfcomments.py` (Threads über `/IRT` mit Kreis-Schutz, Antworten `/RT /R` mit NoView,
+  Status als versteckter `/State`-Eintrag – jüngster gilt, markierter Text über PDFium je QuadPoint, `filter_comments`,
+  Markdown/CSV-Zusammenfassung mit Schutz vor CSV-Formeln) und `xfdf.py` (Export aller Kommentararten inkl.
+  `coords`, `inklist`, `vertices`, `start/end/head/tail`, `fringe`, cloudy; Import mit eigenem Erscheinungsbild je
+  Art, Zusammenführen über `/NM`, Antworten/Status nach ihren Kommentaren, Stempel über `pdfstamps`; Parsen wie
+  draw.io: kein DOCTYPE/ENTITY, 20 MB, 20 000 Kommentare, Zahlen endlich und begrenzt). **Fix:** `delete_annotation`
+  und der Radierer entfernen den ganzen Faden (`remove_with_thread`). Antworten/Status erscheinen nicht mehr als
+  eigene Objekte. UI `ui/pdf_comments.py` (zweizeilige Liste, Filter, Kontextmenü, `R`/`Entf`), Sprechblase +
+  `Ctrl+Shift+M`, Export MD/CSV(BOM)/PDF (über `export_service`)/XFDF, 6 Palette-Einträge. **Entscheidung:** XFDF
+  ohne Formularfelder (kommt mit V5) und ohne Datei-Anhänge/Klänge. Doku `docs/pdf/kommentare.md`.
+- **V5 – erledigt.** `pdfforms.FieldInfo` um Pflicht, Standardwert, Größe, Ausrichtung, Tooltip, combo/editable und
+  Schaltflächen-Aktion erweitert; Listenfeld-Erscheinungsbild (Einträge, Auswahl hinterlegt), Dropdown mit Pfeil.
+  Neu `pdffieldtypes.py` (**Entscheidung:** eigenes Modul statt `pdfforms.py` zu vergrößern): Optionsgruppe
+  (Eltern-Feld + Widget je Option, NoToggleToOff), Dropdown/Listenfeld, Schaltfläche (nur `/ResetForm`, `/GoTo`),
+  `set_properties`, `reset_values`, Tab-Reihenfolge (eigene = `/Annots` umsortiert + `/Tabs` entfernt; Zeilen/
+  Spalten = `/Tabs /R|/C` + gleiche `/Annots`-Reihenfolge). Neu `pdfformdata.py`: JSON/XFDF(`<fields>`, verschachtelt)
+  /FDF-Export und -Import (eigener FDF-Leser ohne Streams/Verweise, Tiefe ≤ 32, 10 MB; **Grund:** pypdfs
+  `read_object` verliert ohne Dokument Daten), `collect` → CSV. `pdfcomments.csv_cell` öffentlich. UI: Werkzeug
+  „Weitere Felder“ (Menü), `ui/pdf_forms_ui.py` (NewFieldDialog, TabOrderDialog), `FieldDialog` erweitert,
+  Tab-Nummern auf den Feldern, Formulardaten-Menü, 12 Palette-Einträge. Doku `docs/pdf/formulare.md`.
+- **V6 – erledigt.** Neu `pdfsecurity.py` (`inspect`, `unlock` → Klartext im Speicher + `Protection`, `protect`/
+  `reapply` nur AES-256 R6, Rechte-Bits /P, `Protection.__repr__` ohne Passwörter). Laden: verschlüsselte PDFs
+  werden entsperrt und sind voll bearbeitbar; **Entscheidung:** verbieten die Rechte Änderungen und wurde nur mit
+  dem Öffnen-Passwort entsperrt, bleibt der Tab lesbar, bis das Rechte-Passwort kommt (Rechte respektieren). Beim
+  Speichern einmal je Tab „Schutz beibehalten?“; Öffnen-Passwort unbekannt (mit Rechte-Passwort geöffnet) → neu
+  fragen; Rechte-Passwort unbekannt → zufällig. **Entscheidung:** Schutz ist eine Speicher-Einstellung des Tabs,
+  kein Rückgängig-Schritt (er wird erst beim Speichern angewendet). Neu `redact_patterns.py` (11 Muster mit Prüfern,
+  eigene Regex über `regex` mit Zeitlimit, `find_hits` mit Zeilen-Rechtecken aus PDFium) + Vorschau-Dialog,
+  Vormerken über die bestehende Schwärz-Pipeline (Prüfung danach). UI `ui/pdf_security_ui.py`, Schloss- und
+  Regex-Knopf, 3 Palette-Einträge, Config `pdf_redact_patterns`. Test-Fix: `QInputDialog.getText` blockiert in
+  Tests nie mehr (conftest). Doku `docs/pdf/schutz.md`.
+- **V7 – erledigt.** Neu `pdfimages.py`: eingefügte Bilder als Stempel-Anmerkung mit `/fckNotesImage` (Winkel,
+  Größe; Erscheinungsbild = Einheitsquadrat × Größe × Drehung, Form-Matrix für gedrehte Seiten), `reframe` (gerade
+  Winkel frei skalierbar, schiefe nur mit Seitenverhältnis), `rotate_image`, Deckkraft (/CA + ExtGState),
+  `replace_inserted`, `export_inserted`; Einlesen über **Pillow** (neu, gepinnt 12.3.0, +≈ 7 MB): JPEG ohne
+  EXIF-Drehung roh als /DCTDecode, sonst Flate + /SMask. **Entscheidung:** EXIF-gedrehte JPEGs werden einmal
+  aufgerichtet und mit Qualität 95 neu kodiert (statt Drehung über die Matrix) – einfacher und überall gleich.
+  Inhalts-Bilder: eigener Scanner über den Content-Stream (CTM über q/Q/cm, `Do` auf Bild- und Form-XObjects mit
+  Zyklenschutz, Inline-Bilder), `all_images` zählt Verwendungen. Ändern nur am obersten Content-Stream der Seite:
+  Löschen entfernt den `Do`/`BI…EI`-Operator, Zuschneiden schneidet die **Pixel** (neues XObject + innere Matrix,
+  **Entscheidung:** kein Clip-Pfad, damit der weggeschnittene Teil nicht in der Datei bleibt), Ersetzen „nur hier“
+  (neuer Name + Einpass-Matrix) oder „überall“ (`_replace_object` auf dem alten XObject). Seiten-Ressourcen werden vor
+  dem Ändern kopiert (geteilte Ressourcen anderer Seiten bleiben unberührt). Inline nur exportieren/löschen, Bilder
+  in Gruppen nur exportieren/überall ersetzen. UI `ui/pdf_images_ui.py` (Liste, Ersetzen, Zuschneiden,
+  Eigenschaften), Werkzeuge „Bild einfügen“ und „Bilder im Seiteninhalt“ (Rahmen-Overlay, Entf/Esc, Zuschneiden per
+  Rahmen), `R`/`Shift+R`, Shift-Ecke verzerrt, 7 Palette-Einträge, Fixture `bilder.pdf`. Doku `docs/pdf/bilder.md`.
+- **V8 – erledigt.** Neu `pdfstamp_layers.py` (gemeinsame Basis, später auch Bates in X6): Vorlagen
+  `Watermark`/`HeaderFooter`/`Background` (frozen Dataclasses, `checked`, `to_dict`/`from_dict` für Config und PDF).
+  Je Seite ein Form-XObject (`/OC` → OCG je Art mit `/fckNotesLayerKind`, `/fckNotesLayer` mit Art, Id und Vorlage
+  als JSON; `/Matrix` = aufrechte Ansicht → Benutzerkoordinaten, auch für gedrehte Seiten), gezeichnet aus eigenen,
+  markierten Content-Streams (`/Artifact … BDC … EMC`). **Entscheidung:** Ebenen über dem Inhalt fassen das Original
+  in eigene `q`/`Q`-Streams (offener Grafikzustand des Originals darf die Ebene nicht verschieben); Entfernen nimmt
+  nur eigene Streams/Ressourcen/OCGs heraus → Original byte-gleich; zusammengelegte Streams: Befehle einzeln suchen.
+  **Entscheidung:** eine Ebene je Art (neu = ersetzen), `{seiten}` = letzte vergebene Nummer im Bereich. Aktualisieren
+  = aus der gespeicherten Vorlage neu (Bild-XObject wird wiederverwendet, Id bleibt). Fremde Wasserzeichen nur, wenn
+  als `/Artifact /Watermark` markiert oder `/Watermark`-Anmerkung. Audit-Ort `page_layers` (Vorlagen-JSON) + Fixture.
+  UI `ui/pdf_layers_ui.py` (Dialog mit Vorschau über `pdfstamp_layers.preview` + PDFium, Vorlagen in Config
+  `pdf_layer_templates`, Bilder in `stamps/`), Ebenen-Menü, Hintergrund-Ausführung `_background_change` (ein
+  Rückgängig-Schritt, verwirft das Ergebnis, wenn das PDF inzwischen geändert wurde), 6 Palette-Einträge.
+  Doku `docs/pdf/ebenen.md`.
+- **V9 – erledigt.** Neu `pdfconvert.py`: `compress` (pikepdf; Bildgröße aus der größten Darstellung über
+  `pdfimages.all_images`, verkleinern ab 15 % Überschuss, Fotos → JPEG, Strichbilder bleiben Flate, nur ersetzen wenn
+  kleiner; Masken/JPX/JBIG2/CCITT/`/Decode`/exotische Farbräume bleiben; `remove_unreferenced_resources`,
+  Objekt-Streams, `recompress_flate`), `repair` (**Fix:** qpdf übernahm einen Trailer ohne `/Size` – Platzhalter
+  setzen, dann rechnet qpdf neu), `images_to_pdf`, `export_page_images` (PDFium, nie überschreiben), `to_text`,
+  `to_markdown` (Zeilen mit Schriftgröße, Überschriften-Ebenen, Absätze, Listen; PDFium markiert Trennstellen mit
+  U+FFFE – entfernt). **Entscheidung:** Komprimieren ist ein Rückgängig-Schritt im Tab mit Rückfrage
+  (Vorher/Nachher), kein direktes Schreiben; mit Schwärz-Begriffen im Tab wird das Ergebnis vorher auditiert.
+  **Entscheidung:** Reparatur beim Laden nur, wenn QtPdf die Datei nicht öffnet; Ergebnis = ungespeicherte Änderung.
+  pikepdf 10.16.0 jetzt in `requirements.txt` (Build: Hidden-Import + `--copy-metadata pikepdf`; Lizenzen
+  pikepdf/qpdf). **Entscheidung:** lxml (kommt mit pikepdf) wird aus dem Build ausgeschlossen – pikepdf braucht es nur
+  für XMP über `open_metadata`, das wir nicht nutzen (−9 MB entpackt). Lokaler Linux-Build: ZIP ≈ 153 MB
+  (pikepdf + libqpdf ≈ 8 MB entpackt; Pillow aus V7 ≈ 18 MB entpackt). UI `ui/pdf_convert_ui.py` (CompressDialog, PageImagesDialog, ImagesToPdfDialog auf
+  Basis von MergeDialog), Knöpfe Komprimieren/Exportieren, `_task`-Helfer, `EditorTabs._open_requested_path` öffnet
+  Text-Dateien im Editor (vorher immer als PDF-Viewer), 6 Palette-Einträge. Doku `docs/pdf/komprimieren-konvertieren.md`.
+- **V10 – erledigt.** Neu `pdfindex.py`: `PdfIndex` (SQLite, Tabellen docs/pages, `user_version`-Schema, WAL,
+  `secure_delete` + Checkpoint, damit gelöschter Text nicht in Datei/WAL bleibt), `update` (mtime+Größe → nichts;
+  sonst SHA-256 → gleicher Inhalt irgendwo = Text übernehmen; sonst PDFium), `search` je Zeile einer Seite mit
+  `search.match_spans`/`_line_match`, `prune`, `forget`, `clear`, Status ok/encrypted/notext/error/large.
+  `search.py`: `SearchOptions.pdf`/`pdf_index`, `SearchResult.pdfs`/`pdf_skipped`, Callbacks `on_pdf`/`on_progress`.
+  UI: Chip „PDF“ (Config `search.pdf`), Treffer „S. n“ unter „PDF-Inhalte“, „nicht durchsucht“-Gruppe, Fortschritt
+  im Info-Text, Klick → `PdfPage.show_hit` (Seite + Suchbegriff; wartet auf die schrittweise gelieferten Treffer
+  der Seite). **Entscheidung:** gespeicherte PDFs werden über `file_saved` sofort aus dem Index genommen (z. B. nach
+  dem Schwärzen). **Fix:** Such-Chips in `FlowLayout` (brechen um statt „Vo…xt“). 2 Palette-Einträge.
+  Doku `docs/pdf/suche.md`.
+- **V11 – erledigt.** Neu `pdfprint.py` (Qt-frei): `PrintOptions` (Seiten, Kopien, Sortieren, Einpassen, Papier,
+  Hoch/Quer, Anmerkungen, Formular), `prepare` (nur /F-Drucken-Anmerkungen, ausgeblendete/Popups/Links nie; Wahl
+  einbrennen per `pdfforms.flatten`), `placement`, `page_order`, `print_to_pdf` (Vektor, `merge_transformed_page`).
+  Neu `sentences.py` (Qt-frei): `split` → (Anfang, Ende) mit Abkürzungen, Initialen, Ordnungszahlen/Datum, Listen,
+  Überschriften, Teilung > 400 Zeichen; `sentence_at`. UI: `ui/pdf_print_ui.py` (PrintDialog, `print_on` →
+  QPrinter, Seiten als PDFium-Bild ≤ 300 dpi, Ausrichtung je Seite), `ui/read_aloud.py` (QtEngine, EditorTarget,
+  PdfTarget mit Zeichen-Rechtecken von PDFium, Reader Satz für Satz, ReadAloudBar), `Editor.set_read_mark`
+  (Extra-Selection, Cursor bleibt), Knöpfe Drucken/Vorlesen im PDF-Tab, F8/Shift+F8, Config `speech` {rate, voice},
+  5 Palette-Einträge. `platform/speech.py`: eigener Hinweis, wenn QtTextToSpeech nicht lädt (Linux: libpulse);
+  Plattform-Hinweise nutzen `APP_NAME`. **Entscheidung:** echter Drucker bekommt Rasterbilder (gleiches Ergebnis
+  mit jedem Treiber, Kopien/Sortierung macht fckNotes), „In PDF“ bleibt Vektor. **Entscheidung:** Satz- statt
+  Wort-Hervorhebung (Roadmap). Nicht getestet: echte Drucker und echte Stimmen (CI: QPrinter-PDF-Ausgabe und
+  Fake-Engine). Doku `docs/pdf/drucken-vorlesen.md`.
+
 ## Offen
 
 ### Block C – 1.3.0
@@ -701,6 +849,10 @@ evtx (MIT, Rust-Wheels), dpkt (BSD). regex/PyYAML/cryptography wie bisher. Kein 
 rdap, scanner, logs, pcap. Standardmäßig an: variables, hex, ports, ioc.
 
 ## Nächster Schritt
+
+**PDF-Ausbau (Blöcke V, W, X):** Roadmap `docs/ROADMAP-PDF.md`, vom Besitzer freigegeben („alles wie vorgeschlagen“).
+**V0–V11 erledigt (alle A-Blöcke).** Nächster Schritt: Block **W1 (Korrekturzeichen)** – B-Blöcke (W1–W9) und
+C-Blöcke (X1–X14) vor dem Start mit dem Besitzer abstimmen; Block U (KI) bleibt reserviert.
 
 **Block T (PDF: Objekte, Felderkennung, Diagramme, draw.io) abgeschlossen** auf dem Arbeitsbranch – wartet auf
 Merge/Release durch den Besitzer (Vorschlag 1.18.0). Offen beim Besitzer: Ausprobieren mit echten Arbeitsblättern

@@ -12,7 +12,9 @@ keine Installation: `data/` daneben ist dein Notizbaum, `config.json` merkt sich
 2. Entpacken, z. B. nach `C:\Apps\fckNotes` oder auf einen USB-Stick.
 3. `fckNotes.exe` starten. Beim ersten Start entstehen `data/` und `config.json` daneben.
 
-Mehr ist nicht nötig. SmartScreen warnt beim ersten Start, weil die EXE nicht signiert ist:
+Mehr ist nicht nötig. Liegt der Ordner an einer Stelle ohne Schreibrecht (z. B. unter „Programme“), legt fckNotes
+seine Daten in `%APPDATA%\fckNotes` ab und zeigt das in der Statusleiste („Daten im Ausweichordner“).
+SmartScreen warnt beim ersten Start, weil die EXE nicht signiert ist:
 „Weitere Informationen“ → „Trotzdem ausführen“. Die ZIP bitte komplett entpacken, nicht die
 `fckNotes.exe` direkt aus dem ZIP-Fenster starten: Windows legt sie dann in einen Temp-Ordner, und
 Notizen würden dort landen (fckNotes warnt in dem Fall beim Start).
@@ -45,7 +47,8 @@ Standardschrift ist Inter; mit SF Pro in `fonts/user/` sieht die Oberfläche ent
 
 - **Verzeichnisbaum** von `data/` links, Dateien per Klick im Editor öffnen, mehrere Tabs
 - **Suche** (Ctrl+Shift+F): rekursiv, case-insensitive, nach Dateiname und/oder Volltext,
-  läuft im Hintergrund-Thread, Klick auf einen Treffer springt in die Zeile. Filter, Regex und
+  läuft im Hintergrund-Thread, Klick auf einen Treffer springt in die Zeile. Chip **„PDF“**: auch PDF-Inhalte
+  (Treffer mit Seite, Klick öffnet die Seite mit Markierung; Index in `cache/`, siehe `docs/pdf/suche.md`). Filter, Regex und
   „Ganzes Wort“ siehe [Suche und Ersetzen in Dateien](#suche-und-ersetzen-in-dateien)
 - **Editor**: weißes Blatt auf dunklem Tisch, Zeilennummern, aktuelle Zeile hervorgehoben,
   Suchen/Ersetzen (Ctrl+F / Ctrl+H), Zoom (Ctrl+Mausrad, Ctrl+Plus/Minus)
@@ -76,7 +79,14 @@ tar -xzf fckNotes-v1.4.0-linux-x86_64.tar.gz -C ~/Apps
 ~/Apps/fckNotes/fckNotes
 ```
 
+**Oder als AppImage** (eine Datei, ohne Entpacken): `fckNotes-vX.Y.Z-linux-x86_64.AppImage` laden,
+`chmod +x` und starten. Die Daten legt fckNotes portabel in den Ordner `fckNotes-Daten` neben der AppImage-Datei.
+AppImages brauchen FUSE; fehlt es, startet `./fckNotes-…AppImage --appimage-extract-and-run`.
+
 - Portabel wie unter Windows: `data/`, `config.json`, `history/`, `templates/` liegen neben der Datei `fckNotes`.
+- Ist der App-Ordner nicht beschreibbar (z. B. schreibgeschützter Stick), weicht fckNotes auf
+  `$XDG_CONFIG_HOME/fckNotes` (Windows: `%APPDATA%\fckNotes`) aus und zeigt „Daten im Ausweichordner“ in der
+  Statusleiste.
 - Qt braucht auf manchen Systemen noch `libxcb-cursor0` (Ubuntu/Debian: `sudo apt install libxcb-cursor0`).
 - Rechtschreibung nutzt Enchant/Hunspell des Systems, falls installiert (`libenchant-2-2`), sonst das
   eingebaute spylls mit den mitgelieferten Wörterbüchern.
@@ -469,16 +479,22 @@ PDFs öffnen als eigener Tab – zum Lesen und, mit dem **Stift** rechts oben, z
   ```
 
   Ohne Teilung landet das Zitat in der Zwischenablage. Teilen geht jetzt auch aus einem PDF-Tab heraus (`Ctrl+\`).
+- **Drucken** (Drucker-Knopf): Drucker oder „In PDF-Datei speichern“, Seitenbereich, Kopien (sortiert oder nicht),
+  „An Seite anpassen“/Originalgröße, Papier, Hoch/Quer automatisch, mit oder ohne Kommentare und Formularinhalte.
+- **Vorlesen** (Lautsprecher-Knopf oder `F8`): ab dieser Seite oder die Markierung, Satz für Satz mit Hervorhebung;
+  in Notizen ab Cursor, Markierung oder Anfang. Pause, Satz vor/zurück, Tempo, Stimme – offline über die
+  Sprachausgabe des Systems (Linux: speech-dispatcher). Anleitung: [docs/pdf/drucken-vorlesen.md](docs/pdf/drucken-vorlesen.md).
 - Keine Skripte, keine Link-Aktionen. Die Datei wird in den Speicher gelesen und gleich wieder geschlossen –
   umbenennen/verschieben geht auch, während der Tab offen ist. Passwortgeschützte PDFs fragen nach dem Passwort (es
-  wird nirgends gespeichert) und lassen sich nur ansehen, nicht bearbeiten.
+  wird nirgends gespeichert) und lassen sich danach auch bearbeiten (siehe „Passwortschutz“).
 - Technik: QtPdf (PDFium) zum Anzeigen, pypdf zum Bearbeiten; ohne QtWebEngine.
 
 ![PDF mit Zitat](docs/45-pdf-quote.png)
 
 ### PDF bearbeiten
 
-Der Stift schaltet eine zweite Leiste und die **Seitenleiste** (Miniaturen) ein. Alles passiert erst im Speicher:
+Der Stift schaltet eine zweite Leiste und die **Seitenleiste** (Miniaturen) ein. Alles passiert erst im Speicher
+(bei großen PDFs werden ältere Rückgängig-Schritte über ein einstellbares Speicherbudget nach `cache/` ausgelagert):
 `Ctrl+Z`/`Ctrl+Y` machen jeden Schritt rückgängig, der Tab zeigt „●“, und erst `Ctrl+S` schreibt die Datei
 (`Ctrl+Shift+Alt+S` = Speichern unter). Vor dem ersten Überschreiben legt fckNotes das alte PDF in den Papierkorb
 (abschaltbar unter Einstellungen › Editor › PDF bearbeiten) – der Versionsverlauf gilt nur für Textdateien.
@@ -493,6 +509,68 @@ Der Stift schaltet eine zweite Leiste und die **Seitenleiste** (Miniaturen) ein.
 - **PDFs zusammenfügen …** (Command Palette): Dateien wählen, Reihenfolge per Ziehen festlegen, speichern.
 - Gelöschte Seiten verschwinden **wirklich** aus der Datei (neu aufgebautes PDF, keine unsichtbaren Reste);
   Lesezeichen und Metadaten bleiben erhalten, Lesezeichen auf gelöschte Seiten fallen weg.
+- **Leere Seite** davor/dahinter (Rechtsklick in der Seitenleiste; Größe wie die Nachbarseite, A4 oder Letter) und
+  **Seiten ersetzen** (Seiten X–Y durch Seiten aus einem anderen PDF, ein Rückgängig-Schritt).
+- **Zuschneiden** (Knopf, Werkzeug „Zuschneiden“ zum Aufziehen oder Palette): Ränder in mm für die aktuelle Seite,
+  einen Bereich, gerade/ungerade oder alle Seiten; „Weiße Ränder erkennen“ schlägt sie vor. Setzt nur die
+  sichtbare Fläche (CropBox) – der abgeschnittene Inhalt bleibt in der Datei, **kein Schwärzen**.
+- **Seitenbeschriftungen** (Palette): Abschnitte mit Stil (1, i, I, a, A oder keiner), Präfix und Startwert, z. B.
+  „i–iv“ fürs Vorwort und „1 …“ danach. Bleiben beim Umsortieren, Drehen und Löschen erhalten.
+- **Lesezeichen bearbeiten** (Lesezeichen-Knopf im Bearbeiten-Modus): anlegen auf der aktuellen Seite und Position
+  (`Ctrl+Shift+B`), umbenennen (`F2`), löschen (`Entf`), per Ziehen verschieben und verschachteln, ein-/ausrücken.
+  **Aus Überschriften erzeugen** schlägt Lesezeichen aus großen Textzeilen vor (Vorschau, einzeln abwählbar).
+  Lesezeichen mit Webadresse behalten ihre Aktion unverändert.
+- **Links** (Werkzeug „Link“): Bereich aufziehen, Ziel wählen – Seite (optional mit Höhe), Lesezeichen, Webadresse
+  (nur http/https/mailto) oder ein anderes PDF; Rahmen sichtbar oder unsichtbar. Links lassen sich wie Eingefügtes
+  verschieben, in der Größe ändern, per Doppelklick bearbeiten und mit `Entf` löschen. Im Lesemodus springt ein Klick
+  auf ein Seitenziel; Webadressen und Dateien werden **nie** geöffnet (Rechtsklick › Link-Ziel kopieren).
+- **Anhänge** (Büroklammer oben im PDF-Tab, auch im Lesemodus): alle Anhänge des Dokuments und der Seiten mit Größe
+  und Beschreibung; speichern, öffnen (erst nach Rückfrage mit Typ und Warnung), hinzufügen, entfernen. Programme,
+  Skripte und Makro-Dokumente lassen sich nur speichern, nie öffnen.
+- **Zeichnen** (Bearbeiten-Leiste, Gruppe mit dem Stift): **Stift** für Freihand (Farbe, Stärke, Deckkraft,
+  Glättung), **Radierer** (entfernt immer ganze Striche), **Formen** – Rechteck, Ellipse, Linie, Pfeil, Polygon
+  (klicken, Doppelklick oder Enter beendet, Rücktaste nimmt den letzten Punkt zurück), Wolke – mit Rand, Füllung,
+  Deckkraft und Linienstil (durchgezogen, gestrichelt, gepunktet) über **Stil**. Alles sind echte PDF-Anmerkungen
+  mit eigenem Erscheinungsbild und lässt sich wie Eingefügtes verschieben, skalieren und löschen.
+- **Stempel**: Genehmigt, Entwurf, Vertraulich, Erledigt, Geprüft oder eigene aus Text oder Bild (liegen portabel in
+  `stamps/`), optional mit Datum und Namen (Einstellungen › Editor › PDF bearbeiten › „Name für Stempel“).
+  Klicken setzt den Stempel in Originalgröße, Aufziehen passt ihn ein.
+- Die Bearbeiten-Leiste bricht bei schmalem Fenster gruppenweise in eine zweite Zeile um.
+- **Kommentare** (Sprechblase oben im PDF-Tab, `Ctrl+Shift+M`): alle Kommentare als Liste mit Antworten – suchen
+  (auch im markierten Text), filtern nach Art, Autor, Status und Seite, sortieren nach Seite, Datum, Autor, Art oder
+  Status; ein Klick springt zur Stelle. **Antworten** (`R`), **Status** (offen, angenommen, abgelehnt, erledigt) und
+  Löschen samt Antworten. **Zusammenfassung** als Markdown, CSV (für Excel) oder PDF mit markiertem Text;
+  **XFDF** exportieren und importieren (Austausch mit Acrobat; vorhandene Kommentare werden nicht verdoppelt).
+- **Weitere Formularfelder** (Listen-Plus-Symbol in der Bearbeiten-Leiste): **Optionsfeld-Gruppe** (genau eine
+  Wahl), **Dropdown** (auf Wunsch mit eigener Eingabe), **Listenfeld** und **Schaltfläche** (nur „Formular
+  zurücksetzen“ oder „Seite anspringen“ – keine Skripte). **Feld-Eigenschaften** (Doppelklick): Name, Pflicht, nur
+  lesen, Standardwert, Einträge, Schriftgröße, Ausrichtung, Tooltip.
+- **Tab-Reihenfolge** (Nummern-Symbol): Nummern auf den Feldern einblenden, per Ziehen ändern oder „nach Zeilen“ /
+  „nach Spalten“ ordnen.
+- **Formulardaten** (Datenbank-Symbol): Werte als JSON, XFDF oder FDF exportieren und importieren, Formular
+  zurücksetzen, **Antworten sammeln** – mehrere ausgefüllte Kopien werden zu einer CSV-Tabelle.
+- **Passwortschutz** (Schloss-Symbol): Passwort-PDFs lassen sich nach Eingabe des Passworts **voll bearbeiten**;
+  beim Speichern fragt fckNotes, ob der Schutz bleibt. Öffnen-Passwort und Rechte (Drucken, Ändern, Kopieren …) mit
+  Rechte-Passwort setzen, ändern oder entfernen – geschrieben wird nur AES-256, ältere RC4/AES-128-Dateien werden
+  beim Speichern auf AES-256 gehoben. Verbietet ein PDF Änderungen, hilft nur das Rechte-Passwort.
+- **Nach Mustern schwärzen** (Regex-Symbol): E-Mail, Telefon, IBAN (Prüfsumme), BIC, Kreditkarte (Luhn), Datum,
+  Steuer-ID (Prüfziffer), PLZ, IP, Webadresse und eigene Ausdrücke – Vorschau mit allen Treffern zum Abwählen,
+  dann vormerken oder gleich schwärzen; danach prüft fckNotes wie immer, ob noch etwas übrig ist.
+- **Bilder** (Block V7): **einfügen** (PNG, JPG, WebP …; Klick = natürliche Größe, Rahmen = einpassen, Shift =
+  füllen), verschieben, skalieren, **drehen** (`R` / `Shift+R`, beliebiger Winkel per Doppelklick), Deckkraft,
+  ersetzen, exportieren, einbrennen. **Bilder im Seiteninhalt** (Scans, Fotos, Logos) auswählen und **exportieren**
+  (JPEG unverändert, sonst PNG; alle auf einmal), **ersetzen** (nur hier oder überall), **zuschneiden** (die Pixel
+  außerhalb verschwinden wirklich) und **löschen**. Details: `docs/pdf/bilder.md`.
+- **Wasserzeichen, Kopf-/Fußzeilen, Seitenzahlen, Hintergrund** (Ebenen-Symbol, Block V8): Text- oder
+  Bild-Wasserzeichen (Deckkraft, Drehung, Position, vor/hinter dem Inhalt), Kopf-/Fußzeilen mit `{seite}`, `{seiten}`,
+  `{datum}`, `{dateiname}`, `{titel}`, Hintergrund als Farbe oder Bild – mit Vorschau, Seitenbereich und Vorlagen.
+  Alles liegt in eigenen Ebenen und lässt sich **aktualisieren** (z. B. nach neuen Seiten) und **entfernen**;
+  fremde, als Wasserzeichen markierte Inhalte lassen sich ebenfalls entfernen. Details: `docs/pdf/ebenen.md`.
+- **Komprimieren** (Symbol „Komprimieren“, Block V9): Profile Hohe Qualität / Standard / Klein / Nur verlustfrei oder
+  eigene Werte, mit Vorher/Nachher-Größe und Rückfrage; Bilder werden passend zur Darstellung verkleinert, Objekt-Streams
+  und das Entfernen von Ungenutztem machen die Datei zusätzlich kleiner. **Kaputte PDFs** werden beim Öffnen
+  repariert. **Exportieren**: Seiten als PNG/JPG, Text (.txt), Markdown (.md, öffnet sich als Notiz);
+  **Bilder zu PDF** über die Palette. Details: `docs/pdf/komprimieren-konvertieren.md`.
 
 **Kommentieren** – Werkzeuge in der Bearbeiten-Leiste (`Esc` = zurück zu „Auswählen“), Farbe über die Palette:
 
@@ -500,7 +578,9 @@ Der Stift schaltet eine zweite Leiste und die **Seitenleiste** (Miniaturen) ein.
   und im Rechtsklick-Menü wählen.
 - **Notiz**: auf die Seite klicken, Text eingeben – erscheint als Notiz-Symbol, der Text beim Anklicken.
 - **Text auf der Seite**: Bereich aufziehen (oder klicken = 220 pt breit), Text, Größe, Farbe und Rahmen wählen;
-  bricht automatisch um. Schrift ist Helvetica (Westeuropäisch; Emoji o. Ä. werden zu „?“).
+  bricht automatisch um. Schrift ist die mitgelieferte **Noto Sans**, eingebettet als Untermenge – sieht in jedem
+  Programm und auf Windows wie Linux gleich aus und kann Latein, Griechisch und Kyrillisch (Emoji werden zu „?“).
+  Formularfelder nutzen weiter Helvetica, damit fremde Programme beim Tippen alle Zeichen haben.
 - **Rechtsklick auf eine Anmerkung**: Text/Kommentar bearbeiten oder löschen – auch bei Anmerkungen aus anderen
   Programmen.
 - Gespeichert werden normale PDF-Anmerkungen mit eigenem Erscheinungsbild: Acrobat, Browser und Vorschau-Programme
@@ -597,8 +677,10 @@ damit das Diagramm genau in den vorgesehenen Platz passt (außerhalb der Seite g
 2. **„Schwärzen anwenden“**: Die betroffenen Seiten werden als Bild (150/200/300 dpi) mit eingemalten Balken neu
    erzeugt – Text, Schriften, Anmerkungen und Formularwerte dieser Seiten verschwinden aus der Datei. Optional (an):
    Metadaten, Anhänge und Skripte entfernen; optional Lesezeichen entfernen.
-3. Danach prüft fckNotes, ob die geschwärzten Wörter noch irgendwo stehen (andere Seiten, Anmerkungen, Lesezeichen,
-   Metadaten) und nennt die Stellen.
+3. Danach prüft fckNotes, ob die geschwärzten Wörter noch irgendwo stehen – an **jedem** Ort, an dem ein PDF Text
+   ablegen kann: Seitentext, Erscheinungsbilder, Anmerkungen, Formularfelder, Lesezeichen, Anhänge (auch deren
+   Inhalt), Ebenen-Namen, Metadaten/XMP, Alt-Texte, Skripte und zuletzt alle Objekte, Streams und Rohbytes (auch
+   frühere Speicherstände). Es nennt die Stellen.
 4. Gespeichert wird **unter neuem Namen** (`…_geschwärzt.pdf`), das Original bleibt unberührt.
 
 Auf den geschwärzten Seiten ist danach auch der übrige Text nicht mehr markier- oder durchsuchbar (Bild), und die
@@ -1314,6 +1396,51 @@ Alternativ per Docker: `docker run -d -p 8081:8010 erikvl87/languagetool` (dann 
 | Ctrl+Z / Ctrl+Y / Ctrl+S (im PDF-Tab) | PDF-Änderung rückgängig / wiederholen / speichern |
 | Entf (Seitenleiste im PDF-Tab) | Gewählte Seiten löschen |
 | Palette › PDFs zusammenfügen | Mehrere PDFs in gewählter Reihenfolge zu einem neuen PDF |
+| Palette › PDF: Leere Seite einfügen / Seiten ersetzen | Leere Seite an Position; Seiten X–Y durch ein anderes PDF ersetzen |
+| Palette › PDF: Seiten zuschneiden / Werkzeug Zuschneiden | Ränder in mm oder Bereich aufziehen (nur CropBox, kein Schwärzen) |
+| Palette › PDF: Seitenbeschriftungen | Seitennummern-Abschnitte (i, ii … / 1, 2 … / Präfix) |
+| Ctrl+Shift+B (im PDF-Tab, Bearbeiten) | Lesezeichen auf aktueller Seite und Position anlegen |
+| F2 / Entf / Ziehen (Lesezeichen-Leiste) | Umbenennen / löschen / verschieben und verschachteln |
+| Palette › PDF: Lesezeichen bearbeiten / aus Überschriften | Lesezeichen-Leiste öffnen bzw. Vorschläge aus großen Zeilen |
+| Palette › PDF: Werkzeug Link | Bereich aufziehen, Ziel wählen (Seite, Lesezeichen, Webadresse, PDF) |
+| Klick auf einen Link (PDF-Lesemodus) | Zu Seitenzielen springen (Webadressen werden nur angezeigt) |
+| Palette › PDF: Anhänge / Datei anhängen | Anhänge speichern, öffnen (mit Rückfrage), hinzufügen, entfernen |
+| Palette › PDF: Werkzeug Stift / Radierer | Freihand zeichnen bzw. ganze Striche entfernen |
+| Palette › PDF: Form Rechteck / Ellipse / Linie / Pfeil / Polygon / Wolke | Form zeichnen (Polygon: Klicks, Enter beendet) |
+| Enter / Rücktaste / Esc (Polygon zeichnen) | Polygon beenden / letzten Punkt entfernen / Punkte verwerfen |
+| Palette › PDF: Stil für Stift und Formen | Farbe, Stärke, Füllung, Deckkraft, Linienstil (auch fürs ausgewählte Objekt) |
+| Palette › PDF: Werkzeug Stempel / Eigenen Stempel anlegen | Stempel setzen (Klick = Originalgröße) bzw. aus Text/Bild anlegen |
+| Ctrl+Shift+M (im PDF-Tab) / Palette › PDF: Kommentare | Kommentar-Seitenleiste ein/aus |
+| R / Entf (Kommentarliste) | Antworten / Kommentar samt Antworten löschen |
+| Palette › PDF: Kommentare als Markdown / CSV / PDF | Zusammenfassung mit Seite, Autor, Status, markiertem Text |
+| Palette › PDF: Kommentare als XFDF exportieren / importieren | Austausch mit Acrobat und anderen Programmen |
+| Palette › PDF: Neues Feld Optionsfeld-Gruppe / Dropdown / Listenfeld / Schaltfläche | Bereich aufziehen, Einträge angeben |
+| Palette › PDF: Tab-Reihenfolge bearbeiten / anzeigen | Reihenfolge der Tab-Taste durch die Felder |
+| Palette › PDF: Formulardaten als JSON / XFDF / FDF exportieren, importieren | Feldwerte austauschen |
+| Palette › PDF: Formular-Antworten sammeln | Mehrere ausgefüllte PDFs → eine CSV-Tabelle |
+| Palette › PDF: Passwortschutz / Rechte-Passwort eingeben | Schutz setzen, ändern, entfernen (AES-256) bzw. Bearbeiten freigeben |
+| Palette › PDF: Nach Mustern schwärzen | E-Mail, IBAN, Telefon … finden, Vorschau, vormerken |
+| Palette › PDF: Bild einfügen | Bild setzen (Klick = natürliche Größe, Rahmen = einpassen, Shift = füllen) |
+| R / Shift+R (eingefügtes Bild ausgewählt) / Palette › PDF: Ausgewähltes Bild drehen | 90° nach rechts / links drehen |
+| Shift beim Ziehen an einer Bild-Ecke | Bild verzerren statt Seitenverhältnis halten |
+| Palette › PDF: Ausgewähltes Bild – Drehung und Deckkraft | Beliebiger Winkel, Durchsichtigkeit |
+| Palette › PDF: Bilder im Seiteninhalt auswählen | Bilder umranden; Klick wählt, Rechtsklick = exportieren, ersetzen, zuschneiden |
+| Entf / Esc (Werkzeug „Bilder im Seiteninhalt“) | Ausgewähltes Bild löschen (Rückfrage) / Auswahl aufheben |
+| Palette › PDF: Bilder im Dokument / Alle Bilder exportieren | Liste aller Bilder bzw. alle in einen Ordner (nie überschreiben) |
+| Palette › PDF: Wasserzeichen / Kopf-/Fußzeile und Seitenzahlen / Hintergrund | Ebene mit Vorschau und Vorlagen anlegen |
+| Palette › PDF: Ebenen aktualisieren / entfernen | Seitenzahlen und Datum neu bzw. Wasserzeichen & Co. wieder entfernen |
+| Palette › PDF: Fremde Wasserzeichen entfernen | Als Wasserzeichen markierte Inhalte anderer Programme entfernen |
+| Palette › PDF: Komprimieren | Profil wählen, Vorher/Nachher sehen, übernehmen (Ctrl+Z macht es rückgängig) |
+| Palette › PDF: Reparieren | PDF neu schreiben (Querverweise und Struktur) |
+| Palette › PDF: Seiten als Bilder / Als Text / Als Markdown | PNG/JPG-Export bzw. Text; Markdown öffnet sich als Notiz |
+| Palette › Bilder zu PDF | Mehrere Bilder in gewählter Reihenfolge zu einem PDF |
+| Chip „PDF“ in der Suche / Palette › Suche: PDF-Inhalte durchsuchen ein/aus | PDF-Inhalte im ganzen Ordner durchsuchen |
+| Palette › Suche: PDF-Suchindex löschen | Index entfernen (wird bei der nächsten PDF-Suche neu aufgebaut) |
+| Palette › PDF: Drucken / Drucker-Knopf im PDF-Tab | Drucker oder In PDF-Datei, Seiten, Kopien, Größe, Papier, Anmerkungen |
+| F8 | Vorlesen ab Cursor (Notiz) bzw. ab dieser Seite/Markierung (PDF); läuft es schon: Pause/Weiter |
+| Shift+F8 / Esc in der Vorlese-Leiste | Vorlesen beenden |
+| ← / → in der Vorlese-Leiste | Satz zurück / vor |
+| Palette › Vorlesen: Markierung / ab Anfang der Notiz | Nur die Markierung bzw. die ganze Notiz vorlesen |
 | Palette › PDF: Auswahl markieren / unterstreichen / durchstreichen | Anmerkung über dem markierten PDF-Text |
 | Palette › PDF: Werkzeug Notiz / Text | Notiz bzw. Text auf der Seite platzieren (Esc beendet das Werkzeug) |
 | Palette › PDF: Formular ausfüllen | Feldliste rechts, „Übernehmen“ schreibt alle Werte (Ctrl+Z-fähig) |

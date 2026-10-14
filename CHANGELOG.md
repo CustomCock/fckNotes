@@ -17,7 +17,7 @@ Alle nennenswerten Änderungen an fckNotes (bis 1.17.0: Notex). Format angelehnt
   löschen, als neues PDF herauslösen, ein PDF einfügen, aufteilen (einzeln / alle N Seiten / nach Bereichen) und
   „PDFs zusammenfügen …“ (Palette). Änderungen erst im Speicher mit Rückgängig/Wiederholen, `Ctrl+S` speichert;
   vor dem ersten Überschreiben landet das Original im Papierkorb (abschaltbar). Gelöschte Seiten bleiben nicht
-  unsichtbar in der Datei. Passwortgeschützte PDFs bleiben nur lesbar.
+  unsichtbar in der Datei. Passwortgeschützte PDFs lassen sich nach Passworteingabe bearbeiten (Block V6).
 - **PDF kommentieren**: Markieren, Unterstreichen, Durchstreichen (Werkzeug oder Rechtsklick auf markierten Text),
   Haftnotizen, Text direkt auf der Seite (Größe, Farbe, Rahmen, automatischer Umbruch, auch auf gedrehten Seiten);
   Anmerkungen per Rechtsklick bearbeiten oder löschen. Eigene Erscheinungsbilder → sieht in Acrobat/Browser gleich aus.
@@ -63,7 +63,137 @@ Alle nennenswerten Änderungen an fckNotes (bis 1.17.0: Notex). Format angelehnt
   Objektdiagramm, Sequenz- und Use-Case-Vorlage mit Lebenslinien bzw. Systemgrenze. draw.io-Austausch kennt die
   neuen Symbole (auch draw.io-eigene wie umlLifeline, umlFrame, cube, umlDestroy).
 
+- **PDF-Ausbau, Block V0 (Grundlagen):**
+  - Text auf PDF-Seiten und Diagramme nutzen die mitgelieferte **Noto Sans**, eingebettet als Untermenge – überall
+    gleich (Windows, Linux, fremde Programme) und mit Unicode über Westeuropäisch hinaus (Ł, Ş, Ω, Kyrillisch).
+    Formularfelder bleiben bewusst bei Helvetica.
+  - **Prüfung nach dem Schwärzen** sucht jetzt an jedem Ablageort: zusätzlich Erscheinungsbilder, Anhänge (auch
+    Inhalt), Ebenen-Namen, Struktur-Tags/Alt-Texte, benannte Ziele, Seitenbeschriftungen, Skripte sowie alle
+    Objekte, dekomprimierten Streams und Rohbytes (frühere Speicherstände).
+  - **Rückgängig mit Speicherbudget** (Einstellung „Speicher für Rückgängig“, Standard 512 MB): ältere Schritte
+    großer PDFs werden nach `cache/undo` ausgelagert statt den Speicher zu füllen.
+  - **Ausweichordner:** Ist der App-Ordner nicht beschreibbar, liegen Daten in `%APPDATA%\fckNotes` bzw.
+    `$XDG_CONFIG_HOME/fckNotes`; die Statusleiste zeigt das an.
+  - **Linux-AppImage** zusätzlich zum tar.gz (Daten portabel in `fckNotes-Daten` neben der Datei).
+  - Unter der Haube: Plattformschicht für Drucken/Sprachausgabe/Scanner/externes Öffnen (fehlt etwas, wird
+    ausgegraut statt abzustürzen), Hintergrundaufgaben mit Fortschritt und Abbrechen, Netzwerk-Wächter in den
+    Tests, Test-PDFs in `tests/fixtures/pdf/` (kaputt, verschlüsselt, gescannt, über 500 Seiten), jedes erzeugte
+    PDF wird wie mit `qpdf --check` geprüft.
+  - Neue Abhängigkeiten: pypdfium2 5.14.0 (Apache-2.0/BSD-3), fontTools 4.66.1 (MIT), Noto Sans (OFL); Linux-Paket
+    +9,5 MB.
+- **PDF-Ausbau, Block V1 (Seiten und Lesezeichen):**
+  - **Leere Seite** davor/dahinter (Größe wie die Nachbarseite, A4 oder Letter) und **Seiten ersetzen** (Seiten
+    X–Y durch Seiten eines anderen PDFs, ein Rückgängig-Schritt).
+  - **Zuschneiden** per Dialog (Ränder in mm; aktuelle Seite, Bereich, gerade/ungerade, alle) oder Werkzeug zum
+    Aufziehen; „Weiße Ränder erkennen“ mit einstellbarer Schwelle; nur CropBox, deutlich als „kein Schwärzen“
+    gekennzeichnet; Zuschnitt aufheben.
+  - **Seitenbeschriftungen** (1, i, I, a, A oder nur Präfix, Präfix, Startwert) mit Vorschau.
+  - **Lesezeichen bearbeiten**: Leiste zum Anlegen auf Seite und Position (`Ctrl+Shift+B`), Umbenennen (`F2`),
+    Löschen, Verschieben und Verschachteln per Ziehen, Ein-/Ausrücken; **aus Überschriften erzeugen** mit Vorschau
+    (Schriftgröße über PDFium, bis drei Ebenen, ersetzen oder anhängen). Lesezeichen mit fremder Aktion (z. B.
+    Webadresse) bleiben unverändert.
+- **PDF-Ausbau, Block V2 (Anhänge und Links):**
+  - **Anhänge**: Liste aller Anhänge (Dokument und Seiten) mit Größe und Beschreibung; speichern, öffnen nur nach
+    Rückfrage mit Typ und Warnung, hinzufügen, entfernen (samt Inhalt). Programme, Skripte und Makro-Dokumente –
+    erkannt an Endung und Dateikopf – lassen sich nur speichern. Dateinamen aus dem PDF werden entschärft (keine
+    Ordnerteile, keine reservierten Namen).
+  - **Links**: Werkzeug zum Aufziehen mit Ziel Seite, Lesezeichen, Webadresse (nur http/https/mailto) oder anderes
+    PDF; Rahmen sichtbar/unsichtbar; verschieben, Größe ändern, bearbeiten, löschen wie andere Objekte; im
+    Lesemodus springen Seiten-Links, Webadressen und Dateien werden nie geöffnet.
+  - Prüfung nach dem Schwärzen kennt den neuen Ablageort „Link-Ziele“ (Webadressen, Dateinamen).
+- **PDF-Ausbau, Block V3 (Kommentieren I: Stift, Formen, Stempel):**
+  - **Stift** (Farbe, Stärke, Deckkraft, Glättung) und **Radierer**, der immer ganze Striche entfernt.
+  - **Formen** als echte Anmerkungen: Rechteck, Ellipse, Linie, Pfeil, Polygon, Wolke – mit Rand, Füllung, Deckkraft
+    und Linienstil; eigenes Erscheinungsbild, damit Wolkenrand und Strichelung überall gleich aussehen. Verschieben
+    und Größe ändern rechnen die Geometrie um (Rand bleibt gleich dick), **Stil** gilt auf Wunsch fürs ausgewählte
+    Objekt.
+  - **Stempel**: Genehmigt, Entwurf, Vertraulich, Erledigt, Geprüft und eigene aus Text oder Bild (portabel in
+    `stamps/`), optional mit Datum und Namen; Einstellung „Name für Stempel“.
+  - Zeichnungen und Formen lassen sich kommentieren.
+- **PDF-Ausbau, Block V4 (Kommentieren II: Liste, Antworten, Status, Export, XFDF):**
+  - **Kommentar-Seitenleiste** (`Ctrl+Shift+M`): Threads mit Antworten, Suche (auch im markierten Text), Filter nach
+    Art, Autor, Status, Seite; Sortierung nach Seite, Datum, Autor, Art, Status; Klick springt zur Stelle.
+  - **Antworten** (`/IRT`, `/RT /R`) und **Status** (offen/angenommen/abgelehnt/erledigt/abgebrochen über
+    `/State` + `/StateModel /Review`, wie Acrobat); Löschen entfernt den ganzen Faden.
+  - **Zusammenfassung** als Markdown, CSV (mit BOM für Excel, Formel-Zellen entschärft) und PDF – je Seite mit
+    markiertem Text und Antworten.
+  - **XFDF** exportieren und importieren: alle gängigen Kommentararten, Antworten und Status bleiben verbunden;
+    gleiche Kommentare werden nicht verdoppelt; sicheres Parsen (keine ENTITY/DTD, Größen- und Zahlgrenzen).
+- **PDF-Ausbau, Block V5 (Formulare):**
+  - Neue Feldtypen: **Optionsfeld-Gruppe**, **Dropdown** (optional mit eigener Eingabe), **Listenfeld** und
+    **Schaltfläche** (nur „Formular zurücksetzen“ / „Seite anspringen“, kein JavaScript).
+  - **Feld-Eigenschaften** erweitert: Pflicht, nur lesen, Standardwert, Einträge, Schriftgröße (jetzt vorbelegt),
+    Ausrichtung, Tooltip; Schaltflächen-Beschriftung und -Aktion.
+  - **Tab-Reihenfolge**: Nummern einblenden, per Ziehen ändern, nach Zeilen/Spalten – `/Tabs` und die Reihenfolge
+    in `/Annots` passen zusammen.
+  - **Formulardaten** als JSON, XFDF und FDF exportieren/importieren (eigener, streng begrenzter FDF-Leser),
+    **Formular zurücksetzen**, **Antworten sammeln** aus mehreren ausgefüllten PDFs als CSV.
+- **PDF-Ausbau, Block V6 (Schutz):**
+  - **Passwort-PDFs voll bearbeiten** nach Eingabe des Passworts; beim Speichern „Schutz beibehalten?“ – geschrieben
+    wird nur AES-256 (R6), RC4/AES-128 nur gelesen und beim Speichern modernisiert.
+  - **Passwortschutz setzen/ändern/entfernen**: Öffnen-Passwort, Rechte (Drucken, Ändern, Kopieren, Kommentieren,
+    Formulare, Seiten …) mit Rechte-Passwort. Verbietet ein PDF Änderungen, bleibt es ohne Rechte-Passwort nur
+    lesbar. Passwörter nie im Log, nie gespeichert.
+  - **Nach Mustern schwärzen**: E-Mail, Telefon DE/international, IBAN (Mod-97), BIC, Kreditkarte (Luhn), Datum,
+    Steuer-ID (ISO 7064), PLZ, IP, URL und eigene Ausdrücke (gespeichert, mit Zeitlimit) – Vorschau mit
+    Abwählen, dann vormerken oder gleich schwärzen, danach die erweiterte Prüfung.
+- **PDF-Ausbau, Block V7 (Bilder):**
+  - **Bild einfügen** (PNG, JPG, WebP, GIF, BMP, TIFF): Klick = natürliche Größe, Rahmen = einpassen, Shift = füllen;
+    JPEG unverändert, sonst verlustfrei mit Transparenz; EXIF-gedrehte Fotos stehen aufrecht.
+  - Eingefügte Bilder **verschieben, skalieren** (Ecken mit Seitenverhältnis, Shift verzerrt), **drehen** (`R` /
+    `Shift+R`, beliebiger Winkel), **Deckkraft**, ersetzen, exportieren, einbrennen.
+  - **Bilder im Seiteninhalt** finden (auch Inline-Bilder und Bilder in Gruppen), auswählen und **exportieren**
+    (JPEG/JPEG 2000 unverändert, sonst PNG; alle auf einmal im Hintergrund, ohne zu überschreiben),
+    **ersetzen** (nur hier – eingepasst oder gestreckt – oder überall, wo es vorkommt), **zuschneiden** (die Pixel
+    außerhalb verschwinden aus der Datei, der Rest bleibt am Platz) und **löschen** (ganz aus der Datei, wenn es
+    sonst nirgends vorkommt).
+  - Neue Abhängigkeit **Pillow** (MIT-CMU, gepinnt) zum Lesen und Schreiben der Bilder.
+- **PDF-Ausbau, Block V8 (Wasserzeichen, Kopf-/Fußzeilen, Seitenzahlen, Hintergrund):**
+  - **Wasserzeichen** aus Text oder Bild: Deckkraft, Drehung, neun Positionen, Größe, vor oder hinter dem Inhalt,
+    Seitenbereich; Text in eingebetteter Noto Sans, durchsuchbar, als Artefakt markiert.
+  - **Kopf-/Fußzeilen** links/Mitte/rechts mit `{seite}`, `{seiten}`, `{datum}`, `{dateiname}`, `{titel}`;
+    Seitenzahl-Muster, Startnummer, Abstände.
+  - **Hintergrund** als Farbe oder Bild.
+  - Alles in **eigenen Ebenen (OCG)**: Vorschau im Dialog, **Vorlagen** speichern/laden, **Aktualisieren** (nach
+    neuen Seiten), **Entfernen** (Seiteninhalt danach byte-gleich), läuft im Hintergrund mit Fortschritt/Abbrechen.
+  - **Fremde Wasserzeichen** entfernen, wenn sie als Wasserzeichen markiert sind.
+  - Prüfung nach dem Schwärzen kennt den neuen Ablageort „Vorlagen von Wasserzeichen, Kopf-/Fußzeilen und
+    Hintergrund“.
+- **PDF-Ausbau, Block V9 (Komprimieren und Konvertieren):**
+  - **Komprimieren** mit Profilen (Hohe Qualität, Standard, Klein, Nur verlustfrei, eigene Werte: Bild-DPI,
+    JPEG-Qualität, Ungenutztes entfernen, Objekt-Streams), Vorher/Nachher-Größe und Rückfrage; Hinweis, wenn das
+    Ergebnis verlustbehaftet ist; Schutz gegen zurückkehrende geschwärzte Begriffe.
+  - **Reparieren**: kaputte PDFs werden beim Öffnen automatisch repariert; Befehl „PDF reparieren“.
+  - **Exportieren**: Seiten als PNG/JPG (DPI, Seitenbereich, nie überschreiben), als Text und als Markdown
+    (Überschriften, Absätze, Listen, Silbentrennung; öffnet sich als Notiz).
+  - **Bilder zu PDF** (Palette): Reihenfolge, Seitengröße wie Bild oder A4/Letter, Rand.
+  - **pikepdf** (MPL-2.0, mit libqpdf) ist jetzt Laufzeit-Abhängigkeit statt nur Test-Werkzeug.
+- **PDF-Ausbau, Block V10 (Ordnerweite PDF-Suche):**
+  - Chip **„PDF“** in der Suche: PDF-Inhalte im ganzen Ordner mit derselben Abfragesprache (Phrase, ext:/path:,
+    ganze Wörter, Regex), Treffer mit Datei, Seite und Ausschnitt; ein Klick öffnet die Seite mit Markierung.
+  - Index in `cache/pdf-index.sqlite`: inkrementell (Änderungsdatum, Größe, Prüfwert), Fortschritt und Abbruch beim
+    ersten Aufbau; gelöschte Dateien fallen heraus, gespeicherte PDFs werden sofort vergessen (überschrieben).
+  - Passwort-PDFs, Scans ohne Text und sehr große Dateien werden als „nicht durchsucht“ mit Grund gelistet.
+  - Die Such-Chips brechen bei schmaler Seitenleiste um, statt gekürzt zu werden.
+- **PDF-Ausbau, Block V11 (Drucken und Vorlesen):**
+  - **Druckdialog** im PDF-Tab: Drucker oder „In PDF-Datei speichern“ (Vektor-PDF), Seitenbereich, Kopien
+    (sortiert/ungeordnet), An Seite anpassen / Nur zu große verkleinern / Originalgröße, Papier A4/Letter/A3/wie
+    Seite, Hoch/Quer automatisch, mit/ohne Kommentare und Formularinhalte; Fortschritt mit Abbrechen; das Original
+    bleibt unverändert. Fehlt CUPS oder ein Drucker, sagt der Dialog es.
+  - **Vorlesen** (`F8`, `Shift+F8`) für Notizen (ab Cursor, Markierung, Anfang) und PDFs (ab Seite oder Markierung,
+    über Seiten hinweg): Satz für Satz mit Hervorhebung, Leiste mit Pause, Satz vor/zurück, Stopp, Tempo, Stimme
+    (gemerkt). Offline über die Sprachausgabe des Systems; ohne sie ein Hinweis, was fehlt.
+  - Satz-Zerlegung kennt Abkürzungen, Initialen, Ordnungszahlen, Datumsangaben, Listen und Überschriften.
+
 ### Behoben
+- PDF-Formulare: Der Eigenschaften-Dialog zeigte die eingestellte Schriftgröße nicht an (immer „passend“).
+- PDF: Beim Löschen einer Anmerkung blieben Antworten anderer Programme (`/IRT`) als verwaiste Einträge zurück – jetzt
+  geht der ganze Faden mit (auch beim Radierer).
+- PDF bearbeiten: Die Bearbeiten-Leiste erzwang ein sehr breites Fenster (mit V2 1581 px, mit V3 1766 px) – sie
+  bricht jetzt gruppenweise in eine zweite Zeile um.
+- PDF: Ungültige Farbangaben wurden stillschweigend zu Schwarz – Stempel und Formen lehnen sie jetzt ab.
+- PDF bearbeiten: Seitenbeschriftungen (z. B. „i, ii, iii“ fürs Vorwort) gingen beim Umsortieren, Drehen, Löschen,
+  Einfügen und Zusammenfügen verloren – sie bleiben jetzt erhalten und wandern mit ihren Seiten.
 - Diagramm-Editor: Senkrecht gezogene Linien wurden leicht schief, weil das freie Ende aufs Raster sprang, der
   Andockpunkt aber nicht darauf lag.
 - Diagramm-Editor: Formen-Symbole links waren im dunklen Theme kaum sichtbar – sie folgen jetzt der Textfarbe.

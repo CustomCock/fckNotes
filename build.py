@@ -52,7 +52,8 @@ VSVersionInfo(
 def check_dependencies() -> None:
     """PyInstaller baut auch ohne PySide6 stumm weiter – dann startet die Exe mit „No module named 'PySide6'“."""
     missing = []
-    for module in ("PySide6", "pygments", "enchant", "spylls", "send2trash", "markdown_it", "regex", "cryptography", "yaml", "pypdf", "yara", "evtx", "dpkt"):
+    for module in ("PySide6", "pygments", "enchant", "spylls", "send2trash", "markdown_it", "regex", "cryptography", "yaml", "pypdf", "yara", "evtx", "dpkt",
+                   "pypdfium2", "fontTools", "PIL", "pikepdf"):
         try:
             __import__(module)
         except ImportError:
@@ -89,6 +90,10 @@ def main() -> None:
                                                           "javascript", "sql", "markup", "textfmts", "special", "yara")],
         "--hidden-import=pygments.formatters",
         "--hidden-import=markdown_it", "--hidden-import=mdurl", "--hidden-import=regex", "--hidden-import=yaml", "--hidden-import=pypdf", "--hidden-import=yara", "--hidden-import=evtx", "--hidden-import=dpkt", "--hidden-import=PySide6.QtPdf", "--hidden-import=cryptography.hazmat.primitives.kdf.argon2",
+        # PDF-Ausbau (V0): PDFium ohne Qt (Text/Objekte), Schrift-Untermengen, Drucken, Sprachausgabe
+        "--hidden-import=pypdfium2", "--collect-binaries", "pypdfium2_raw", "--hidden-import=pypdfium2_raw",
+        "--hidden-import=fontTools.subset", "--hidden-import=PIL.Image", "--hidden-import=pikepdf", "--copy-metadata", "pikepdf", "--collect-submodules", "fontTools.ttLib.tables",
+        "--hidden-import=PySide6.QtPrintSupport", "--hidden-import=PySide6.QtTextToSpeech",
         # Nicht benötigte Qt-Module weglassen, damit der Ordner kleiner bleibt
         "--exclude-module", "PySide6.QtWebEngineCore",
         "--exclude-module", "PySide6.QtWebEngineWidgets",
@@ -98,6 +103,8 @@ def main() -> None:
         "--exclude-module", "PySide6.QtMultimedia",
         "--exclude-module", "PySide6.QtCharts",
         "--exclude-module", "PySide6.QtDataVisualization",
+        # lxml kommt mit pikepdf, wird aber nur für XMP-Metadaten über pikepdf gebraucht (nutzen wir nicht): −9 MB
+        "--exclude-module", "lxml",
     ]
     PyInstaller.__main__.run(args)
     # Lizenzen gehören in den Build-Ordner: eigene Lizenz, Übersicht und die Texte der Bibliotheken

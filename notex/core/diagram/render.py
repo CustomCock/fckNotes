@@ -6,7 +6,8 @@ Grundelemente (Koordinaten in Punkt, y nach unten):
   ("ellipse", cx, cy, rx, ry, fill, stroke, width, dashed)
   ("path", points, closed, fill, stroke, width, dashed)
   ("text", x, baseline, text, size, color, anchor, bold, italic)      anchor: start | middle | end
-Farbe "none" = nicht zeichnen. Text: Helvetica (Breiten aus den Adobe-Metriken), WinAnsi.
+Farbe "none" = nicht zeichnen. Text: mitgelieferte Noto Sans (Breiten aus der Schrift selbst, `pdffont`) – im
+Editor wie im PDF dieselbe Schrift, eingebettet als Untermenge.
 """
 from __future__ import annotations
 
@@ -22,21 +23,9 @@ PAD = 5.0
 STEREOTYPES = {"interface": "«interface»", "enum": "«enumeration»"}
 
 
-def _metrics(bold: bool) -> dict[str, int]:
-    try:
-        from pypdf._codecs.core_font_metrics import CORE_FONT_METRICS
-        return CORE_FONT_METRICS["Helvetica-Bold" if bold else "Helvetica"].character_widths
-    except Exception:                                      # noqa: BLE001
-        return {"default": 556 if not bold else 611, " ": 278}
-
-
-_WIDTHS = {False: _metrics(False), True: _metrics(True)}
-
-
-def text_width(text: str, size: float, bold: bool = False) -> float:
-    widths = _WIDTHS[bold]
-    default = widths.get("default", 556)
-    return sum(widths.get(ch, default) for ch in text) * size / 1000
+def text_width(text: str, size: float, bold: bool = False, italic: bool = False) -> float:
+    from notex.core import pdffont
+    return pdffont.width(text, size, bool(bold), bool(italic))
 
 
 def wrap(text: str, size: float, width: float, bold: bool = False) -> list[str]:

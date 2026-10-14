@@ -123,6 +123,13 @@ class MainWindow(QMainWindow):
         self.backlinks.setVisible(bool(config.get("backlinks_visible", False)))
         editor_layout.addWidget(self.editor_splitter, 1)
         editor_layout.addWidget(self.find_bar)
+        from notex.ui.read_aloud import ReadAloudBar
+        self.read_bar = ReadAloudBar()                        # Vorlesen (Block V11), sonst ausgeblendet
+        self.read_bar.rate_changed.connect(self._speech_rate_changed)
+        self.read_bar.voice_changed.connect(self._speech_voice_changed)
+        self._speech_engine = None
+        self.speech_engine_factory = None                     # Tests: eigene Engine statt QTextToSpeech
+        editor_layout.addWidget(self.read_bar)
 
         self.splitter = QSplitter(Qt.Orientation.Horizontal)
         self.splitter.addWidget(self.sidebar)
@@ -197,10 +204,13 @@ class MainWindow(QMainWindow):
         tree.follow_requested.connect(self.toggle_live)
         self.tabs.view_mode_changed.connect(self._on_view_mode_changed)
         self.tabs.pdf_quote.connect(self._insert_pdf_quote)
+        self.tabs.pdf_read_aloud.connect(lambda viewer, mode: self.read_aloud(mode, viewer))
+        self.tabs.file_closed.connect(self._stop_reading_closed)
         self.tabs.viewer_notice.connect(lambda text: self.toast.show_message(text, "info"))
         tree.path_deleted.connect(lambda p: (self.links.remove(self.tabs.relative(p)), self.file_index.request_rescan()))
 
         self.tabs.status_changed.connect(self._update_status)
+        self.tabs.file_saved.connect(self._forget_pdf_index)
         self.tabs.file_opened.connect(self._on_file_opened)
         self.tabs.link_activated.connect(self._on_link_activated)
         self.tabs.preview_link.connect(self._on_preview_link)
@@ -270,6 +280,8 @@ class MainWindow(QMainWindow):
         file_menu.addAction(self._action("Verschlüsselte Notizen sperren", "Ctrl+Shift+L", lambda: self.lock_all(manual=True)))
         file_menu.addAction(self._action("Live verfolgen ein/aus", "Ctrl+Shift+Alt+F", lambda: self.toggle_live()))
         self._action("PDF: Markierung als Zitat einfügen", "Ctrl+Shift+Alt+Q", self.quote_from_pdf)
+        self._action("Vorlesen / Pause", "F8", self.toggle_read_aloud)
+        self._action("Vorlesen beenden", "Shift+F8", self.stop_read_aloud)
         self._module_anchor = file_menu.addSeparator()      # Module fügen ihre Einträge davor ein
         self.file_menu = file_menu
         file_menu.addAction(self._action("Speichern", QKeySequence.StandardKey.Save, self.tabs.save_current))
@@ -735,7 +747,13 @@ class MainWindow(QMainWindow):
         self.sidebar.focus_search()
 
     def _open_from_sidebar(self, path: Path, location) -> None:
-        """Öffnet eine Datei aus Baum oder Trefferliste; `location` = (Zeile, Spalte, Länge) oder None."""
+        """Öffnet eine Datei aus Baum oder Trefferliste; `location` = (Zeile, Spalte, Länge), bei PDF-Treffern
+        {"page", "text"} oder None."""
+        if isinstance(location, dict) and "page" in location:
+            viewer = self.tabs.open_viewer(path, "pdf")
+            if viewer is not None and hasattr(viewer, "show_hit"):
+                viewer.show_hit(int(location["page"]), str(location.get("text", "")))
+            return
         if location is None:
             self.tabs.open_file(path)
         else:
@@ -2396,6 +2414,87 @@ class MainWindow(QMainWindow):
                 return None
         return getattr(viewer, method)(*args)
 
+    # ---- Vorlesen (Block V11) ---------------------------------------------------------------------------------
+    def _speech(self):
+        """Die Sprach-Engine (einmal angelegt) oder None mit Hinweis, wenn keine Sprachausgabe da ist."""
+        if self._speech_engine is not None:
+            return self._speech_engine
+        if self.speech_engine_factory is not None:
+            self._speech_engine = self.speech_engine_factory()
+        else:
+            from notex.platform import speech
+            availability = speech.available()
+            if not availability.ok:
+                self.toast.show_message(availability.hint, "info")
+                return None
+            from notex.ui.read_aloud import QtEngine
+            self._speech_engine = QtEngine(self)
+        settings = self.config.get("speech", {})
+        self._speech_engine.set_rate(float(settings.get("rate", 0.0) or 0.0))
+        if settings.get("voice"):
+            self._speech_engine.set_voice(settings["voice"])
+        return self._speech_engine
+
+    def read_aloud(self, mode: str = "cursor", viewer=None) -> bool:
+        """Vorlesen starten: Notiz ab Cursor/Markierung/Anfang, PDF ab Seite oder Markierung. Läuft schon etwas, wird
+        es vorher beendet."""
+        from notex.ui.read_aloud import EditorTarget, PdfTarget, Reader
+        self.stop_read_aloud()
+        editor = None if viewer is not None else self.tabs.current_editor()
+        if viewer is None and (editor is None or self._in_data_view()):
+            viewer = self._current_pdf()
+        if editor is None and viewer is None:
+            self.toast.show_message("Erst eine Notiz oder ein PDF öffnen", "info")
+            return False
+        if viewer is not None and getattr(viewer, "data", None) is None:
+            self.toast.show_message("Das PDF ist noch nicht geladen", "info")
+            return False
+        engine = self._speech()
+        if engine is None:
+            return False
+        if viewer is not None:
+            target = PdfTarget(viewer, "selection" if mode == "selection" else "page")
+        else:
+            target = EditorTarget(editor, mode)
+        if not target.sentences:
+            if hasattr(target, "close"):
+                target.close()
+            self.toast.show_message("Hier gibt es keinen Text zum Vorlesen", "info")
+            return False
+        reader = Reader(engine, target, self)
+        settings = self.config.get("speech", {})
+        self.read_bar.attach(reader, engine.voices(), settings.get("voice", ""), float(settings.get("rate", 0.0) or 0.0))
+        reader.start()
+        return True
+
+    def toggle_read_aloud(self) -> None:
+        """F8: läuft das Vorlesen, Pause/Weiter – sonst ab Cursor (Notiz) bzw. dieser Seite/Markierung (PDF)."""
+        if self.read_bar.reader is not None:
+            self.read_bar.toggle_pause()
+            return
+        viewer = self._current_pdf() if self.tabs.current_editor() is None else None
+        mode = "selection" if viewer is not None and viewer.canvas.selected_text() else "page"
+        self.read_aloud(mode if viewer is not None else "cursor", viewer)
+
+    def stop_read_aloud(self) -> None:
+        if self.read_bar.reader is not None:
+            self.read_bar.stop()
+
+    def _stop_reading_closed(self, path) -> None:
+        reader = self.read_bar.reader
+        if reader is not None and getattr(reader.target, "path", None) == path:
+            self.read_bar.stop()
+
+    def _speech_rate_changed(self, rate: float) -> None:
+        self.config.setdefault("speech", {})["rate"] = rate
+        if self._speech_engine is not None:
+            self._speech_engine.set_rate(rate)
+
+    def _speech_voice_changed(self, voice: str) -> None:
+        self.config.setdefault("speech", {})["voice"] = voice
+        if self._speech_engine is not None:
+            self._speech_engine.set_voice(voice)
+
     def merge_pdfs(self, paths: list[Path] | None = None, target: Path | None = None) -> Path | None:
         """Mehrere PDFs zu einem neuen zusammenfügen (Reihenfolge im Dialog festlegen) und öffnen."""
         from PySide6.QtWidgets import QDialog, QFileDialog
@@ -2432,6 +2531,82 @@ class MainWindow(QMainWindow):
         self.toast.show_message(f"{len(paths)} PDFs → {target.name}")
         self.tabs.open_viewer(target, "pdf")
         return target
+
+    def images_to_pdf(self, paths: list[Path] | None = None, target: Path | None = None, page_size: str = "image",
+                      margin_mm: float = 0.0, wait: bool = False) -> Path | None:
+        """Bilder (Reihenfolge im Dialog) zu einem neuen PDF – im Hintergrund – und öffnen."""
+        from PySide6.QtWidgets import QDialog, QFileDialog
+        from notex.ui.pdf_convert_ui import ImagesToPdfDialog
+        from notex.ui.pdf_images_ui import IMAGE_FILTER
+        start = self.root
+        if paths is None:
+            chosen, _ = QFileDialog.getOpenFileNames(self, "Bilder zu PDF", str(start), IMAGE_FILTER)
+            if not chosen:
+                return None
+            dialog = ImagesToPdfDialog(self, [Path(c) for c in sorted(chosen, key=str.lower)], start)
+            if dialog.exec() != QDialog.DialogCode.Accepted:
+                return None
+            paths = dialog.paths()
+            page_size, margin_mm = dialog.options()
+        if not paths:
+            return None
+        if target is None:
+            suggestion = Path(paths[0]).with_name(f"{Path(paths[0]).stem}.pdf")
+            chosen_target, _ = QFileDialog.getSaveFileName(self, "PDF speichern", str(suggestion), "PDF (*.pdf)")
+            if not chosen_target:
+                return None
+            target = Path(chosen_target)
+        try:
+            images = [(Path(p).name, Path(p).read_bytes()) for p in paths]
+        except OSError as error:
+            dialogs.warn(self, "Bilder zu PDF", str(error))
+            return None
+        from notex.core import pdfconvert
+        from notex.ui.pdf_edit import write_pdf
+        from notex.ui.tasks import run_task
+        result: dict = {}
+
+        def done(data: bytes) -> None:
+            try:
+                note = write_pdf(target, data, backup=True)   # vorhandene Datei landet im Papierkorb
+            except OSError as error:
+                dialogs.warn(self, "Bilder zu PDF", str(error))
+                result["path"] = None
+                return
+            self.toast.show_message(f"{len(images)} Bild(er) → {target.name}" + (f" – {note}" if note else ""))
+            self.tabs.open_viewer(target, "pdf")
+            result["path"] = target
+
+        def failed(message: str) -> None:
+            result["path"] = None
+            dialogs.warn(self, "Bilder zu PDF", message)
+
+        worker = run_task(self, "Bilder zu PDF", lambda ctx: pdfconvert.images_to_pdf(
+            images, page_size, margin_mm, lambda d, t: ctx.step(d, t, f"Bild {d} von {t} …")),
+            on_done=done, on_error=failed, show_dialog=not wait)
+        if wait:
+            worker.wait()
+            from PySide6.QtCore import QCoreApplication
+            for _ in range(100):
+                QCoreApplication.processEvents()
+                if "path" in result:
+                    break
+        return result.get("path")
+
+    def _forget_pdf_index(self, path: Path) -> None:
+        """Gespeichertes PDF (z. B. geschwärzt): alten Text sofort aus dem Suchindex nehmen."""
+        if Path(path).suffix.lower() != ".pdf":
+            return
+        from notex.core.pdfindex import PdfIndex
+        try:
+            PdfIndex(self.sidebar.pdf_index_path()).forget(path)
+        except Exception:                                 # noqa: BLE001 – Index ist nur ein Cache
+            pass
+
+    def clear_pdf_index(self) -> None:
+        from notex.core.pdfindex import PdfIndex
+        PdfIndex(self.sidebar.pdf_index_path()).clear()
+        self.toast.show_message("PDF-Suchindex gelöscht – er wird bei der nächsten PDF-Suche neu aufgebaut", "info")
 
     def toggle_pdf_outline(self) -> None:
         viewer = self._current_pdf()
@@ -3588,10 +3763,27 @@ class MainWindow(QMainWindow):
                           shortcut="Ctrl+Shift+Alt+Q", keywords="pdf zitat quote markierung notiz quelle")
         self.registry.add("pdf:outline", "PDF: Lesezeichen ein/aus", self.toggle_pdf_outline, category="PDF",
                           keywords="pdf lesezeichen inhaltsverzeichnis outline bookmarks")
+        for key, title, callback, shortcut, keywords in (
+                ("speech:read", "Vorlesen (ab Cursor bzw. ab dieser PDF-Seite) / Pause", self.toggle_read_aloud, "F8",
+                 "vorlesen sprachausgabe tts stimme hören text to speech"),
+                ("speech:selection", "Vorlesen: Markierung", lambda: self.read_aloud("selection"), "",
+                 "vorlesen markierung auswahl sprachausgabe"),
+                ("speech:start", "Vorlesen: ab Anfang der Notiz", lambda: self.read_aloud("start"), "",
+                 "vorlesen anfang ganze notiz sprachausgabe"),
+                ("speech:stop", "Vorlesen beenden", self.stop_read_aloud, "Shift+F8", "vorlesen stopp beenden")):
+            self.registry.add(key, title, callback, category="Bearbeiten", shortcut=shortcut, keywords=keywords)
         pdf_cmds = [
+            ("pdf:print", "PDF: Drucken …", lambda: self.pdf_command("print_pdf", edit=False), "",
+             "pdf drucken drucker print kopien seiten in pdf datei cups"),
             ("pdf:edit", "PDF: Bearbeiten ein/aus", lambda: self.pdf_command("set_editing", not (self._current_pdf()
              and self._current_pdf().editing), edit=False), "", "pdf bearbeiten edit stift seiten anmerkungen"),
             ("pdf:merge", "PDFs zusammenfügen …", lambda: self.merge_pdfs(), "", "pdf merge zusammenfügen kombinieren"),
+            ("pdf:images_to_pdf", "Bilder zu PDF …", lambda: self.images_to_pdf(), "",
+             "pdf bilder fotos scans jpg png zu pdf umwandeln konvertieren"),
+            ("search:pdf_toggle", "Suche: PDF-Inhalte durchsuchen ein/aus", lambda: self.sidebar.pdf.toggle(), "",
+             "suche pdf inhalte ordner durchsuchen volltext index"),
+            ("search:pdf_index_clear", "Suche: PDF-Suchindex löschen", lambda: self.clear_pdf_index(), "",
+             "suche pdf index cache löschen neu aufbauen"),
             ("pdf:split", "PDF: Aufteilen …", lambda: self.pdf_command("split_pdf"), "", "pdf split teilen trennen"),
             ("pdf:rotate_right", "PDF: Seite(n) nach rechts drehen", lambda: self.pdf_command("rotate_pages", 90), "",
              "pdf drehen rotieren uhrzeigersinn"),
@@ -3649,6 +3841,138 @@ class MainWindow(QMainWindow):
              lambda: self.pdf_command("mark_search_results"), "", "pdf schwärzen suchtreffer alle namen redact dsgvo"),
             ("pdf:redact_apply", "PDF: Schwärzen anwenden …", lambda: self.pdf_command("apply_redactions"), "",
              "pdf schwärzen anwenden endgültig redact"),
+            ("pdf:insert_blank", "PDF: Leere Seite einfügen …", lambda: self.pdf_command("insert_blank"), "",
+             "pdf leere seite einfügen blank neue seite a4 letter"),
+            ("pdf:replace_pages", "PDF: Seiten ersetzen …", lambda: self.pdf_command("replace_pages"), "",
+             "pdf seiten ersetzen austauschen replace"),
+            ("pdf:crop", "PDF: Seiten zuschneiden …", lambda: self.pdf_command("crop_pages"), "",
+             "pdf zuschneiden crop ränder beschneiden cropbox weiße ränder"),
+            ("pdf:tool_crop", "PDF: Werkzeug Zuschneiden (Bereich aufziehen)", lambda: self.pdf_command("set_tool", "crop"),
+             "", "pdf zuschneiden crop bereich aufziehen"),
+            ("pdf:page_labels", "PDF: Seitenbeschriftungen …", lambda: self.pdf_command("edit_page_labels"), "",
+             "pdf seitenbeschriftung seitenzahlen römisch i ii präfix page labels nummerierung"),
+            ("pdf:bookmark_add", "PDF: Lesezeichen hier hinzufügen", lambda: self.pdf_command("add_bookmark"),
+             "Ctrl+Shift+B", "pdf lesezeichen bookmark hinzufügen outline"),
+            ("pdf:bookmarks_edit", "PDF: Lesezeichen bearbeiten", lambda: self.pdf_command("show_outline_editor"), "",
+             "pdf lesezeichen bearbeiten umbenennen verschieben verschachteln outline"),
+            ("pdf:bookmarks_headings", "PDF: Lesezeichen aus Überschriften …",
+             lambda: self.pdf_command("bookmarks_from_headings"), "",
+             "pdf lesezeichen überschriften automatisch inhaltsverzeichnis outline"),
+            ("pdf:tool_link", "PDF: Werkzeug Link (Bereich aufziehen)", lambda: self.pdf_command("set_tool", "link"),
+             "", "pdf link verknüpfung hyperlink url webadresse sprung seite"),
+            ("pdf:attachments", "PDF: Anhänge …", lambda: self.pdf_command("show_attachments"), "",
+             "pdf anhang anhänge attachment datei eingebettet speichern extrahieren"),
+            ("pdf:attachment_add", "PDF: Datei anhängen …", lambda: self.pdf_command("add_attachment"), "",
+             "pdf anhang hinzufügen datei einbetten attachment"),
+            ("pdf:tool_ink", "PDF: Werkzeug Stift (frei zeichnen)", lambda: self.pdf_command("set_tool", "ink"), "",
+             "pdf stift freihand zeichnen ink malen kritzeln"),
+            ("pdf:tool_eraser", "PDF: Werkzeug Radierer", lambda: self.pdf_command("set_tool", "eraser"), "",
+             "pdf radierer radieren löschen freihand striche"),
+            ("pdf:tool_rect", "PDF: Form Rechteck", lambda: self.pdf_command("set_tool", "rect"), "",
+             "pdf form rechteck kasten square"),
+            ("pdf:tool_ellipse", "PDF: Form Ellipse", lambda: self.pdf_command("set_tool", "ellipse"), "",
+             "pdf form ellipse kreis circle"),
+            ("pdf:tool_line", "PDF: Form Linie", lambda: self.pdf_command("set_tool", "line"), "",
+             "pdf form linie strich line"),
+            ("pdf:tool_arrow", "PDF: Form Pfeil", lambda: self.pdf_command("set_tool", "arrow"), "",
+             "pdf form pfeil arrow"),
+            ("pdf:tool_polygon", "PDF: Form Polygon", lambda: self.pdf_command("set_tool", "polygon"), "",
+             "pdf form polygon vieleck dreieck"),
+            ("pdf:tool_cloud", "PDF: Form Wolke", lambda: self.pdf_command("set_tool", "cloud"), "",
+             "pdf form wolke cloud revision markierung"),
+            ("pdf:draw_style", "PDF: Stil für Stift und Formen …", lambda: self.pdf_command("edit_draw_style"), "",
+             "pdf stil farbe stärke füllung deckkraft gestrichelt gepunktet"),
+            ("pdf:tool_stamp", "PDF: Werkzeug Stempel", lambda: self.pdf_command("set_tool", "stamp"), "",
+             "pdf stempel genehmigt entwurf vertraulich erledigt geprüft stamp"),
+            ("pdf:stamp_custom", "PDF: Eigenen Stempel anlegen …", lambda: self.pdf_command("create_custom_stamp"), "",
+             "pdf stempel eigener text bild logo"),
+            ("pdf:comments", "PDF: Kommentare (Liste) ein/aus",
+             lambda: self.pdf_command("set_comments_visible", None, edit=False), "Ctrl+Shift+M",
+             "pdf kommentare liste anmerkungen antworten status review"),
+            ("pdf:comments_md", "PDF: Kommentare als Markdown zusammenfassen …",
+             lambda: self.pdf_command("export_comments", "md", edit=False), "", "pdf kommentare zusammenfassung markdown"),
+            ("pdf:comments_csv", "PDF: Kommentare als CSV exportieren …",
+             lambda: self.pdf_command("export_comments", "csv", edit=False), "", "pdf kommentare csv excel tabelle"),
+            ("pdf:comments_pdf", "PDF: Kommentar-Zusammenfassung als PDF …",
+             lambda: self.pdf_command("export_comments", "pdf", edit=False), "", "pdf kommentare zusammenfassung pdf"),
+            ("pdf:xfdf_export", "PDF: Kommentare als XFDF exportieren …",
+             lambda: self.pdf_command("export_comments", "xfdf", edit=False), "", "pdf xfdf kommentare acrobat austausch"),
+            ("pdf:xfdf_import", "PDF: Kommentare aus XFDF importieren …", lambda: self.pdf_command("import_xfdf"), "",
+             "pdf xfdf kommentare importieren acrobat"),
+            ("pdf:tool_radio", "PDF: Neues Feld Optionsfeld-Gruppe", lambda: self.pdf_command("set_tool", "radio"), "",
+             "pdf formular optionsfeld radio auswahl gruppe"),
+            ("pdf:tool_combo", "PDF: Neues Feld Dropdown", lambda: self.pdf_command("set_tool", "combo"), "",
+             "pdf formular dropdown auswahlliste combo"),
+            ("pdf:tool_listbox", "PDF: Neues Feld Listenfeld", lambda: self.pdf_command("set_tool", "listbox"), "",
+             "pdf formular listenfeld liste listbox"),
+            ("pdf:tool_button", "PDF: Neue Schaltfläche (zurücksetzen / Seite)", lambda: self.pdf_command("set_tool", "button"),
+             "", "pdf formular schaltfläche button zurücksetzen"),
+            ("pdf:tab_order", "PDF: Tab-Reihenfolge bearbeiten …", lambda: self.pdf_command("edit_tab_order"), "",
+             "pdf formular tab reihenfolge tabulator"),
+            ("pdf:tab_numbers", "PDF: Tab-Reihenfolge anzeigen ein/aus", lambda: self.pdf_command("set_tab_numbers"),
+             "", "pdf formular tab reihenfolge nummern"),
+            ("pdf:form_export_json", "PDF: Formulardaten als JSON exportieren …",
+             lambda: self.pdf_command("export_form_data", "json", edit=False), "", "pdf formular daten json export"),
+            ("pdf:form_export_xfdf", "PDF: Formulardaten als XFDF exportieren …",
+             lambda: self.pdf_command("export_form_data", "xfdf", edit=False), "", "pdf formular daten xfdf export"),
+            ("pdf:form_export_fdf", "PDF: Formulardaten als FDF exportieren …",
+             lambda: self.pdf_command("export_form_data", "fdf", edit=False), "", "pdf formular daten fdf export"),
+            ("pdf:form_import", "PDF: Formulardaten importieren (JSON, XFDF, FDF) …",
+             lambda: self.pdf_command("import_form_data"), "", "pdf formular daten import json xfdf fdf"),
+            ("pdf:form_collect", "PDF: Formular-Antworten sammeln (CSV) …",
+             lambda: self.pdf_command("collect_responses", edit=False), "",
+             "pdf formular antworten sammeln csv tabelle auswerten"),
+            ("pdf:form_reset", "PDF: Formular zurücksetzen (Standardwerte)", lambda: self.pdf_command("reset_form"), "",
+             "pdf formular zurücksetzen leeren standardwerte"),
+            ("pdf:protect", "PDF: Passwortschutz …", lambda: self.pdf_command("edit_protection", edit=False), "",
+             "pdf passwort schutz verschlüsseln aes rechte drucken kopieren entfernen"),
+            ("pdf:unlock_rights", "PDF: Rechte-Passwort eingeben (bearbeiten freigeben) …",
+             lambda: self.pdf_command("unlock_rights", edit=False), "", "pdf rechte passwort besitzer freigeben"),
+            ("pdf:redact_patterns", "PDF: Nach Mustern schwärzen (E-Mail, IBAN, Telefon …) …",
+             lambda: self.pdf_command("redact_patterns"), "",
+             "pdf schwärzen muster email telefon iban kreditkarte steuer-id dsgvo regex"),
+            ("pdf:tool_image", "PDF: Bild einfügen (PNG, JPG, WebP)", lambda: self.pdf_command("set_tool", "image"), "",
+             "pdf bild einfügen foto logo png jpg jpeg webp grafik image"),
+            ("pdf:tool_pickimage", "PDF: Bilder im Seiteninhalt auswählen",
+             lambda: self.pdf_command("set_tool", "pickimage", edit=False), "",
+             "pdf bilder inhalt auswählen ersetzen zuschneiden löschen exportieren"),
+            ("pdf:images", "PDF: Bilder im Dokument (exportieren, ersetzen, zuschneiden, löschen) …",
+             lambda: self.pdf_command("show_images", edit=False), "",
+             "pdf bilder liste extrahieren exportieren ersetzen zuschneiden löschen image"),
+            ("pdf:images_export_all", "PDF: Alle Bilder exportieren …",
+             lambda: self.pdf_command("export_all_images", edit=False), "",
+             "pdf bilder alle exportieren extrahieren speichern ordner png jpg"),
+            ("pdf:image_rotate_right", "PDF: Ausgewähltes Bild nach rechts drehen",
+             lambda: self.pdf_command("rotate_image", None, 90), "R", "pdf bild drehen rechts rotieren 90"),
+            ("pdf:image_rotate_left", "PDF: Ausgewähltes Bild nach links drehen",
+             lambda: self.pdf_command("rotate_image", None, -90), "Shift+R", "pdf bild drehen links rotieren 90"),
+            ("pdf:image_properties", "PDF: Ausgewähltes Bild – Drehung und Deckkraft …",
+             lambda: self.pdf_command("image_properties"), "", "pdf bild drehen winkel deckkraft transparenz"),
+            ("pdf:watermark", "PDF: Wasserzeichen …", lambda: self.pdf_command("page_layer", "watermark"), "",
+             "pdf wasserzeichen entwurf vertraulich kopie text bild watermark"),
+            ("pdf:header_footer", "PDF: Kopf-/Fußzeile und Seitenzahlen …",
+             lambda: self.pdf_command("page_layer", "header"), "",
+             "pdf kopfzeile fußzeile seitenzahlen nummerieren seite von datum dateiname titel"),
+            ("pdf:background", "PDF: Hintergrund (Farbe oder Bild) …",
+             lambda: self.pdf_command("page_layer", "background"), "", "pdf hintergrund farbe bild briefpapier"),
+            ("pdf:layers_update", "PDF: Ebenen aktualisieren (Seitenzahlen, Datum, neue Seiten)",
+             lambda: self.pdf_command("update_page_layers"), "", "pdf ebenen aktualisieren seitenzahlen neu"),
+            ("pdf:layers_remove", "PDF: Wasserzeichen, Kopf-/Fußzeilen und Hintergrund entfernen",
+             lambda: self.pdf_command("remove_page_layers"), "", "pdf ebenen entfernen wasserzeichen kopfzeile"),
+            ("pdf:foreign_watermarks", "PDF: Fremde Wasserzeichen entfernen …",
+             lambda: self.pdf_command("remove_foreign_watermarks"), "", "pdf wasserzeichen fremd acrobat entfernen"),
+            ("pdf:compress", "PDF: Komprimieren …", lambda: self.pdf_command("compress"), "",
+             "pdf komprimieren verkleinern kleiner dateigröße bilder dpi jpeg optimieren"),
+            ("pdf:repair", "PDF: Reparieren (neu schreiben)", lambda: self.pdf_command("repair_pdf"), "",
+             "pdf reparieren kaputt beschädigt xref neu schreiben"),
+            ("pdf:to_images", "PDF: Seiten als Bilder (PNG/JPG) …",
+             lambda: self.pdf_command("export_page_images", edit=False), "",
+             "pdf seiten bilder png jpg exportieren konvertieren rendern"),
+            ("pdf:to_text", "PDF: Als Text (.txt) …", lambda: self.pdf_command("export_text", "txt", edit=False), "",
+             "pdf text txt exportieren konvertieren"),
+            ("pdf:to_markdown", "PDF: Als Markdown (.md) – als Notiz öffnen …",
+             lambda: self.pdf_command("export_text", "md", edit=False), "",
+             "pdf markdown md notiz exportieren konvertieren überschriften"),
         ]
         for key, title, callback, shortcut, keywords in pdf_cmds:
             self.registry.add(key, title, callback, category="PDF", shortcut=shortcut, keywords=keywords)

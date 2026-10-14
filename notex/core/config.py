@@ -55,6 +55,11 @@ DEFAULTS: dict[str, Any] = {
     "preview_mermaid": True,      # ```mermaid-Blöcke als Diagramm zeichnen (Vorschau)
     "pdf_backup_trash": True,     # PDF bearbeiten: vor dem ersten Überschreiben Original in den Papierkorb
     "pdf_highlight_fields": True, # PDF: Formularfelder in der Ansicht zart hinterlegen (wie Acrobat)
+    "pdf_undo_budget_mb": 512,    # PDF: Speicher für Rückgängig-Schritte; mehr wird in cache/ ausgelagert
+    "pdf_author": "",             # PDF: Name für Stempel (leer = Anmeldename des Systems)
+    "pdf_redact_patterns": [],    # PDF: eigene Schwärz-Muster [{"name", "regex", "on"}] (keine Treffer, nur Muster)
+    "pdf_layer_templates": {"watermark": [], "header": [], "background": []},   # PDF: Vorlagen für Wasserzeichen/Kopf-Fußzeile/Hintergrund {art: [{"name", "spec", "image"}]}
+    "speech": {"rate": 0.0, "voice": ""},   # Vorlesen (Block V11): Tempo -1…1, Stimme ("" = Standard der Engine)
     "theme": default_theme(), # das aktive Theme, komplett (Presets/Dateien sind nur Vorlagen)
     "spellcheck": {
         "enabled": True,
@@ -117,6 +122,7 @@ DEFAULTS: dict[str, Any] = {
         "regex": False,       # Chip „.*“: regulärer Ausdruck
         "whole_word": False,  # Chip „Wort“: nur ganze Wörter
         "variable_values": False,   # Chip „§“: auch in Variablenwerten suchen (Modul Variablen)
+        "pdf": False,         # Chip „PDF“: PDF-Inhalte durchsuchen (Index in cache/pdf-index.sqlite)
     },
     "ip_conflicts": {         # Modul IP-Konflikte: zuletzt ausgewertetes Subnetz und Ausschlussbereiche
         "network": "",

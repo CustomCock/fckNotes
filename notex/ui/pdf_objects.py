@@ -5,14 +5,15 @@ auf der Seite ausfüllen (Klick hinein).
 und lässt ihn Auswahlrahmen und Griffe zeichnen. Geändert wird nur über den Qt-freien Kern (`notex.core.pdfobjects`),
 jede Änderung ist ein Rückgängig-Schritt des Tabs.
 
-Bedienung: Klick wählt aus (im Bearbeiten-Modus), Ziehen verschiebt, Griffe ändern die Größe (Unterschrift/Diagramm
-behalten das Seitenverhältnis), Pfeiltasten schieben (Shift = 10 pt), Entf löscht, Doppelklick bearbeitet.
+Bedienung: Klick wählt aus (im Bearbeiten-Modus), Ziehen verschiebt, Griffe ändern die Größe (Unterschrift/Diagramm/
+Bild behalten an den Ecken das Seitenverhältnis; Shift verzerrt ein gerade stehendes Bild), Pfeiltasten schieben
+(Shift = 10 pt), R / Shift+R drehen ein Bild, Entf löscht, Doppelklick bearbeitet.
 Ein Klick in ein Formularfeld öffnet die Eingabe direkt auf der Seite; Ziehen am Feld verschiebt es.
 """
 from __future__ import annotations
 
 from PySide6.QtCore import QObject, QPointF, QRectF, Qt, QTimer
-from PySide6.QtGui import QColor, QPen
+from PySide6.QtGui import QColor, QPainter, QPen
 from PySide6.QtWidgets import QComboBox, QLineEdit, QPlainTextEdit
 
 from notex.core import pdfobjects
@@ -114,12 +115,18 @@ class ObjectController(QObject):
         start_page, sx, sy, obj, handle, start_pixel = self._press
         if self._ghost is None and (pixel - start_pixel).manhattanLength() < DRAG_START:
             return True
+        if obj.kind == "link" and not self.page.editing:
+            return True                        # Lesemodus: Links werden angeklickt, nicht gezogen
         if not obj.movable or not self.page._ensure_editing():
             return True
         dx, dy = x - sx, y - sy
         if handle:
             rect = resized(obj.rect, handle, dx, dy)
-            if obj.keep_aspect and len(handle) == 2:
+            from PySide6.QtGui import QGuiApplication
+            free = obj.free_aspect and bool(QGuiApplication.keyboardModifiers() & Qt.KeyboardModifier.ShiftModifier)
+            if obj.kind == "image" and not obj.free_aspect:
+                rect = pdfobjects.fit_aspect(obj.rect, rect, handle if len(handle) == 2 else "")
+            elif obj.keep_aspect and len(handle) == 2 and not free:
                 rect = pdfobjects.fit_aspect(obj.rect, rect, handle)
         else:
             x0, y0, x1, y1 = obj.rect
@@ -141,6 +148,8 @@ class ObjectController(QObject):
             return True
         if obj.kind == "field":
             QTimer.singleShot(0, lambda o=obj: self.activate_field(o))
+        elif obj.kind == "link" and not self.page.editing:
+            QTimer.singleShot(0, lambda o=obj: self.page.follow_link(o))
         return True
 
     def double_click(self, page: int, x: float, y: float) -> bool:
@@ -151,8 +160,15 @@ class ObjectController(QObject):
         return True
 
     def key(self, event) -> bool:
+        if self.canvas.tool == "pickimage" and hasattr(self.page, "image_key"):
+            return self.page.image_key(event)
         if self.selected is None or not self.page.editing or self.editor is not None:
             return False
+        if event.key() == Qt.Key.Key_R and self.selected.kind == "image" and \
+                not event.modifiers() & Qt.KeyboardModifier.ControlModifier:
+            left = bool(event.modifiers() & Qt.KeyboardModifier.ShiftModifier)
+            self.page.rotate_image(self.selected, -90 if left else 90)
+            return True
         if event.key() in (Qt.Key.Key_Delete, Qt.Key.Key_Backspace):
             obj, self.selected = self.selected, None
             self.page.delete_object(obj)
@@ -182,6 +198,34 @@ class ObjectController(QObject):
             painter.setBrush(QColor(110, 140, 255, 38))
             for other in self.objects(page_index):
                 if other.kind == "field":
+                    painter.drawRect(view(other.rect))
+            painter.restore()
+        if getattr(self.page, "show_tab_numbers", False):  # Tab-Reihenfolge: Nummer je Feld (Reihenfolge in /Annots)
+            painter.save()
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+            numbers: dict[str, int] = {}
+            for other in sorted(self.objects(page_index), key=lambda o: o.index):
+                if other.kind != "field":
+                    continue
+                number = numbers.setdefault(other.field, len(numbers) + 1)
+                x0, y0 = view(other.rect).topLeft().x(), view(other.rect).topLeft().y()
+                badge = QRectF(x0 - 9, y0 - 9, 18, 18)
+                painter.setPen(Qt.PenStyle.NoPen)
+                painter.setBrush(QColor(COLORS.accent))
+                painter.drawEllipse(badge)
+                painter.setPen(QColor("#ffffff"))
+                font = painter.font()
+                font.setPixelSize(10)
+                font.setBold(True)
+                painter.setFont(font)
+                painter.drawText(badge, Qt.AlignmentFlag.AlignCenter, str(number))
+            painter.restore()
+        if self.page.editing:                             # Links (oft unsichtbar) im Bearbeiten-Modus zeigen
+            painter.save()
+            painter.setPen(QPen(QColor(47, 111, 223, 150), 1, Qt.PenStyle.DotLine))
+            painter.setBrush(QColor(47, 111, 223, 22))
+            for other in self.objects(page_index):
+                if other.kind == "link":
                     painter.drawRect(view(other.rect))
             painter.restore()
         obj = self.selected
@@ -215,6 +259,8 @@ class ObjectController(QObject):
             return None
         if obj.kind == "field":
             return Qt.CursorShape.PointingHandCursor if obj.field_kind != "text" else Qt.CursorShape.IBeamCursor
+        if obj.kind == "link" and not self.page.editing:
+            return Qt.CursorShape.PointingHandCursor
         return Qt.CursorShape.SizeAllCursor if obj.movable and self.page.editing else Qt.CursorShape.ArrowCursor
 
     # ---- Formularfelder direkt ausfüllen ------------------------------------------------------------

@@ -46,6 +46,8 @@ class Sidebar(QWidget):
         self.full_text = Chip("Volltext", "Inhalte durchsuchen")
         self.regex = Chip(".*", "Regulärer Ausdruck (Python-Syntax, Groß/Klein egal)")
         self.whole_word = Chip("Wort", "Nur ganze Wörter")
+        self.pdf = Chip("PDF", "PDF-Inhalte durchsuchen (Index wird beim ersten Mal im Hintergrund aufgebaut)")
+        self.pdf.setChecked(bool(config["search"].get("pdf", False)))
         self.in_values = Chip("§", "Auch in Variablenwerten suchen (Modul Variablen)")
         self.in_values.setChecked(bool(config["search"].get("variable_values", False)))
         self.in_values.setVisible(False)       # nur sichtbar, solange das Modul Variablen an ist
@@ -57,15 +59,12 @@ class Sidebar(QWidget):
         self.results_info = QLabel()
         self.results_info.setObjectName("ResultsInfo")
         self.results_info.hide()
-        checks = QHBoxLayout()
+        from notex.ui.widgets import FlowLayout
+        self._chips = QWidget()                     # bricht bei schmaler Seitenleiste um, statt Chips zu kürzen
+        checks = FlowLayout(self._chips, SPACING.xs)
         checks.setContentsMargins(0, 0, 0, 0)
-        checks.setSpacing(SPACING.xs)
-        checks.addWidget(self.by_name)
-        checks.addWidget(self.full_text)
-        checks.addWidget(self.regex)
-        checks.addWidget(self.whole_word)
-        checks.addWidget(self.in_values)
-        checks.addStretch()
+        for chip in (self.by_name, self.full_text, self.pdf, self.regex, self.whole_word, self.in_values):
+            checks.addWidget(chip)
 
         self.open_files = OpenFilesSection()
         self.tree = FileTree(root, config["extensions"], show_hidden=bool(config.get("tree_show_hidden", False)))
@@ -105,7 +104,7 @@ class Sidebar(QWidget):
         layout.setContentsMargins(SPACING.sm, SPACING.sm, SPACING.sm, SPACING.xs)
         layout.setSpacing(SPACING.sm)
         layout.addWidget(self.search_field)
-        layout.addLayout(checks)
+        layout.addWidget(self._chips)
         layout.addWidget(self.results_info)   # eigene Zeile: bei schmaler Seitenleiste bleiben die Chips lesbar
         layout.addWidget(self.open_files)
         layout.addWidget(self.stack, 1)
@@ -124,7 +123,7 @@ class Sidebar(QWidget):
         self._workers: list[SearchWorker] = []   # laufende Threads am Leben halten, bis sie fertig sind
 
         self.search_field.textChanged.connect(self._on_text_changed)
-        for chip in (self.by_name, self.full_text, self.regex, self.whole_word, self.in_values):
+        for chip in (self.by_name, self.full_text, self.pdf, self.regex, self.whole_word, self.in_values):
             chip.toggled.connect(self._on_option_changed)
         self.tree.file_activated.connect(lambda path: self.open_requested.emit(path, None))
         self.results.open_requested.connect(self.open_requested)
@@ -195,7 +194,13 @@ class Sidebar(QWidget):
             max_bytes=int(self.config["fulltext_max_mb"]) * 1024 * 1024,
             regex=self.regex.isChecked(),
             whole_word=self.whole_word.isChecked(),
+            pdf=self.pdf.isChecked(),
+            pdf_index=self.pdf_index_path(),
         )
+
+    def pdf_index_path(self) -> Path:
+        from notex.paths import cache_dir
+        return cache_dir() / "pdf-index.sqlite"
 
     def _set_invalid(self, invalid: bool, reason: str = "") -> None:
         """Roter Rahmen am Suchfeld bei ungültiger Regex oder Timeout."""
@@ -228,6 +233,7 @@ class Sidebar(QWidget):
         self.config["search"]["regex"] = self.regex.isChecked()
         self.config["search"]["whole_word"] = self.whole_word.isChecked()
         self.config["search"]["variable_values"] = self.in_values.isChecked()
+        self.config["search"]["pdf"] = self.pdf.isChecked()
         if self.search_field.text().strip():
             self._debounce.start()
 
@@ -240,8 +246,8 @@ class Sidebar(QWidget):
         self.results.clear_results()
 
         options = self.search_options()
-        if not (options.by_name or options.full_text):
-            self.results.show_message("Keine Suchart gewählt – Dateiname und/oder Volltext ankreuzen.")
+        if not (options.by_name or options.full_text or options.pdf):
+            self.results.show_message("Keine Suchart gewählt – Name, Volltext und/oder PDF ankreuzen.")
             return
         parsed = parse_query(query, options.regex, options.whole_word)
         if parsed.error:
@@ -262,6 +268,8 @@ class Sidebar(QWidget):
         worker.name_found.connect(self._on_name_found)
         worker.file_found.connect(self._on_file_found)
         worker.search_done.connect(self._on_search_done)
+        worker.pdf_found.connect(self._on_pdf_found)
+        worker.progress.connect(self._on_progress)
         worker.finished.connect(lambda w=worker: self._workers.remove(w) if w in self._workers else None)
         self._workers.append(worker)
         worker.start()
@@ -270,7 +278,8 @@ class Sidebar(QWidget):
         return generation == self._generation
 
     def _both(self) -> bool:
-        return self.by_name.isChecked() and self.full_text.isChecked()
+        """Mehr als eine Suchart an → Treffer unter Überschriften gruppieren."""
+        return sum(chip.isChecked() for chip in (self.by_name, self.full_text, self.pdf)) > 1
 
     def _first_hit(self) -> None:
         if self._placeholder_shown:
@@ -287,6 +296,15 @@ class Sidebar(QWidget):
             self._first_hit()
             self.results.add_file_match(match, self._both())
 
+    def _on_pdf_found(self, generation: int, match) -> None:
+        if self._is_current(generation):
+            self._first_hit()
+            self.results.add_pdf_match(match, self._both())
+
+    def _on_progress(self, generation: int, done: int, total: int, name: str) -> None:
+        if self._is_current(generation) and total and done < total:
+            self.results_info.setText(f"PDF-Index {done + 1} / {total} …")
+
     def _on_search_done(self, generation: int, result: SearchResult) -> None:
         if not self._is_current(generation) or result.cancelled:
             return
@@ -295,9 +313,10 @@ class Sidebar(QWidget):
             self.results.show_message(result.error)
             self.results_info.setText("Timeout" if result.timed_out else "Ungültig")
             return
-        hits = len(result.names) + sum(len(f.lines) for f in result.files)
-        files = len({m.path for m in result.names} | {f.path for f in result.files})
+        hits = len(result.names) + sum(len(f.lines) for f in result.files) + sum(len(p.hits) for p in result.pdfs)
+        files = len({m.path for m in result.names} | {f.path for f in result.files} | {p.path for p in result.pdfs})
         self.results_info.setText(f"{hits} Treffer in {files} Dateien" if hits else "Keine Treffer")
         if not hits:
             note = f" ({result.skipped_large} große Dateien übersprungen)" if result.skipped_large else ""
             self.results.show_message("Keine Treffer" + note)
+        self.results.add_pdf_skipped(result.pdf_skipped)

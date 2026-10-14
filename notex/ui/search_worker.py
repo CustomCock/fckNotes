@@ -13,6 +13,8 @@ class SearchWorker(QThread):
     name_found = Signal(int, object)     # generation, NameMatch
     file_found = Signal(int, object)     # generation, FileMatch
     search_done = Signal(int, object)    # generation, SearchResult
+    pdf_found = Signal(int, object)      # generation, pdfindex.PdfFileMatch
+    progress = Signal(int, int, int, str)   # generation, erledigt, gesamt, Datei (PDF-Index)
 
     def __init__(self, generation: int, root: Path, query: str, options: SearchOptions) -> None:
         super().__init__()
@@ -27,6 +29,8 @@ class SearchWorker(QThread):
             self.root, self.query, self.options, self.cancel,
             on_name=lambda m: self.name_found.emit(self.generation, m),
             on_file=lambda m: self.file_found.emit(self.generation, m),
+            on_pdf=lambda m: self.pdf_found.emit(self.generation, m),
+            on_progress=lambda done, total, name: self.progress.emit(self.generation, done, total, name),
         )
         self.search_done.emit(self.generation, result)
 

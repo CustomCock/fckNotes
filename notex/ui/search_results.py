@@ -13,7 +13,7 @@ from notex.theme.icons import icon
 from notex.theme.tokens import COLORS, LAYOUT
 
 ROLE_PATH = Qt.ItemDataRole.UserRole + 1
-ROLE_LINE = Qt.ItemDataRole.UserRole + 2     # (line_no, column, length) oder None
+ROLE_LINE = Qt.ItemDataRole.UserRole + 2     # (line_no, column, length), {"page", "text"} (PDF) oder None
 
 
 def _highlight(text: str, start: int, end: int, spans: list[tuple[int, int]] | None = None) -> str:
@@ -93,10 +93,11 @@ class SearchResults(QTreeWidget):
         self.itemActivated.connect(self._on_item_clicked)
         self._name_header: QTreeWidgetItem | None = None
         self._text_header: QTreeWidgetItem | None = None
+        self._pdf_header: QTreeWidgetItem | None = None
 
     def clear_results(self) -> None:
         self.clear()
-        self._name_header = self._text_header = None
+        self._name_header = self._text_header = self._pdf_header = None
 
     def _header(self, title: str) -> QTreeWidgetItem:
         item = QTreeWidgetItem([_muted(title)])
@@ -131,6 +132,36 @@ class SearchResults(QTreeWidget):
             parent.addChild(child)
         (self._text_header or self.invisibleRootItem()).addChild(parent)
         parent.setExpanded(True)
+
+    def add_pdf_match(self, match, with_headers: bool) -> None:
+        """PDF mit Treffern je Seite; ein Klick öffnet die Seite und markiert den Begriff."""
+        if with_headers and self._pdf_header is None:
+            self._pdf_header = self._header("PDF-Inhalte")
+        parent = QTreeWidgetItem([html.escape(match.relative) + "  " + _muted(f"({len(match.hits)})")])
+        parent.setIcon(0, icon("file-type"))
+        parent.setData(0, ROLE_PATH, str(match.path))
+        parent.setData(0, ROLE_LINE, {"page": match.hits[0].page, "text": match.hits[0].text} if match.hits else None)
+        for hit in match.hits:
+            child = QTreeWidgetItem([_muted(f"S. {hit.page + 1}:") + "  " + _highlight(hit.snippet, hit.start, hit.end,
+                                                                                       hit.spans)])
+            child.setData(0, ROLE_PATH, str(match.path))
+            child.setData(0, ROLE_LINE, {"page": hit.page, "text": hit.text})
+            child.setToolTip(0, f"Seite {hit.page + 1}")
+            parent.addChild(child)
+        (self._pdf_header or self.invisibleRootItem()).addChild(parent)
+        parent.setExpanded(True)
+
+    def add_pdf_skipped(self, skipped: list[tuple[str, str]]) -> None:
+        """PDFs, die nicht durchsucht wurden (Passwort, kein Text …) – zum Aufklappen."""
+        if not skipped:
+            return
+        item = QTreeWidgetItem([_muted(f"{len(skipped)} PDF(s) nicht durchsucht")])
+        item.setFlags(Qt.ItemFlag.ItemIsEnabled)
+        for relative, reason in skipped:
+            child = QTreeWidgetItem([html.escape(relative) + "  " + _muted(f"– {reason}")])
+            child.setFlags(Qt.ItemFlag.ItemIsEnabled)
+            item.addChild(child)
+        self.addTopLevelItem(item)
 
     def show_message(self, text: str) -> None:
         self.clear_results()
