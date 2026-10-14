@@ -782,6 +782,13 @@ PDF/A wie vorgeschlagen, Noto statt Helvetica, Windows-Zertifikatsspeicher spät
   mit jedem Treiber, Kopien/Sortierung macht fckNotes), „In PDF“ bleibt Vektor. **Entscheidung:** Satz- statt
   Wort-Hervorhebung (Roadmap). Nicht getestet: echte Drucker und echte Stimmen (CI: QPrinter-PDF-Ausgabe und
   Fake-Engine). Doku `docs/pdf/drucken-vorlesen.md`.
+- **Fix Release v2.4.0 (Absturz beim Beenden).** Release-Lauf rot, obwohl alle Tests grün: Segfault/Exit 1 *nach*
+  pytest. Reproduziert mit PySide6 6.12.0 + libpulse (sonst lädt QtTextToSpeech nicht). Ursache: ein Dialog ohne
+  Eltern blieb (Lambda-Zyklus) bis zum Interpreter-Ende am Leben; `PySide::destroyQCoreApplication` löscht dann
+  Python-eigene QObjects in Hash-Reihenfolge und besucht die schon mitgelöschten Kinder erneut. **Entscheidung:**
+  `app.release_widgets` löscht alle Top-Level-Fenster nach `app.exec()` gezielt (auch in `conftest`
+  `pytest_sessionfinish`); `print_pdf` gibt den Dialog per `deleteLater` frei; Test `test_app_exit.py`.
+  PySide6 bleibt ungepinnt (`>=6.6`), 6.11 und 6.12 laufen beide. Das Tag v2.4.0 muss der Besitzer neu setzen.
 
 ## Offen
 

@@ -84,4 +84,17 @@ def run() -> int:
     window.show()
     if files:
         window.open_external(files)
-    return app.exec()
+    code = app.exec()
+    release_widgets(app)
+    return code
+
+
+def release_widgets(app: QApplication) -> None:
+    """Alle Fenster jetzt gezielt löschen, solange Python noch läuft. Sonst räumt PySide sie erst beim Ende des
+    Interpreters ab – in zufälliger Reihenfolge, und seit PySide 6.12 kann das abstürzen, wenn ein Fenster samt
+    Kindern vor diesen Kindern gelöscht wird („shared QObject was deleted directly“, Speicherzugriffsfehler)."""
+    import gc
+    for widget in app.topLevelWidgets():
+        widget.deleteLater()
+    app.sendPostedEvents(None, QEvent.Type.DeferredDelete.value)
+    gc.collect()

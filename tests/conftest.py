@@ -47,3 +47,16 @@ def _offline_guard(request, monkeypatch):
     monkeypatch.setattr(socket, "create_connection", refuse)
     monkeypatch.setattr(socket, "getaddrinfo", refuse)
     yield
+
+
+def pytest_sessionfinish(session, exitstatus):
+    """Übrig gebliebene Fenster/Dialoge gezielt löschen, bevor der Interpreter endet (wie `app.release_widgets`):
+    PySide 6.12 stürzt sonst beim Aufräumen gelegentlich ab, obwohl alle Tests bestanden haben."""
+    try:
+        from PySide6.QtWidgets import QApplication
+    except ImportError:
+        return
+    app = QApplication.instance()
+    if app is not None:
+        from notex.app import release_widgets
+        release_widgets(app)

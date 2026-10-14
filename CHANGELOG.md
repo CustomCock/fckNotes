@@ -186,6 +186,11 @@ Alle nennenswerten Änderungen an fckNotes (bis 1.17.0: Notex). Format angelehnt
   - Satz-Zerlegung kennt Abkürzungen, Initialen, Ordnungszahlen, Datumsangaben, Listen und Überschriften.
 
 ### Behoben
+- Programmende/Tests: Mit PySide6 6.12 stürzte der Python-Prozess nach dem Beenden gelegentlich ab (Linux
+  „Segmentation fault“, Windows Exit-Code 1), obwohl alle Tests bestanden hatten – dadurch schlug der Release-Lauf
+  für v2.4.0 fehl. Ursache: PySide räumt übrig gebliebene Fenster beim Interpreter-Ende in zufälliger Reihenfolge ab
+  und löschte dabei Kinder eines schon gelöschten Dialogs ein zweites Mal. Fenster werden jetzt nach dem Beenden
+  gezielt gelöscht (App und Testlauf), der Druckdialog wird nach Gebrauch freigegeben.
 - PDF-Formulare: Der Eigenschaften-Dialog zeigte die eingestellte Schriftgröße nicht an (immer „passend“).
 - PDF: Beim Löschen einer Anmerkung blieben Antworten anderer Programme (`/IRT`) als verwaiste Einträge zurück – jetzt
   geht der ganze Faden mit (auch beim Radierer).

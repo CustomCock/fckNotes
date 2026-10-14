@@ -2874,9 +2874,12 @@ class PdfPage(ViewerPage):
             availability = printing.available()
             dialog = PrintDialog(self, self.doc.pageCount(), self.canvas.current_page,
                                  "" if availability.ok else availability.hint)
-            if dialog.exec() != QDialog.DialogCode.Accepted:
+            accepted = dialog.exec() == QDialog.DialogCode.Accepted
+            if accepted:
+                options, destination, printer = dialog.options(), dialog.destination(), dialog.printer
+            dialog.deleteLater()                          # nicht als Kind des Viewers liegen lassen
+            if not accepted:
                 return False
-            options, destination, printer = dialog.options(), dialog.destination(), dialog.printer
         if destination is None:
             return self._print_to_file(data, options, target, wait)
         return self._print_on_printer(data, options, destination, printer)
